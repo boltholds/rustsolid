@@ -38,6 +38,7 @@ Example library use:
 ```rust
 use rustsolid::{Point2, Solid};
 
+fn main() -> Result<(), rustsolid::GeometryError> {
 let profile = [
     Point2 { x: 0.0, z: 0.0 },
     Point2 { x: 10.0, z: 0.0 },
@@ -47,7 +48,8 @@ let profile = [
 let solid = Solid::extrude_xz(&profile, 8.0)?;
 assert_eq!(solid.euler_characteristic(), 2);
 assert_eq!(solid.mass.volume, 400.0);
-# Ok::<(), rustsolid::GeometryError>(())
+    Ok(())
+}
 ```
 
 ## Gefest integration
