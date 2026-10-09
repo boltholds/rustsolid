@@ -73,6 +73,48 @@ validation policy**, not an exact-predicate framework, tolerance propagation
 system, or production-grade geometric robustness proof. Angular tests currently
 apply to triangle/face normal agreement; more operations will extend its use.
 
+## v0.3: topology edit transactions
+
+- `Solid::begin_edit()` opens a single-writer transaction over a private clone.
+  `Solid::edit_atomic(|tx| ...)` runs multiple changes atomically, revalidating
+  the working B-rep and its tessellation after each successful operation.
+- `EditTransaction::split_edge(edge_id, fraction)` inserts one vertex along
+  `Edge.start → Edge.end`, subdivides the two opposite coedge usages and their
+  triangle boundaries, retaining the original edge ID for the `Edge.start`
+  segment and both original coedge IDs.
+- `EditTransaction::split_face(face_id, a, b)` requires a simple planar face
+  and two distinct, nonadjacent boundary vertices joined by an interior
+  diagonal. It adds an edge, two coedges, one loop and one face. Existing
+  boundary coedges and the original face/loop IDs remain in place; the two
+  planar subfaces are retessellated. Exterior, touching or degenerate
+  diagonals are rejected.
+- `commit()` verifies all invariants before replacing the body and increments
+  `revision` **once** for a nonempty batch. Failed edits poison their
+  transaction; dropping without commit is an implicit rollback. The original
+  body remains byte-for-byte equivalent at the Rust data-model level.
+- `EditReport` carries typed `SplitEdge` and `SplitFace` provenance with source
+  and created IDs; the stateless `geometry.v1` CLI accepts `edit_solid` and
+  emits `edit_report` without changing legacy responses.
+- Mesh validation additionally requires exact topological edge-to-triangle
+  ownership and surface-area conservation. Mass/bounds remain unchanged by
+  these geometry-preserving subdivisions.
+
+### Composite versus graph
+
+The *ownership* hierarchy `Solid → Shell → Face → Loop → Coedge` is
+Composite-like. `Solid::topology_children()` returns only ownership children.
+Edges and vertices can be referenced by many coedges, and `twin/next/prev`
+form cycles: these are non-owning graph links addressed by typed handles.
+Treating the full B-rep as a recursive object-tree would duplicate shared
+geometry or cause cyclic ownership. `Solid` acts as the aggregate root for
+transactions, not a universal polymorphic `Component` class.
+
+ID preservation is local to these append-only edit operations. Rebuilding
+solids from feature history has no persistent naming algorithm yet.
+Transactions presently clone the full solid and use O(n) validation; an
+incremental journal/arena and revisioned handles are planned after correctness
+and provenance fixtures are stable.
+
 ## Unsupported and safety limits
 
 Currently only one closed, connected genus-zero polyhedral shell with one
@@ -84,8 +126,8 @@ provenance only. The geometric validity checker does not yet prove arbitrary
 
 ## Planned gates
 
-1. Topology transaction editor with create/split/delete primitives and
-   rollback-on-failure; explicit mutation witnesses.
+1. Extend the topology transaction editor with deletion, local face rewiring,
+   robust invalid-handle diagnostics and partial journal-based undo.
 2. Planes, cylinders, conics, parametric surface domains and trim curves.
 3. Robust adaptive/exact orientation and intersection predicates with
    differential tests against license-compatible geometry libraries.

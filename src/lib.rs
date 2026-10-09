@@ -9,8 +9,10 @@ use std::fmt;
 
 mod brep;
 mod tolerance;
+mod edit;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
+pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {
@@ -18,6 +20,7 @@ pub enum GeometryError {
     InvalidDimension(&'static str),
     InvalidTopology(String),
     InvalidTolerance(&'static str),
+    InvalidEdit(String),
     TriangulationFailed,
 }
 
@@ -28,6 +31,7 @@ impl fmt::Display for GeometryError {
             Self::InvalidDimension(reason) => write!(f, "invalid dimension: {reason}"),
             Self::InvalidTopology(reason) => write!(f, "invalid topology: {reason}"),
             Self::InvalidTolerance(reason) => write!(f, "invalid tolerance: {reason}"),
+            Self::InvalidEdit(reason) => write!(f, "invalid edit: {reason}"),
             Self::TriangulationFailed => write!(f, "polygon triangulation failed"),
         }
     }
@@ -144,6 +148,8 @@ pub struct Solid {
     pub faces: Vec<Face>,
     pub shells: Vec<Shell>,
     pub tolerance: GeometryTolerance,
+    /// Local edit revision (not a persistent feature identifier).
+    pub revision: u64,
     pub mesh: Mesh,
     pub bbox: BoundingBox,
     pub mass: MassProperties,
@@ -372,7 +378,7 @@ impl Solid {
                           y: height, z: points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max) },
         };
         let mesh = Mesh { vertices: vertices.iter().map(|v| v.position).collect(), triangles, triangle_faces };
-        let solid = Solid { vertices, edges, coedges, loops, faces, shells, tolerance, mesh, bbox,
+        let solid = Solid { vertices, edges, coedges, loops, faces, shells, tolerance, revision: 0, mesh, bbox,
                             mass: MassProperties { volume: area * height,
                                 surface_area: 2.0 * area + perimeter * height, centroid } };
         solid.validate()?;
@@ -430,11 +436,12 @@ impl Solid {
                 return Err(GeometryError::InvalidTopology("mesh and B-rep vertex positions disagree".into()));
             }
         }
-        let mut mesh_edge_uses: BTreeMap<(u32,u32), Vec<bool>> = BTreeMap::new();
+        let mut mesh_edge_uses: BTreeMap<(u32,u32), Vec<(bool,FaceId)>> = BTreeMap::new();
         // The outward signed volume of the triangle boundary must agree with
         // the analytic prism volume. Coordinates are anchored for stability.
         let anchor = self.vertices[0].position;
         let mut six_volume = 0.0;
+        let mut computed_surface_area = 0.0;
         for (tri, owner) in self.mesh.triangles.iter().zip(&self.mesh.triangle_faces) {
             if owner.0 as usize >= self.faces.len() || tri.iter().any(|&i| i as usize >= self.vertices.len()) {
                 return Err(GeometryError::InvalidTopology("mesh index outside bounds".into()));
@@ -474,12 +481,34 @@ impl Solid {
                 return Err(GeometryError::InvalidTopology("triangle normal deviates from owning face".into()));
             }
             six_volume += v0.sub(anchor).dot(v1.sub(anchor).cross(v2.sub(anchor)));
+            computed_surface_area += 0.5 * area2;
             for (u,v) in [(a,b),(b,c),(c,a)] {
-                mesh_edge_uses.entry((u.min(v),u.max(v))).or_default().push(u<v);
+                mesh_edge_uses.entry((u.min(v),u.max(v))).or_default().push((u<v,*owner));
             }
         }
-        if mesh_edge_uses.values().any(|uses| uses.len()!=2 || uses[0]==uses[1]) {
+        if mesh_edge_uses.values().any(|uses| uses.len()!=2 || uses[0].0==uses[1].0) {
             return Err(GeometryError::InvalidTopology("mesh not closed or inconsistently wound".into()));
+        }
+        // A topological edge must be represented by exactly the pair of
+        // opposing, correctly owned triangle edges in this vertex-sharing
+        // polygonal tessellation. Internal triangulation diagonals are exempt.
+        for edge in &self.edges {
+            let pair=mesh_edge_uses.get(&(edge.start.0,edge.end.0))
+                .ok_or_else(|| GeometryError::InvalidTopology("B-rep edge missing from tessellation".into()))?;
+            let mut owners=[self.coedges[edge.coedges[0].0 as usize].face,
+                self.coedges[edge.coedges[1].0 as usize].face];
+            owners.sort();
+            let mut mesh_owners=[pair[0].1,pair[1].1];
+            mesh_owners.sort();
+            if owners != mesh_owners {
+                return Err(GeometryError::InvalidTopology("B-rep and mesh edge face ownership disagree".into()));
+            }
+        }
+        let area_budget = self.mass.surface_area.abs()*1e-9
+            + self.tolerance.length_at(extent) * extent * 10.0;
+        if !computed_surface_area.is_finite() ||
+            (computed_surface_area-self.mass.surface_area).abs()>area_budget {
+            return Err(GeometryError::InvalidTopology("tessellation surface area disagrees with analytic solid".into()));
         }
         if !self.mass.volume.is_finite() || self.mass.volume <= 0.0
             || !self.mass.surface_area.is_finite() || self.mass.surface_area <= 0.0
