@@ -2,13 +2,14 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.1 prototype — planar, genus-zero polyhedral solids only.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.2 experimental topology slice — planar, genus-zero polyhedral solids only.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
 - Extrude a simple, possibly concave, planar XZ profile along +Y, or create a block.
-- Maintain explicit vertex/edge/face topology with oriented face boundaries.
-- Check closed, consistently wound manifold edge incidences and Euler characteristic 2.
+- Maintain explicit oriented B-rep: shells, faces, loops, coedges (twin/next/prev), edges and vertices.
+- Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
+- Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
 - Compute prism volume, surface area, centroid and axis-aligned bounds; translate bodies.
 - Ray-pick a triangle and map the hit back to the owning topological face.
@@ -31,7 +32,7 @@ Example JSON request:
 printf '%s' '{"operation":"extrude_profile","profile":[[0,0],[2,0],[2,3],[0,3]],"height":4}' | target/release/gefest-geometry
 ```
 
-The response carries `schema_version: "geometry.v1"`, `ok`, and either a `solid` or an `error`. `solid` includes `vertices`, indexed triangle `faces`, `triangle_face_ids`, counts and Euler characteristic under `topology`, analytic `mass` and `bbox`. `geometry.v1` is a provisional bridge contract, not a STEP or Parasolid serialization format.
+The response carries `schema_version: "geometry.v1"`, `ok`, and either a `solid` or an `error`. `solid` includes `vertices`, indexed triangle `faces`, `triangle_face_ids`, counts of vertices/edges/coedges/loops/shells/faces and Euler characteristic under `topology`, analytic `mass` and `bbox`. The request accepts an optional `tolerance` object; omitted fields use the defaults. The existing triangle field named `faces` is retained for API compatibility. `geometry.v1` is a provisional bridge contract, not a STEP or Parasolid serialization format.
 
 Example library use:
 
@@ -58,9 +59,9 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The `v0.1` model supports only a **single planar boundary loop without holes**; its B-rep is polygonal, not an exact analytic solid. There is no Boolean engine, fillets, NURBS, analytic trim curves/surfaces, per-edge tolerances, shells with holes, persistent naming across changing topologies, STEP/X_T export, or production-grade robust predicates. Extrusion uses XZ/+Y coordinates. Not suitable for safety-critical or precision manufacturing use.
+The `v0.2` model supports only a **single planar boundary loop without holes**; its B-rep is polygonal, not an exact analytic solid. There is no Boolean engine, fillets, NURBS, analytic trim curves/surfaces, per-edge tolerances, shells with holes, persistent naming across changing topologies, STEP/X_T export, or production-grade robust predicates. Extrusion uses XZ/+Y coordinates. Not suitable for safety-critical or precision manufacturing use.
 
-See [docs/architecture.md](docs/architecture.md) for module boundaries and an incremental roadmap.
+See [docs/architecture.md](docs/architecture.md) for invariant details, tolerance semantics, limits, and the next gates.
 
 ## License
 

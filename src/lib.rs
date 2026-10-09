@@ -7,11 +7,17 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+mod brep;
+mod tolerance;
+pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
+pub use tolerance::GeometryTolerance;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {
     InvalidProfile(&'static str),
     InvalidDimension(&'static str),
     InvalidTopology(String),
+    InvalidTolerance(&'static str),
     TriangulationFailed,
 }
 
@@ -21,6 +27,7 @@ impl fmt::Display for GeometryError {
             Self::InvalidProfile(reason) => write!(f, "invalid extrusion profile: {reason}"),
             Self::InvalidDimension(reason) => write!(f, "invalid dimension: {reason}"),
             Self::InvalidTopology(reason) => write!(f, "invalid topology: {reason}"),
+            Self::InvalidTolerance(reason) => write!(f, "invalid tolerance: {reason}"),
             Self::TriangulationFailed => write!(f, "polygon triangulation failed"),
         }
     }
@@ -44,24 +51,24 @@ pub struct Point3 {
 impl Point3 {
     pub fn array(self) -> [f64; 3] { [self.x, self.y, self.z] }
     pub fn is_finite(self) -> bool { self.x.is_finite() && self.y.is_finite() && self.z.is_finite() }
-    fn add(self, v: Point3) -> Self {
+    pub(crate) fn add(self, v: Point3) -> Self {
         Self { x: self.x + v.x, y: self.y + v.y, z: self.z + v.z }
     }
-    fn sub(self, v: Point3) -> Self {
+    pub(crate) fn sub(self, v: Point3) -> Self {
         Self { x: self.x - v.x, y: self.y - v.y, z: self.z - v.z }
     }
-    fn scale(self, s: f64) -> Self {
+    pub(crate) fn scale(self, s: f64) -> Self {
         Self { x: self.x * s, y: self.y * s, z: self.z * s }
     }
-    fn dot(self, v: Point3) -> f64 { self.x * v.x + self.y * v.y + self.z * v.z }
-    fn cross(self, v: Point3) -> Self {
+    pub(crate) fn dot(self, v: Point3) -> f64 { self.x * v.x + self.y * v.y + self.z * v.z }
+    pub(crate) fn cross(self, v: Point3) -> Self {
         Self {
             x: self.y * v.z - self.z * v.y,
             y: self.z * v.x - self.x * v.z,
             z: self.x * v.y - self.y * v.x,
         }
     }
-    fn length_squared(self) -> f64 { self.dot(self) }
+    pub(crate) fn length_squared(self) -> f64 { self.dot(self) }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -82,6 +89,8 @@ pub struct Edge {
     pub id: EdgeId,
     pub start: VertexId,
     pub end: VertexId,
+    /// The two opposing directed usages of this edge on the closed shell.
+    pub coedges: [CoedgeId; 2],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +102,8 @@ pub struct Face {
     pub role: FaceRole,
     /// Boundary vertices ordered counterclockwise as viewed from the outside.
     pub boundary: Vec<VertexId>,
+    /// Canonical face loops. `boundary` remains a checked compatibility view.
+    pub loops: Vec<LoopId>,
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +139,11 @@ pub struct RayHit {
 pub struct Solid {
     pub vertices: Vec<Vertex>,
     pub edges: Vec<Edge>,
+    pub coedges: Vec<Coedge>,
+    pub loops: Vec<Loop>,
     pub faces: Vec<Face>,
+    pub shells: Vec<Shell>,
+    pub tolerance: GeometryTolerance,
     pub mesh: Mesh,
     pub bbox: BoundingBox,
     pub mass: MassProperties,
@@ -169,9 +184,9 @@ fn signed_area(points: &[Point2]) -> f64 {
     0.5 * twice
 }
 
-fn normalized_profile(profile: &[Point2]) -> Result<(Vec<Point2>, f64), GeometryError> {
+fn normalized_profile(profile: &[Point2], tolerance: GeometryTolerance) -> Result<(Vec<Point2>, f64), GeometryError> {
     if profile.len() < 3 { return Err(GeometryError::InvalidProfile("need at least three vertices")); }
-    if profile.len() > (u32::MAX as usize) / 2 { return Err(GeometryError::InvalidProfile("too many vertices")); }
+    if profile.len() > (u32::MAX as usize) / 6 { return Err(GeometryError::InvalidProfile("too many vertices")); }
     if !profile.iter().all(|p| p.x.is_finite() && p.z.is_finite()) {
         return Err(GeometryError::InvalidProfile("coordinates must be finite"));
     }
@@ -183,8 +198,11 @@ fn normalized_profile(profile: &[Point2]) -> Result<(Vec<Point2>, f64), Geometry
     if !extent.is_finite() || extent <= 0.0 {
         return Err(GeometryError::InvalidProfile("profile has zero extent"));
     }
-    let eps = extent * 1e-12;
-    let area_eps = extent * extent * 1e-12;
+    let eps = tolerance.length_at(extent);
+    let area_eps = tolerance.area_at(extent);
+    if !eps.is_finite() || !area_eps.is_finite() || extent <= eps {
+        return Err(GeometryError::InvalidProfile("profile extent is below tolerance"));
+    }
     let mut points = profile.to_vec();
     // Explicit closing vertex is accepted, but zero-length interior edges are rejected.
     if dist2(points[0], *points.last().unwrap()) <= eps * eps { points.pop(); }
@@ -234,12 +252,12 @@ fn point_in_triangle(p: Point2, a: Point2, b: Point2, c: Point2, eps: f64) -> bo
     cross2(a, b, p) >= -eps && cross2(b, c, p) >= -eps && cross2(c, a, p) >= -eps
 }
 
-fn triangulate(points: &[Point2]) -> Result<Vec<[u32; 3]>, GeometryError> {
+fn triangulate(points: &[Point2], tolerance: GeometryTolerance) -> Result<Vec<[u32; 3]>, GeometryError> {
     let minx = points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
     let maxx = points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
     let minz = points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min);
     let maxz = points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max);
-    let area_eps = (maxx - minx).max(maxz - minz).powi(2) * 1e-12;
+    let area_eps = tolerance.area_at((maxx - minx).max(maxz - minz));
     let mut ring: Vec<u32> = (0..points.len() as u32).collect();
     let mut out = Vec::with_capacity(points.len() - 2);
     while ring.len() > 3 {
@@ -271,11 +289,24 @@ impl Solid {
     /// Extrudes a simple XZ-plane polygon toward +Y, matching Gefest's viewport convention.
     /// The input must not contain holes; the output is a closed, oriented planar B-rep.
     pub fn extrude_xz(profile: &[Point2], height: f64) -> Result<Self, GeometryError> {
+        Self::extrude_xz_with_tolerance(profile, height, GeometryTolerance::default())
+    }
+
+    /// Build a prism with explicit, validated model-space tolerance semantics.
+    pub fn extrude_xz_with_tolerance(profile: &[Point2], height: f64, tolerance: GeometryTolerance) -> Result<Self, GeometryError> {
+        tolerance.validate()?;
         if !height.is_finite() || height <= 0.0 {
             return Err(GeometryError::InvalidDimension("extrusion height must be finite and positive"));
         }
-        let (points, area) = normalized_profile(profile)?;
-        let cap_tris = triangulate(&points)?;
+        let (points, area) = normalized_profile(profile, tolerance)?;
+        let cap_tris = triangulate(&points, tolerance)?;
+        let extent = points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max)
+            - points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+        let extent_z = points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max)
+            - points.iter().map(|p| p.z).fold(f64::INFINITY, f64::min);
+        if height <= tolerance.length_at(extent.max(extent_z).max(height)) {
+            return Err(GeometryError::InvalidDimension("extrusion height is below tolerance"));
+        }
         let n = points.len();
         let mut vertices = Vec::with_capacity(2 * n);
         for (i, point) in points.iter().enumerate() {
@@ -288,9 +319,9 @@ impl Solid {
         let top = FaceId(1);
         let mut faces = vec![
             Face { id: bottom, role: FaceRole::BottomCap,
-                boundary: (0..n as u32).map(VertexId).collect() },
+                boundary: (0..n as u32).map(VertexId).collect(), loops: Vec::new() },
             Face { id: top, role: FaceRole::TopCap,
-                boundary: (0..n as u32).rev().map(|i| VertexId(n as u32 + i)).collect() },
+                boundary: (0..n as u32).rev().map(|i| VertexId(n as u32 + i)).collect(), loops: Vec::new() },
         ];
         for i in 0..n {
             let j = (i + 1) % n;
@@ -298,20 +329,10 @@ impl Solid {
                 id: FaceId((i + 2) as u32), role: FaceRole::Side(i as u32),
                 boundary: vec![VertexId(i as u32), VertexId((n + i) as u32),
                                VertexId((n + j) as u32), VertexId(j as u32)],
+                loops: Vec::new(),
             });
         }
-        let mut incidences: BTreeMap<(u32, u32), Vec<(FaceId, bool)>> = BTreeMap::new();
-        for face in &faces {
-            for k in 0..face.boundary.len() {
-                let a = face.boundary[k].0;
-                let b = face.boundary[(k + 1) % face.boundary.len()].0;
-                incidences.entry((a.min(b), a.max(b)))
-                    .or_default().push((face.id, a < b));
-            }
-        }
-        let edges = incidences.keys().enumerate().map(|(i, &(start, end))| Edge {
-            id: EdgeId(i as u32), start: VertexId(start), end: VertexId(end)
-        }).collect();
+        let (edges, coedges, loops, shells) = brep::from_faces(&mut faces)?;
         let mut triangles = Vec::with_capacity(4 * n - 4);
         let mut triangle_faces = Vec::with_capacity(4 * n - 4);
         for [a, b, c] in cap_tris {
@@ -351,7 +372,7 @@ impl Solid {
                           y: height, z: points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max) },
         };
         let mesh = Mesh { vertices: vertices.iter().map(|v| v.position).collect(), triangles, triangle_faces };
-        let solid = Solid { vertices, edges, faces, mesh, bbox,
+        let solid = Solid { vertices, edges, coedges, loops, faces, shells, tolerance, mesh, bbox,
                             mass: MassProperties { volume: area * height,
                                 surface_area: 2.0 * area + perimeter * height, centroid } };
         solid.validate()?;
@@ -359,13 +380,18 @@ impl Solid {
     }
 
     pub fn block(origin: Point3, width: f64, height: f64, depth: f64) -> Result<Self, GeometryError> {
+        Self::block_with_tolerance(origin, width, height, depth, GeometryTolerance::default())
+    }
+
+    pub fn block_with_tolerance(origin: Point3, width: f64, height: f64, depth: f64, tolerance: GeometryTolerance) -> Result<Self, GeometryError> {
+        tolerance.validate()?;
         if !origin.is_finite() { return Err(GeometryError::InvalidDimension("origin must be finite")); }
         if !width.is_finite() || width <= 0.0 || !depth.is_finite() || depth <= 0.0 {
             return Err(GeometryError::InvalidDimension("block width and depth must be finite and positive"));
         }
         let profile = [Point2{x: 0.0,z: 0.0}, Point2{x: width,z: 0.0},
                        Point2{x: width,z: depth}, Point2{x: 0.0,z: depth}];
-        Self::extrude_xz(&profile, height)?.translated(origin)
+        Self::extrude_xz_with_tolerance(&profile, height, tolerance)?.translated(origin)
     }
 
     pub fn translated(mut self, delta: Point3) -> Result<Self, GeometryError> {
@@ -386,57 +412,68 @@ impl Solid {
         self.vertices.len() as isize - self.edges.len() as isize + self.faces.len() as isize
     }
 
-    /// Checks consistency of polygonal loops, manifold edge incidence and triangle ownership.
+    /// Checks B-rep graph invariants, geometric face tolerances, and mesh ownership.
     pub fn validate(&self) -> Result<(), GeometryError> {
-        if self.vertices.is_empty() || self.faces.is_empty() { return Err(GeometryError::InvalidTopology("empty body".into())); }
-        if !self.vertices.iter().enumerate().all(|(i,v)| v.id.0 as usize == i && v.position.is_finite()) {
-            return Err(GeometryError::InvalidTopology("invalid vertex identifiers or positions".into()));
-        }
-        let mut edge_uses: BTreeMap<(u32,u32), Vec<(FaceId,bool)>> = BTreeMap::new();
-        for (f, face) in self.faces.iter().enumerate() {
-            if face.id.0 as usize != f || face.boundary.len() < 3 {
-                return Err(GeometryError::InvalidTopology("invalid face identifier or loop".into()));
-            }
-            for i in 0..face.boundary.len() {
-                let a=face.boundary[i].0; let b=face.boundary[(i+1)%face.boundary.len()].0;
-                if a==b || (a as usize)>=self.vertices.len() || (b as usize)>=self.vertices.len() {
-                    return Err(GeometryError::InvalidTopology("invalid face edge".into()));
-                }
-                edge_uses.entry((a.min(b),a.max(b))).or_default().push((face.id,a<b));
-            }
-        }
-        for uses in edge_uses.values() {
-            if uses.len()!=2 || uses[0].1==uses[1].1 {
-                return Err(GeometryError::InvalidTopology("non-manifold or inconsistently wound edge".into()));
-            }
-        }
-        if self.edges.len()!=edge_uses.len() || self.euler_characteristic()!=2 {
-            return Err(GeometryError::InvalidTopology("expected one closed genus-zero shell".into()));
-        }
-        for edge in &self.edges {
-            if !edge_uses.contains_key(&(edge.start.0,edge.end.0)) || edge.start.0>=edge.end.0 {
-                return Err(GeometryError::InvalidTopology("edge index mismatch".into()));
-            }
-        }
-        if self.mesh.vertices.len()!=self.vertices.len()
-            || self.mesh.triangles.len()!=self.mesh.triangle_faces.len() {
+        self.tolerance.validate()?;
+        self.check_topology().map_err(|issue| GeometryError::InvalidTopology(issue.to_string()))?;
+        if self.mesh.vertices.len() != self.vertices.len()
+            || self.mesh.triangles.len() != self.mesh.triangle_faces.len() {
             return Err(GeometryError::InvalidTopology("mesh indices or ownership invalid".into()));
         }
-        let mut mesh_edge_uses: BTreeMap<(u32,u32),Vec<bool>>=BTreeMap::new();
+        let extent = self.bbox.max.sub(self.bbox.min).length_squared().sqrt();
+        let linear = self.tolerance.length_at(extent);
+        if !extent.is_finite() || extent <= linear {
+            return Err(GeometryError::InvalidTopology("body extent is below tolerance".into()));
+        }
+        for (vertex, source) in self.mesh.vertices.iter().zip(&self.vertices) {
+            if !vertex.is_finite() || vertex.sub(source.position).length_squared().sqrt() > linear {
+                return Err(GeometryError::InvalidTopology("mesh and B-rep vertex positions disagree".into()));
+            }
+        }
+        let mut mesh_edge_uses: BTreeMap<(u32,u32), Vec<bool>> = BTreeMap::new();
+        // The outward signed volume of the triangle boundary must agree with
+        // the analytic prism volume. Coordinates are anchored for stability.
+        let anchor = self.vertices[0].position;
+        let mut six_volume = 0.0;
         for (tri, owner) in self.mesh.triangles.iter().zip(&self.mesh.triangle_faces) {
-            if owner.0 as usize >= self.faces.len() || tri.iter().any(|&i| i as usize>=self.vertices.len()) {
+            if owner.0 as usize >= self.faces.len() || tri.iter().any(|&i| i as usize >= self.vertices.len()) {
                 return Err(GeometryError::InvalidTopology("mesh index outside bounds".into()));
             }
-            let [a,b,c]=*tri;
+            let [a,b,c] = *tri;
             if a==b || b==c || c==a {
                 return Err(GeometryError::InvalidTopology("degenerate mesh triangle".into()));
             }
-            let ab=self.mesh.vertices[b as usize].sub(self.mesh.vertices[a as usize]);
-            let ac=self.mesh.vertices[c as usize].sub(self.mesh.vertices[a as usize]);
-            let double_area_squared=ab.cross(ac).length_squared();
-            if !double_area_squared.is_finite() || double_area_squared <= 0.0 {
+            let v0 = self.mesh.vertices[a as usize];
+            let v1 = self.mesh.vertices[b as usize];
+            let v2 = self.mesh.vertices[c as usize];
+            let cross = v1.sub(v0).cross(v2.sub(v0));
+            let area2 = cross.length_squared().sqrt();
+            if !area2.is_finite() || area2 <= 0.0 {
                 return Err(GeometryError::InvalidTopology("zero-area or non-finite mesh triangle".into()));
             }
+            let face = &self.faces[owner.0 as usize];
+            // v0.2 tessellation uses only boundary vertices; a later curved-face
+            // mesher will need a separate face-domain certification contract.
+            if !tri.iter().all(|v| face.boundary.contains(&VertexId(*v))) {
+                return Err(GeometryError::InvalidTopology("triangle references vertices outside owning face".into()));
+            }
+            let face_anchor = self.vertices[face.boundary[0].0 as usize].position;
+            let mut face_sum = Point3 { x: 0.0, y: 0.0, z: 0.0 };
+            for i in 0..face.boundary.len() {
+                let x = self.vertices[face.boundary[i].0 as usize].position.sub(face_anchor);
+                let y = self.vertices[face.boundary[(i + 1) % face.boundary.len()].0 as usize].position.sub(face_anchor);
+                face_sum = face_sum.add(x.cross(y));
+            }
+            let face_norm = face_sum.length_squared().sqrt();
+            if !face_norm.is_finite() || face_norm <= 0.0 || cross.dot(face_sum) <= 0.0 {
+                return Err(GeometryError::InvalidTopology("triangle winding disagrees with owning face".into()));
+            }
+            // Compare unit directions by sine of the deviation angle.
+            let sine = cross.cross(face_sum).length_squared().sqrt() / (area2 * face_norm);
+            if !sine.is_finite() || sine > self.tolerance.angular.sin() {
+                return Err(GeometryError::InvalidTopology("triangle normal deviates from owning face".into()));
+            }
+            six_volume += v0.sub(anchor).dot(v1.sub(anchor).cross(v2.sub(anchor)));
             for (u,v) in [(a,b),(b,c),(c,a)] {
                 mesh_edge_uses.entry((u.min(v),u.max(v))).or_default().push(u<v);
             }
@@ -448,6 +485,14 @@ impl Solid {
             || !self.mass.surface_area.is_finite() || self.mass.surface_area <= 0.0
             || !self.mass.centroid.is_finite() || !self.bbox.min.is_finite() || !self.bbox.max.is_finite() {
             return Err(GeometryError::InvalidTopology("invalid mass properties".into()));
+        }
+        // Keep an explicit numerical budget for accumulated signed tetrahedra.
+        let computed_volume = six_volume / 6.0;
+        let error_budget = self.mass.volume.abs() * 1.0e-9
+            + self.tolerance.length_at(extent) * extent * extent * 10.0;
+        if !computed_volume.is_finite() || computed_volume <= 0.0 ||
+            (computed_volume - self.mass.volume).abs() > error_budget {
+            return Err(GeometryError::InvalidTopology("mesh signed volume disagrees with analytic solid".into()));
         }
         Ok(())
     }

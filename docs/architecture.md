@@ -1,50 +1,102 @@
-# RustSolid architecture and next steps
+# RustSolid architecture
 
-## Intent
-
-RustSolid is the exact/approximate geometric modeling subsystem for Gefest CAD. Keep the existing Gefest `solver-core` for constraint solving; the constraint solver determines sketch parameters, RustSolid constructs and queries solid geometry. Retain the OpenCascade reference path until independently implemented functionality meets parity benchmarks.
+RustSolid is an independent geometric modeling kernel for Gefest CAD, distinct
+from the Rust constraint-solving workspace. The production CAD path still uses
+OpenCascade; the RustSolid JSON stdio interface is opt-in and backward
+compatible with `geometry.v1`.
 
 ```text
-Gefest sketch + constraint solver
-           |
-     stable geometry API
-           |
-  RustSolid modeling kernel
-   |         |           |
- Topology  Geometry     Operators
- (B-rep)   (analytic)   (extrude, ...)
-    \       /              |
-   Topological naming + history
-            |
-   Tessellation / picking / formats
+Gefest sketches -- constrained by solver-core
+         |
+   geometry.v1 stdio / Rust library
+         |
+   RustSolid (model-space tolerance policy)
+      |                  |
+ Oriented B-rep      Polygon geometry
+ Shell                Extrusion / Block
+  Face                  |
+   Loop             Triangulation + analytic mass
+    Coedge             |
+     Edge--Vertex    Selection mesh -> FaceId
 ```
 
-## v0.1 (implemented)
+## v0.2: oriented B-rep topology
 
-- Polygonal, one-shell orientable genus-zero boundary topology.
-- Consistently oriented closed extrusion along +Y in XZ convention.
-- Ear-clipping triangulation of simple polygonal caps without holes.
-- Mesh-to-face ownership, bounds, analytic prism mass properties, ray picking.
-- Validation and a versioned one-request JSON stdio bridge.
+Canonical incidence is expressed by typed handles: `ShellId`, `FaceId`,
+`LoopId`, `CoedgeId`, `EdgeId`, `VertexId`. Collections use deterministic,
+zero-based, model-local IDs. These are **not persistent topological naming IDs**
+for re-generated solids. A `Face` stores canonical `loops` and a checked legacy
+`boundary` vertex view. `Coedge` represents one directed edge usage by a face:
+`edge`, `face`, `loop_id`, `reversed`, `next`, `prev`, and `twin`. An `Edge`
+references exactly two oppositely oriented coedges. A `Loop` identifies its
+first coedge and whether it is an outer or inner loop; the **current** builder
+and validator support only one outer loop per face. A `Shell` owns its faces.
 
-**Important:** `FaceId` and `EdgeId` are construction-local IDs, not persistent face/edge names across edits. A valid mesh is not an exact STEP model.
+`Solid::check_topology()` returns the first `TopologyIssue`, with stable `code`
+and typed `TopologyEntity` witness. It checks:
 
-## Next vertical slices (planned, not implemented)
+- ID/index agreement and in-range references;
+- next/prev reciprocity, closed directed cycles and face boundary consistency;
+- exactly two coedges per edge, reciprocal twins, opposite directions, distinct faces;
+- one shell owning each face exactly once; a connected face-adjacency graph;
+- a single incident coedge fan at each vertex (no pinched vertices);
+- face planarity, nondegenerate area, and non-self-intersecting boundaries;
+- genus-zero Euler characteristic `V-E+F=2`.
 
-1. **Topology contract**: shell, coedge/half-edge, wire/loop, face orientation, manifold validator, stable typed handles, transaction semantics and diagnostic witnesses. Explicit support for multiple shells and internal voids comes later.
-2. **Geometric layer**: parametrized planes, lines, circles, cylinders, then splines and NURBS with explicit domains, tolerances and surface/trim relationships.
-3. **Modeling operations**: intersections, split, imprint and robust Boolean operations with independently testable predicates and topology provenance.
-4. **CAD editing**: fillet/chamfer, offset, draft, direct face moves, deterministic selection and geometry-preserving history.
-5. **Integration and exchange**: differential fixtures against OpenCascade, meshing tolerances, incremental regeneration and STEP support through license-compatible implementations.
+`Solid::validate()` additionally checks triangle/face ownership, mesh/B-rep
+vertex coordinate agreement, triangle normals, manifold tessellation, signed
+volume against analytic mass, and finite bounds. It uses the stored tolerance.
+Mesh and B-rep share the same vertices in this slice; more general per-surface
+tessellation will require its own traceability contract.
 
-## Invariants and tests
+## Tolerance semantics
 
-- No NaN/Inf, negative dimensions, zero-length boundary edges, self intersections or non-manifold edge incidences.
-- Every mesh triangle has a valid owning topological face; every mesh edge is shared exactly twice in opposite orientations.
-- The current single-shell topology has Euler characteristic `V - E + F = 2`.
-- Analytic mass/bounds used as a baseline for polygonal prisms; clipping and picking must preserve face ownership.
-- Add differential tests and metamorphic tests (rotation/reflection/scale/translation) before generalizing the primitive set.
+`GeometryTolerance` has three fields:
 
-## Intellectual-property boundary
+| Field | Default | Meaning |
+| --- | ---: | --- |
+| `absolute_length` | `1e-9` | Absolute model-space distance (in caller's length units) |
+| `relative_length` | `1e-12` | Relative distance wrt local feature extent |
+| `angular` | `1e-8` | Maximum angular deviation, radians |
 
-Do not commit proprietary Siemens, Parasolid or decompiler artifacts to this repository. Treat published API names only as contextual feature taxonomy. Derive mathematical operators independently from permissively licensed literature and reproducible tests, documenting any third-party source and license.
+The effective linear tolerance is `max(absolute_length, relative_length *
+feature_extent)`; area tests use effective linear tolerance times feature
+extent. Both tolerances and selected input dimensions are validated; a feature
+smaller than its effective tolerance is rejected, not silently merged. A part
+moved to large absolute coordinates still uses its *local* feature extent,
+though sub-ULP detail cannot be recovered from floating-point inputs.
+
+Call `Solid::extrude_xz_with_tolerance` or `Solid::block_with_tolerance` for
+custom tolerances, or include an optional `tolerance` object with
+`geometry.v1` input. Omitted fields receive the defaults. This is a **numerical
+validation policy**, not an exact-predicate framework, tolerance propagation
+system, or production-grade geometric robustness proof. Angular tests currently
+apply to triangle/face normal agreement; more operations will extend its use.
+
+## Unsupported and safety limits
+
+Currently only one closed, connected genus-zero polyhedral shell with one
+outer wire per face is supported: no internal wires/holes, multiple shells,
+shared non-manifold edges, analytic/NURBS surfaces, Boolean, fillet/chamfer,
+STEP/X_T or persistent naming after edits. `FaceRole` carries extrusion
+provenance only. The geometric validity checker does not yet prove arbitrary
+3D face-face nonintersection. Never feed unvalidated solids into manufacturing.
+
+## Planned gates
+
+1. Topology transaction editor with create/split/delete primitives and
+   rollback-on-failure; explicit mutation witnesses.
+2. Planes, cylinders, conics, parametric surface domains and trim curves.
+3. Robust adaptive/exact orientation and intersection predicates with
+   differential tests against license-compatible geometry libraries.
+4. Half-edge subdivision operations, intersection traces, face splitting,
+   Boolean operations, fillets and topological provenance.
+5. Tessellation with per-face parametric traceability, STEP import/export,
+   benchmarks and integration with Gefest's feature history.
+
+## IP boundary
+
+No proprietary Siemens/Parasolid code, binaries, headers or decompiler outputs
+may be committed to RustSolid. Implementation is independent and based on
+standard computational geometry concepts; any future third-party code must
+have a compatible license and documented provenance.
