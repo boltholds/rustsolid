@@ -143,7 +143,7 @@ fn process(input: &str) -> Response {
                 topology: Topology {
                     vertices: body.vertices.len(), edges: body.edges.len(),
                     coedges: body.coedges.len(), loops: body.loops.len(), shells: body.shells.len(),
-                    faces: body.faces.len(), euler_characteristic: body.euler_characteristic(),
+                    faces: body.faces.len(), euler_characteristic: body.vertices.len() as isize - body.edges.len() as isize + body.faces.len() as isize,
                 },
                 mass: Mass { volume: body.mass.volume, surface_area: body.mass.surface_area,
                     centroid: body.mass.centroid.array() },
