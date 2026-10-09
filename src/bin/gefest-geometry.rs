@@ -70,7 +70,7 @@ fn process(input: &str) -> Response {
                 triangle_face_ids: body.mesh.triangle_faces.iter().map(|id| id.0).collect(),
                 topology: Topology {
                     vertices: body.vertices.len(), edges: body.edges.len(),
-                    faces: body.faces.len(), euler_characteristic: body.euler_characteristic(),
+                    faces: body.faces.len(), euler_characteristic: body.vertices.len() as isize - body.edges.len() as isize + body.faces.len() as isize,
                 },
                 mass: Mass { volume: body.mass.volume, surface_area: body.mass.surface_area,
                              centroid: body.mass.centroid.array() },
