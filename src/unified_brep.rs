@@ -256,8 +256,8 @@ impl BrepModel {
                 Some(Curve3::Circle(_)) => out.circular_edges += 1,
                 None => {},
             }
-            if edge.coedges[0].0 as usize < self.coedges.len()
-                && edge.coedges[1].0 as usize < self.coedges.len()
+            if (edge.coedges[0].0 as usize) < self.coedges.len()
+                && (edge.coedges[1].0 as usize) < self.coedges.len()
                 && self.coedges[edge.coedges[0].0 as usize].face == self.coedges[edge.coedges[1].0 as usize].face {
                 out.seam_edges += 1;
             }
