@@ -11,8 +11,14 @@ fn near_cancelled_determinant_is_classified_by_robust_predicate() {
     let c = [100_000_001.0, 100_000_002.0];
     assert_eq!(orient2d(a,b,c).unwrap(), Orientation::Negative);
     let kernel=PredicateKernel::new(GeometryTolerance::default()).unwrap();
-    assert_eq!(kernel.orient2d(a,b,c).unwrap(),PredicateClassification::Negative);
-    assert_eq!(kernel.orient2d(a,c,b).unwrap(),PredicateClassification::Positive);
+    // The exact sign is negative, but this very thin shape is within
+    // default CAD tolerance at 1e8 model-unit extent.
+    assert_eq!(kernel.orient2d(a,b,c).unwrap(),PredicateClassification::WithinTolerance);
+    let strict=PredicateKernel::new(GeometryTolerance {
+        absolute_length:1e-16, relative_length:0.0, angular:1e-8,
+    }).unwrap();
+    assert_eq!(strict.orient2d(a,b,c).unwrap(),PredicateClassification::Negative);
+    assert_eq!(strict.orient2d(a,c,b).unwrap(),PredicateClassification::Positive);
 }
 
 #[test]
