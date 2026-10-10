@@ -1,6 +1,6 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{CommandBatch, CommandHistory, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, VertexId};
+use rustsolid::{BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -16,6 +16,7 @@ enum GeometryRequest {
         #[serde(default)] tolerance: Option<GeometryTolerance>,
     },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
+    InspectBrep { source: BrepInput },
     CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
         batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
 }
@@ -82,6 +83,8 @@ struct SolidResponse {
     history: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     analytic_brep: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    brep: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -177,11 +180,114 @@ fn process_analytic_cylinder(
                         surface_area:body.mass.surface_area,
                         centroid:body.mass.centroid.array()},
                     bbox:[body.bbox.min.array(),body.bbox.max.array()],
-                    edit_report:None,history:None,analytic_brep:Some(analytic),
+                    edit_report:None,history:None,analytic_brep:Some(analytic),brep:None,
                 }),
                 error:None,
             }
         }
+    }
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum BrepInput {
+    Block { origin:[f64;3], width:f64, height:f64, depth:f64,
+        #[serde(default)] tolerance:Option<GeometryTolerance> },
+    ExtrudeProfile { profile:Vec<[f64;2]>, height:f64,
+        #[serde(default)] tolerance:Option<GeometryTolerance> },
+    AnalyticCylinder { origin:[f64;3], radius:f64, height:f64,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance> },
+}
+impl BrepInput {
+    fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
+        match self {
+            Self::Block {origin,width,height,depth,tolerance} => {
+                let solid=SolidSource::Block{origin,width,height,depth,tolerance}.build()?;
+                Ok((BrepBody::from(solid),64))
+            }
+            Self::ExtrudeProfile{profile,height,tolerance} => {
+                let solid=SolidSource::ExtrudeProfile{profile,height,tolerance}.build()?;
+                Ok((BrepBody::from(solid),64))
+            }
+            Self::AnalyticCylinder{origin,radius,height,segments,tolerance} => {
+                let cylinder=CylindricalBrep::upright(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    radius,height,tolerance.unwrap_or_default())?;
+                Ok((BrepBody::from(cylinder),segments.unwrap_or(64)))
+            }
+        }
+    }
+}
+
+fn inspect_brep(input:BrepInput) -> Response {
+    let result=input.prepare().and_then(|(source,segments)| {
+        let graph=source.shared()?;
+        let mesh=source.tessellate(segments)?;
+        let stats=graph.summary();
+        let surfaces=graph.faces.iter().map(|f| match graph.face_surface(f.id) {
+            Some(Surface3::Plane(_)) => "plane",
+            Some(Surface3::Cylinder(_)) => "cylinder",
+            Some(Surface3::Sphere(_)) => "sphere",
+            None => "missing",
+        }).collect::<Vec<_>>();
+        let curves=graph.edges.iter().map(|e| match graph.edge_curve(e.id) {
+            Some(Curve3::Line(_)) => "line",
+            Some(Curve3::Circle(_)) => "circle",
+            None => "missing",
+        }).collect::<Vec<_>>();
+        let trims=graph.coedges.iter().map(|c| match graph.coedge_pcurve(c.id) {
+            Some(Curve2::Line(_)) => "line",
+            Some(Curve2::Circle(_)) => "circle",
+            None => "missing",
+        }).collect::<Vec<_>>();
+        let seams=graph.edges.iter().filter(|e| {
+            let [a,b]=e.coedges;
+            graph.coedges[a.0 as usize].face==graph.coedges[b.0 as usize].face
+        }).map(|e|e.id.0).collect::<Vec<_>>();
+        let closed_edges=graph.edges.iter().filter(|e|e.start==e.end)
+            .map(|e|e.id.0).collect::<Vec<_>>();
+        let coedges=graph.coedges.iter().map(|c| json!({
+            "id":c.id.0,"edge":c.edge.0,"face":c.face.0,
+            "loop":c.loop_id.0,"next_in_loop":c.next.0,
+            "next_of_edge":c.twin.0,"reversed":c.reversed,
+        })).collect::<Vec<_>>();
+        let report=json!({
+            "representation":match graph.origin {
+                BrepOrigin::Polyhedral=>"polyhedral",
+                BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
+            },
+            "topology":{
+                "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
+                "loops":stats.loops,"faces":stats.faces,"shells":stats.shells,
+                "euler_characteristic":stats.euler_characteristic,"genus":stats.genus,
+            },
+            "geometry":{
+                "face_surfaces":surfaces,"edge_curves":curves,
+                "coedge_trims":trims,"cylindrical_faces":stats.cylindrical_faces,
+                "circular_edges":stats.circular_edges,
+                "closed_edges":closed_edges,"seam_edges":seams,
+            },
+            "coedges":coedges,"mesh_is_display_only":true,
+        });
+        Ok(SolidResponse {
+            vertices:mesh.vertices.iter().map(|v|v.array()).collect(),
+            faces:mesh.triangles,
+            triangle_face_ids:mesh.triangle_faces.iter().map(|f|f.0).collect(),
+            topology:Topology{vertices:stats.vertices,edges:stats.edges,
+                coedges:stats.coedges,loops:stats.loops,
+                shells:stats.shells,faces:stats.faces,
+                euler_characteristic:stats.euler_characteristic},
+            mass:Mass{volume:graph.mass.volume,surface_area:graph.mass.surface_area,
+                centroid:graph.mass.centroid.array()},
+            bbox:[graph.bbox.min.array(),graph.bbox.max.array()],
+            edit_report:None,history:None,analytic_brep:None,brep:Some(report),
+        })
+    });
+    match result {
+        Ok(solid)=>Response{schema_version:"geometry.v1",ok:true,solid:Some(solid),error:None},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,error:Some(error.to_string())},
     }
 }
 
@@ -194,6 +300,7 @@ fn process(input: &str) -> Response {
         Ok(GeometryRequest::Block { origin, width, height, depth, tolerance }) => {
             SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None,None))
         }
+        Ok(GeometryRequest::InspectBrep {source}) => return inspect_brep(source),
         Ok(GeometryRequest::AnalyticCylinder {origin,radius,height,segments,tolerance}) => {
             return process_analytic_cylinder(origin,radius,height,
                 segments.unwrap_or(64),tolerance.unwrap_or_default());
@@ -274,6 +381,7 @@ fn process(input: &str) -> Response {
                 edit_report: report.map(report_json),
                 history: history_state,
                 analytic_brep: None,
+                brep: None,
             }),
             error: None,
         },
@@ -446,6 +554,43 @@ mod tests {
             assert!(!response.ok,"{request}");
             assert!(response.solid.is_none());
         }
+    }
+
+    #[test]
+    fn unified_brep_query_keeps_analytic_curves_and_shared_seam() {
+        let response=process(r#"{"operation":"inspect_brep",
+            "source":{"kind":"analytic_cylinder",
+            "origin":[0,0,0],"radius":2,"height":5,"segments":16}}"#);
+        assert!(response.ok,"{:?}",response.error);
+        let solid=response.solid.unwrap();
+        assert_eq!(solid.topology.faces,3);
+        assert_eq!(solid.faces.len(),64);
+        let brep=solid.brep.unwrap();
+        assert_eq!(brep["representation"],"analytic_cylinder");
+        assert_eq!(brep["geometry"]["face_surfaces"],json!(["plane","plane","cylinder"]));
+        assert_eq!(brep["geometry"]["edge_curves"],json!(["circle","circle","line"]));
+        assert_eq!(brep["geometry"]["seam_edges"],json!([2]));
+        assert_eq!(brep["geometry"]["closed_edges"],json!([0,1]));
+        assert_eq!(brep["topology"]["euler_characteristic"],2);
+        assert_eq!(brep["coedges"].as_array().unwrap().len(),6);
+    }
+
+    #[test]
+    fn unified_brep_query_accepts_polyhedra_and_rejects_bad_shape() {
+        let query=r#"{"operation":"inspect_brep",
+            "source":{"kind":"block","origin":[1,2,3],
+            "width":2,"height":3,"depth":4}}"#;
+        let response=process(query);
+        assert!(response.ok,"{:?}",response.error);
+        let solid=response.solid.unwrap();
+        assert_eq!((solid.topology.vertices,solid.topology.faces),(8,6));
+        let brep=solid.brep.unwrap();
+        assert_eq!(brep["representation"],"polyhedral");
+        assert_eq!(brep["geometry"]["cylindrical_faces"],0);
+        assert_eq!(brep["geometry"]["seam_edges"],json!([]));
+        assert!(!process(r#"{"operation":"inspect_brep",
+            "source":{"kind":"analytic_cylinder","origin":[0,0,0],
+            "radius":0,"height":5}}"#).ok);
     }
 
 }
