@@ -368,7 +368,19 @@ impl GeometryStore {
                 if length(diff)>solid.tolerance.absolute_length { axis=Some(diff); break; }
             }
             let x = axis.ok_or_else(|| invalid("face has no independent axis"))?;
-            let frame = Frame3::from_axes(anchor, x, sum.cross(x), solid.tolerance)?;
+            // Use normalized directions before constructing the second axis.
+            // Previously sum.cross(x) multiplied a tiny face-area vector by
+            // a tiny first edge, underflowing the angular frame tolerance
+            // even though the B-rep face itself was geometrically valid.
+            let x_length=length(x);
+            let normal_length=length(sum);
+            if !x_length.is_finite() || !normal_length.is_finite()
+                || x_length<=solid.tolerance.absolute_length || normal_length<=0.0 {
+                return Err(invalid("face frame cannot be resolved"));
+            }
+            let unit_x=x.scale(1.0/x_length);
+            let unit_normal=sum.scale(1.0/normal_length);
+            let frame=Frame3::from_axes(anchor,unit_x,unit_normal.cross(unit_x),solid.tolerance)?;
             let surface=SurfaceId(u32::try_from(store.surfaces.len())
                 .map_err(|_| invalid("too many face surfaces"))?);
             store.surfaces.push(Surface3::Plane(PlaneSurface { frame }));
