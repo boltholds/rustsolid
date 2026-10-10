@@ -12,11 +12,13 @@ mod tolerance;
 mod edit;
 mod identity;
 mod journal;
+mod history;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
 pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, TopologyIdentity};
 pub use journal::JournalStats;
+pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, HistoryTransition};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {

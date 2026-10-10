@@ -149,3 +149,41 @@ have a compatible license and documented provenance.
 - `TopologyHandle`: entity ID, body token and unique process-local generation; prevents a handle from an aborted preview matching a new entity allocated at the same numeric slot. These handles cannot be persisted across sessions.
 - `EditTransaction`: works on an exclusive borrow of Solid. Each operation records the pre-change local edge/coedge/face/loop/shell state and affected triangle slots; appended vectors are reverted by truncation. Drop, closure error or failed validation restores frames in reverse order without cloning the entire body. Structural validation still traverses the complete model per edit.
 - Naming across arbitrary parametric regeneration, face merging/splitting matching, deletion of committed IDs, distributed edit conflicts and robust Boolean operators remain future capabilities. `TopologyName` alone does not prove geometric identity after topology changes.
+
+
+## v0.5: Command + Memento geometry history
+
+`CommandHistory` holds a validated `Solid`, a full applied `CommandBatch` log,
+a bounded stack of inverse `EditMemento` values, and a redo stack of commands.
+Commands are immutable and ordered; their selections reference `TopologyName`
+rather than volatile numeric slots or process-local generational handles.
+
+- `EulerCommand::SplitEdge` adds one vertex and one edge (`ΔV = ΔE = +1`).
+- `EulerCommand::SplitFace` adds one edge and one face (`ΔE = ΔF = +1`).
+- Undo performs the strictly scoped inverse deletion by replaying the **local
+  inverse journal frames** in reverse. Each batch is an atomic checkpoint.
+- Redo re-executes the saved commands and gives recreated entities *fresh
+  handle generations*. Stale handles must not silently resurrect.
+- Undo and Redo both increase the runtime revision monotonically. Semantic
+  topological names remain deterministic if feature key, construction and
+  command sequence remain identical.
+- A new command after Undo invalidates the redo branch **only if successful**.
+- `undo_limit` bounds in-memory Mementos; pruned entries remain in the command
+  log as non-undoable history. `command_log()` excludes undone commands and
+  can be serialized through serde and replayed against an equivalent primitive.
+
+The `geometry.v1` stdio API includes an optional `command_history` request with
+`source`, optional `feature_key`, `batches`, and optional `undo`/`redo` counts.
+Its `solid.history` response includes `revision`, `undo_depth`, `redo_depth`,
+and `applied_batches`. Older `block`, `extrude_profile` and `edit_solid` request
+and response shapes remain backward compatible.
+
+**Limits:** The two operations are Euler-characteristic-preserving splits, not
+an arbitrary solid-building or independent deletion algebra. Their inverse
+removals are currently valid only for the generated elements in an undoable
+LIFO command history. Multi-shell/holes, robust general KEV/KEF, Boolean and
+surface intersection remain unimplemented. Mementos and runtime handles are
+process-local; durable state requires a regenerated source + serialized command
+log (with future schema migration support). Full-model validation still runs
+per operation; inverse journals are incremental in stored *data*, not yet in
+validation complexity.

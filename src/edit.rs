@@ -52,6 +52,35 @@ pub struct EditTransaction<'a> {
     committed: bool,
 }
 
+#[derive(Debug)]
+pub(crate) struct EditMemento {
+    frames: Vec<UndoFrame>,
+    body_token: u64,
+}
+
+impl EditMemento {
+    pub(crate) fn check_target(&self, solid: &Solid) -> Result<(), GeometryError> {
+        let body = solid.topology_handle(TopologyEntity::Body)
+            .ok_or_else(|| edit_error("missing body identity for Memento"))?;
+        if self.body_token != body.body_token {
+            return Err(edit_error("Memento belongs to another body incarnation"));
+        }
+        Ok(())
+    }
+
+    /// Inverse Euler operations from the local journal. Runtime revision stays monotonic.
+    pub(crate) fn restore(self, solid: &mut Solid) -> Result<(), GeometryError> {
+        self.check_target(solid)?;
+        solid.validate()?;
+        let revision = solid.revision.checked_add(1)
+            .ok_or_else(|| edit_error("revision overflow"))?;
+        for frame in self.frames.into_iter().rev() { frame.restore(solid); }
+        solid.validate()?;
+        solid.revision = revision;
+        Ok(())
+    }
+}
+
 impl Solid {
     pub fn begin_edit(&mut self) -> Result<EditTransaction<'_>, GeometryError> {
         self.validate()?;
@@ -156,19 +185,39 @@ impl EditTransaction<'_> {
         }
     }
 
-    pub fn commit(mut self) -> Result<EditReport, GeometryError> {
+    pub fn commit(self) -> Result<EditReport, GeometryError> {
+        self.commit_inner(false).map(|(report, _)| report)
+    }
+
+    pub(crate) fn commit_recorded(self) -> Result<(EditReport, EditMemento), GeometryError> {
+        let (report, memento) = self.commit_inner(true)?;
+        let memento = memento.ok_or_else(|| edit_error("Memento recording failed"))?;
+        Ok((report, memento))
+    }
+
+    fn commit_inner(mut self, record_inverse: bool)
+        -> Result<(EditReport, Option<EditMemento>), GeometryError>
+    {
         if self.failed { return Err(edit_error("cannot commit an aborted transaction")); }
         self.target.validate()?;
         let before = self.target.revision;
         let after = if self.changes.is_empty() { before }
             else { before.checked_add(1).ok_or_else(|| edit_error("revision overflow"))? };
-        self.target.revision = after;
         let journal = self.journal_stats();
+        let token = if record_inverse {
+            Some(self.target.topology_handle(TopologyEntity::Body)
+                .ok_or_else(|| edit_error("body has no identity"))?.body_token)
+        } else { None };
+        self.target.revision = after;
+        let memento = token.map(|body_token| EditMemento {
+            frames: std::mem::take(&mut self.frames), body_token,
+        });
         self.committed = true;
-        Ok(EditReport { revision_before: before, revision_after: after,
+        Ok((EditReport { revision_before: before, revision_after: after,
             changes: std::mem::take(&mut self.changes),
-            named_changes: std::mem::take(&mut self.named_changes), journal })
+            named_changes: std::mem::take(&mut self.named_changes), journal }, memento))
     }
+
 }
 impl Drop for EditTransaction<'_> {
     fn drop(&mut self) {

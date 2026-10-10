@@ -112,3 +112,40 @@ Mozilla Public License 2.0 (`MPL-2.0`). See [LICENSE](LICENSE).
 ## v0.4: topology identity and inverse journals
 
 For deterministic topology names call `solid.with_feature_key("part/feature")` before editing. `topology_name`, `resolve_topology_name`, `topology_handle` and `resolve_topology_handle` separate history-relative names from process-local generational handles. Edited descendants have parent provenance and are included in `EditReport.named_changes`. Transactions now mutate through an exclusive borrow with operation-local inverse snapshots and rollback on any failure. `EditReport.journal` exposes snapshot counts. General geometric face matching on arbitrary regeneration and persistent serialized handles remain out of scope.
+
+
+## Command + Memento history (v0.5)
+
+The typed `EulerCommand` records ordered, replayable CAD operations using
+feature-relative `TopologyName` selectors. `CommandHistory` executes a batch
+atomically and retains an opaque, bounded inverse-journal Memento for Undo.
+Redo replays the command and regenerates fresh handles, preserving the ABA
+protection established in v0.4. Undo/Redo revisions increase monotonically.
+
+```rust
+use rustsolid::{
+    CommandBatch, CommandHistory, EdgeId, EulerCommand, Point3, Solid,
+    TopologyEntity,
+};
+let body = Solid::block(Point3 { x: 0., y: 0., z: 0. }, 2., 3., 4.)?
+    .with_feature_key("part-1/extrude-1")?;
+let mut history = CommandHistory::new(body)?;
+let edge = history.solid().topology_name(TopologyEntity::Edge(EdgeId(0)))
+    .unwrap().clone();
+history.execute(CommandBatch::single(EulerCommand::SplitEdge {
+    edge, fraction: 0.5,
+}))?;
+history.undo()?;
+history.redo()?;
+# Ok::<(), rustsolid::GeometryError>(())
+```
+
+For a one-request replay/Undo/Redo demonstration, send a JSON
+`{"operation":"command_history", "source":{"kind":"block", ...},
+ "feature_key":"part-1/extrude-1", "batches":[{"commands":[...]}],
+ "undo":1, "redo":1}` request to `gefest-geometry`.
+
+The present split-edge / split-face operators preserve Euler characteristic;
+undo removes *their own* generated topology using incremental inverse frames.
+Independent make/kill Euler operations and arbitrary topology reconciliation
+are future work.

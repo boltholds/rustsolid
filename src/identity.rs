@@ -6,6 +6,7 @@
 //! transaction is dropped and a numeric topology slot is allocated again.
 use crate::{EditDelta, FaceRole, GeometryError, Solid, TopologyEntity};
 use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -19,7 +20,8 @@ fn fresh_incarnation() -> u64 {
     id
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct TopologyName(pub String);
 
 impl TopologyName {

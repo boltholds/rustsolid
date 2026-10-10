@@ -1,6 +1,6 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, VertexId};
+use rustsolid::{CommandBatch, CommandHistory, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -11,6 +11,8 @@ enum GeometryRequest {
     ExtrudeProfile { profile: Vec<[f64; 2]>, height: f64, #[serde(default)] tolerance: Option<GeometryTolerance> },
     Block { origin: [f64; 3], width: f64, height: f64, depth: f64, #[serde(default)] tolerance: Option<GeometryTolerance> },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
+    CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
+        batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +73,8 @@ struct SolidResponse {
     /// for legacy block and extrusion remain unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     edit_report: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -106,12 +110,12 @@ fn report_json(report: EditReport) -> Value {
 
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
-    let result: Result<(Solid, Option<EditReport>), GeometryError> = match parsed {
+    let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
         Ok(GeometryRequest::ExtrudeProfile { profile, height, tolerance }) => {
-            SolidSource::ExtrudeProfile { profile, height, tolerance }.build().map(|body|(body,None))
+            SolidSource::ExtrudeProfile { profile, height, tolerance }.build().map(|body|(body,None,None))
         }
         Ok(GeometryRequest::Block { origin, width, height, depth, tolerance }) => {
-            SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None))
+            SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None,None))
         }
         Ok(GeometryRequest::EditSolid { source, edits }) => {
             if edits.len() > 256 {
@@ -131,7 +135,38 @@ fn process(input: &str) -> Response {
                         }
                         Ok(())
                     })?;
-                    Ok((body,Some(report)))
+                    Ok((body,Some(report),None))
+                })
+            }
+        }
+        Ok(GeometryRequest::CommandHistory { source, feature_key, batches, undo, redo }) => {
+            if batches.len() > 256 || undo > 256 || redo > 256 {
+                Err(GeometryError::InvalidEdit("history request exceeds 256-item limit".into()))
+            } else {
+                source.build().and_then(|solid| {
+                    let solid = match feature_key {
+                        Some(key) => solid.with_feature_key(&key)?,
+                        None => solid,
+                    };
+                    let mut session = CommandHistory::new(solid)?;
+                    for batch in batches { session.execute(batch)?; }
+                    for _ in 0..undo {
+                        if session.undo()?.is_none() {
+                            return Err(GeometryError::InvalidEdit("undo depth exceeds history".into()));
+                        }
+                    }
+                    for _ in 0..redo {
+                        if session.redo()?.is_none() {
+                            return Err(GeometryError::InvalidEdit("redo depth exceeds history".into()));
+                        }
+                    }
+                    let state = json!({
+                        "revision": session.solid().revision,
+                        "undo_depth": session.undo_depth(), "redo_depth": session.redo_depth(),
+                        "archived_batches": session.archived_depth(),
+                        "applied_batches": session.command_log(),
+                    });
+                    Ok((session.into_solid(), None, Some(state)))
                 })
             }
         }
@@ -141,7 +176,7 @@ fn process(input: &str) -> Response {
         },
     };
     match result {
-        Ok((body,report)) => Response {
+        Ok((body,report,history_state)) => Response {
             schema_version: "geometry.v1", ok: true,
             solid: Some(SolidResponse {
                 vertices: body.mesh.vertices.iter().map(|v| v.array()).collect(),
@@ -156,6 +191,7 @@ fn process(input: &str) -> Response {
                     centroid: body.mass.centroid.array() },
                 bbox: [body.bbox.min.array(), body.bbox.max.array()],
                 edit_report: report.map(report_json),
+                history: history_state,
             }),
             error: None,
         },
@@ -241,4 +277,39 @@ mod tests {
         assert!(!response.ok);
         assert!(response.solid.is_none());
     }
+    #[test]
+    fn json_command_history_undo_redo() {
+        let response = process(r#"{
+            "operation":"command_history",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "feature_key":"part/sample",
+            "batches":[
+              {"commands":[{"kind":"split_edge","edge":"part/sample/edge/0","fraction":0.5}]},
+              {"commands":[{"kind":"split_face","face":"part/sample/face/bottom",
+                "start":"part/sample/vertex/0","end":"part/sample/vertex/2"}]}
+            ],
+            "undo":2,"redo":1
+        }"#);
+        assert!(response.ok, "{:?}",response.error);
+        let solid=response.solid.unwrap();
+        assert_eq!((solid.topology.vertices,solid.topology.faces),(9,6));
+        let history=solid.history.unwrap();
+        assert_eq!(history["revision"],5);
+        assert_eq!(history["undo_depth"],1);
+        assert_eq!(history["redo_depth"],1);
+        assert_eq!(history["applied_batches"].as_array().unwrap().len(),1);
+    }
+
+    #[test]
+    fn json_command_history_rejects_excess_undo() {
+        let response = process(r#"{
+            "operation":"command_history",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[{"commands":[{"kind":"split_edge","edge":"primitive/edge/0","fraction":0.5}]}],
+            "undo":2
+        }"#);
+        assert!(!response.ok);
+        assert!(response.solid.is_none());
+    }
+
 }
