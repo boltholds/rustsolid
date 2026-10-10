@@ -8,14 +8,14 @@
 //! analytic volume and compared to the correct inscribed-polygon prediction.
 use crate::{BrepBody, BrepModel, CylindricalBrep, EdgeId, FaceId,
     GeometryError, GeometryTolerance, Mesh, ParameterRange, Point2, Point3, Solid};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::f64::consts::{PI, TAU};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProbeExpectation { Accept, Reject }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag="kind", rename_all="snake_case")]
 pub enum ProbeModel {
     Block { origin:[f64;3], width:f64, height:f64, depth:f64 },
@@ -216,7 +216,7 @@ fn oracle(model:&ProbeModel)->Option<GeometryOracle>{
         _=>None,
     }
 }
-fn build(model:&ProbeModel)->Result<(BrepBody,usize),GeometryError>{
+pub(crate) fn build(model:&ProbeModel)->Result<(BrepBody,usize),GeometryError>{
     match model {
         ProbeModel::Block{origin,width,height,depth}=>
             Solid::block(to3(*origin),*width,*height,*depth).map(|s|(BrepBody::from(s),32)),
@@ -251,7 +251,7 @@ fn max_bbox_difference(a:&BrepModel,b:&GeometryOracle)->f64 {
     d1.max(d2)
 }
 fn relative(a:f64,b:f64)->f64 {(a-b).abs()/b.abs().max(1.0e-30)}
-fn mesh_signed_volume(mesh:&Mesh)->Result<f64,GeometryError> {
+pub(crate) fn mesh_signed_volume(mesh:&Mesh)->Result<f64,GeometryError> {
     if mesh.vertices.is_empty() {
         return Err(GeometryError::InvalidTopology("probe mesh has no vertices".into()));
     }
@@ -316,7 +316,7 @@ fn measure(body:&BrepBody,facets:usize,expected:GeometryOracle)
         max_trim_to_carrier_residual:trimmed_carrier_residual(&graph)?,
     })
 }
-fn test_case(case:ProbeCase)->ProbeOutcome {
+pub fn evaluate_probe_case(case:ProbeCase)->ProbeOutcome {
     let built=build(&case.input);
     match (case.expectation,built) {
         (ProbeExpectation::Reject,Err(error))=>ProbeOutcome{
@@ -359,7 +359,7 @@ fn test_case(case:ProbeCase)->ProbeOutcome {
 /// Execute the bounded boundary corpus with explicit reproducibility via seed.
 /// This is intentionally not an exhaustive CAD kernel verification.
 pub fn run_boundary_probes(seed:u64) -> ProbeReport {
-    let outcomes=generate_boundary_cases(seed).into_iter().map(test_case).collect::<Vec<_>>();
+    let outcomes=generate_boundary_cases(seed).into_iter().map(evaluate_probe_case).collect::<Vec<_>>();
     let passed=outcomes.iter().filter(|o|o.passed).count();
     let mut max_volume_relative_error: f64=0.0;
     let mut max_area_relative_error: f64=0.0;

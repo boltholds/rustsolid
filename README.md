@@ -230,3 +230,7 @@ See [docs/unified-brep-parasolid-comparison.md](docs/unified-brep-parasolid-comp
 RustSolid now exposes a small, typed, read-only [GraphQL-inspired B-rep query language](docs/geometry-query-and-probes.md) and a seeded [boundary-focused model generator](docs/geometry-query-and-probes.md) for analytic and metamorphic precision checks. Queries project nested fields and filter geometric carriers with strict depth/field/output budgets. The probe suite reports independent analytic errors separately from expected tessellation losses.
 
 CLI operations: `geometry_query` (requires `source` and a selection `query`) and `probe_kernel` (optional `seed`). Both return a machine-readable `data` object under `geometry.v1`. These are the first testing and inspection tools, not a general GraphQL implementation or a proof of industrial CAD robustness.
+
+## v0.11: first-party regression corpus
+
+No external CAD engine is treated as a correctness oracle. See [self-contained regression fixtures](docs/regression-corpus.md): pinned independent analytical golden data, metamorphic relations, and reproducible counterexample shrinking, plus a bounded seed-based discovery suite. CI checks the permanent 20-fixture corpus. The `regression_corpus` JSON request produces an outcome report without importing OpenCascade or Parasolid.

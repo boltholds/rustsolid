@@ -20,6 +20,7 @@ mod curved_brep;
 mod unified_brep;
 mod query;
 mod accuracy;
+mod regression;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -31,8 +32,12 @@ pub use predicates::{Orientation, PredicateClassification, PredicateKernel, orie
 pub use curved_brep::{CylindricalBrep, CurvedFace, CurvedFaceKind};
 pub use unified_brep::{BrepBody, BrepSource, BrepModel, BrepGeometry, BrepFace, BrepOrigin, BrepSummary};
 pub use query::{geometry_query, QueryLimits, QueryError};
-pub use accuracy::{generate_boundary_cases, run_boundary_probes,
+pub use accuracy::{generate_boundary_cases, run_boundary_probes, evaluate_probe_case,
     ProbeExpectation, ProbeModel, ProbeCase, ProbeMetrics, ProbeOutcome, ProbeReport};
+pub use regression::{run_regression_corpus, run_builtin_regressions, minimize_failing_probe,
+    AnalyticGolden, MetamorphicRelation, RegressionCheck, RegressionCorpus,
+    RegressionFixture, RegressionOutcome, RegressionReport, REGRESSION_SCHEMA,
+    BUILTIN_REGRESSIONS};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,

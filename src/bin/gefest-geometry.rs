@@ -1,6 +1,6 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{geometry_query, run_boundary_probes, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -19,6 +19,7 @@ enum GeometryRequest {
     InspectBrep { source: BrepInput },
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
+    RegressionCorpus,
     CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
         batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
 }
@@ -326,6 +327,27 @@ fn evaluate_boundary_probes(seed:u64) -> Response {
     }
 }
 
+
+/// Source-controlled, mathematically specified regression fixtures.
+/// Unlike exploratory seed probes, these are permanently pinned in Git.
+fn evaluate_regression_corpus() -> Response {
+    match run_builtin_regressions() {
+        Err(error)=>Response {schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(error.to_string()),data:None},
+        Ok(report)=>{
+            let success=report.all_passed();
+            match serde_json::to_value(&report) {
+                Ok(data)=>Response{schema_version:"geometry.v1",ok:success,solid:None,
+                    error:if success {None}
+                        else {Some(format!("{} of {} pinned regressions failed",report.failed,report.total))},
+                    data:Some(data)},
+                Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,
+                    error:Some(format!("cannot serialize regression report: {error}")),data:None},
+            }
+        }
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -340,6 +362,7 @@ fn process(input: &str) -> Response {
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
             return evaluate_boundary_probes(seed.unwrap_or(13)),
+        Ok(GeometryRequest::RegressionCorpus) => return evaluate_regression_corpus(),
         Ok(GeometryRequest::AnalyticCylinder {origin,radius,height,segments,tolerance}) => {
             return process_analytic_cylinder(origin,radius,height,
                 segments.unwrap_or(64),tolerance.unwrap_or_default());
@@ -676,6 +699,20 @@ mod tests {
         assert!(outcomes.len()>=24);
         assert_eq!(outcomes[0]["case"]["input"]["kind"],"block");
         assert!(outcomes.iter().any(|v|v["case"]["id"]=="cylinder/eight_facets"));
+    }
+
+    #[test]
+    fn pinned_first_party_regressions_are_queryable_without_external_kernels() {
+        let result=process(r#"{"operation":"regression_corpus"}"#);
+        assert!(result.ok,"{:?}",result.error);
+        assert!(result.solid.is_none());
+        let report=result.data.expect("embedded regression corpus should be returned");
+        assert_eq!(report["schema"],"rustsolid.regressions.v1");
+        assert_eq!(report["total"],20);
+        assert_eq!(report["failed"],0);
+        assert_eq!(report["outcomes"].as_array().unwrap().len(),20);
+        assert!(report["outcomes"].as_array().unwrap().iter()
+            .any(|outcome|outcome["fixture"]["id"]=="regression/thin_face_frame_2026_10_10"));
     }
 
 }

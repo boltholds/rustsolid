@@ -110,8 +110,9 @@ uncontrolled random mesh soup or an exhaustive combinatorial search.
 
 **Limitations:** this corpus is a starter fitness measure, not proof of
 Parasolid-level robustness. Mass formula agreement is not evidence of correct
-surface/surface intersections or Booleans. The next step is a separate
-comparison runner against license-compatible OCCT outputs, with tolerances,
-golden STEP fixtures, operation sequences and shrinking of failing examples.
+surface/surface intersections or Booleans. The next step is the independent source-controlled fixture corpus and
+metamorphic regression runner described in [regression-corpus.md](regression-corpus.md).
+External CAD engines are never considered truth; any comparison with them
+may be diagnostic only, not an acceptance criterion.
 The query layer remains read-only and operates on a validated snapshot, not a
 persistent shared geometry database.

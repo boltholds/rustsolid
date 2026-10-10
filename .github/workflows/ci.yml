@@ -15,6 +15,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test library, integration tests and CLI
         run: cargo test --all-targets
+      - name: Independent source-controlled regression cases
+        run: cargo test --test regression_corpus
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test
@@ -24,3 +26,10 @@ jobs:
           printf '%s' '{"operation":"block","origin":[0,0,0],"width":2,"height":3,"depth":4}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["solid"]["mass"]["volume"] == 24.0, r'
+      - name: Regression report CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"regression_corpus"}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["total"] == 20 and r["data"]["failed"] == 0, r'
