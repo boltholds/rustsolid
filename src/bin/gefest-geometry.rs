@@ -1,6 +1,6 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{CommandBatch, CommandHistory, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, VertexId};
+use rustsolid::{CommandBatch, CommandHistory, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -10,6 +10,11 @@ use std::io::{self, Read};
 enum GeometryRequest {
     ExtrudeProfile { profile: Vec<[f64; 2]>, height: f64, #[serde(default)] tolerance: Option<GeometryTolerance> },
     Block { origin: [f64; 3], width: f64, height: f64, depth: f64, #[serde(default)] tolerance: Option<GeometryTolerance> },
+    AnalyticCylinder {
+        origin: [f64;3], radius: f64, height: f64,
+        #[serde(default)] segments: Option<usize>,
+        #[serde(default)] tolerance: Option<GeometryTolerance>,
+    },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
     CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
         batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
@@ -75,6 +80,8 @@ struct SolidResponse {
     edit_report: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analytic_brep: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -114,6 +121,70 @@ fn report_json(report: EditReport) -> Value {
             "triangle_snapshots":report.journal.triangle_snapshots}})
 }
 
+/// Native periodic-cylinder B-rep returned alongside a display-only mesh.
+/// The caller can distinguish true curved geometry through the optional
+/// solid.analytic_brep metadata.
+fn process_analytic_cylinder(
+    origin: [f64; 3], radius: f64, height: f64,
+    segments: usize, tolerance: GeometryTolerance,
+) -> Response {
+    let center = Point3 {x:origin[0],y:origin[1],z:origin[2]};
+    let computed = CylindricalBrep::upright(center,radius,height,tolerance)
+        .and_then(|body| body.tessellate(segments).map(|mesh|(body,mesh)));
+    match computed {
+        Err(error) => Response {schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(error.to_string())},
+        Ok((body,mesh)) => {
+            let topo = Topology {
+                vertices:body.vertices.len(),edges:body.edges.len(),
+                coedges:body.coedges.len(),loops:body.loops.len(),
+                shells:body.shells.len(),faces:body.faces.len(),
+                euler_characteristic:body.euler_characteristic(),
+            };
+            let seam = body.seam_edge().0;
+            let coedges=body.coedges.iter().map(|c| json!({
+                "id":c.id.0,"edge_id":c.edge.0,"face_id":c.face.0,
+                "loop_id":c.loop_id.0,"twin_id":c.twin.0,
+                "next_id":c.next.0,"prev_id":c.prev.0,
+                "reversed":c.reversed,"pcurve_id":body.coedge_geometry[c.id.0 as usize].pcurve.0,
+            })).collect::<Vec<_>>();
+            let analytic=json!({
+                "kind":"right_circular_cylinder",
+                "surface_carriers":["plane","plane","cylinder"],
+                "curve_carriers":["circle","circle","line"],
+                "face_surface_ids":[0,1,2],
+                "edge_curve_ids":[0,1,2],
+                "side_face_id":2,
+                "cap_face_ids":[0,1],
+                "circular_edge_ids":[0,1],
+                "seam_edge_id":seam,
+                "seam_coedge_ids":[4,5],
+                "u_periodic":true,
+                "u_range":[0.0,std::f64::consts::TAU],
+                "v_range":[0.0,height],
+                "coedges":coedges,
+                "facet_segments":segments,
+                "mass_is_analytic":true,
+            });
+            Response {
+                schema_version:"geometry.v1",ok:true,
+                solid:Some(SolidResponse {
+                    vertices:mesh.vertices.iter().map(|v|v.array()).collect(),
+                    faces:mesh.triangles,
+                    triangle_face_ids:mesh.triangle_faces.iter().map(|f|f.0).collect(),
+                    topology:topo,
+                    mass:Mass {volume:body.mass.volume,
+                        surface_area:body.mass.surface_area,
+                        centroid:body.mass.centroid.array()},
+                    bbox:[body.bbox.min.array(),body.bbox.max.array()],
+                    edit_report:None,history:None,analytic_brep:Some(analytic),
+                }),
+                error:None,
+            }
+        }
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -122,6 +193,10 @@ fn process(input: &str) -> Response {
         }
         Ok(GeometryRequest::Block { origin, width, height, depth, tolerance }) => {
             SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None,None))
+        }
+        Ok(GeometryRequest::AnalyticCylinder {origin,radius,height,segments,tolerance}) => {
+            return process_analytic_cylinder(origin,radius,height,
+                segments.unwrap_or(64),tolerance.unwrap_or_default());
         }
         Ok(GeometryRequest::EditSolid { source, edits }) => {
             if edits.len() > 256 {
@@ -198,6 +273,7 @@ fn process(input: &str) -> Response {
                 bbox: [body.bbox.min.array(), body.bbox.max.array()],
                 edit_report: report.map(report_json),
                 history: history_state,
+                analytic_brep: None,
             }),
             error: None,
         },
@@ -338,6 +414,38 @@ mod tests {
         let history=solid.history.unwrap();
         assert_eq!(history["revision"],4);
         assert_eq!(history["applied_batches"].as_array().unwrap().len(),2);
+    }
+
+    #[test]
+    fn json_analytic_cylinder_exposes_exact_brep_and_display_mesh() {
+        let result=process(r#"{"operation":"analytic_cylinder",
+            "origin":[0,0,0],"radius":2,"height":5,"segments":32}"#);
+        assert!(result.ok,"{:?}",result.error);
+        let solid=result.solid.unwrap();
+        assert_eq!((solid.topology.vertices,solid.topology.edges,solid.topology.coedges,
+            solid.topology.loops,solid.topology.faces,solid.topology.shells),(2,3,6,3,3,1));
+        assert_eq!(solid.topology.euler_characteristic,2);
+        assert_eq!(solid.faces.len(),128);
+        assert_eq!(solid.triangle_face_ids.len(),solid.faces.len());
+        assert!((solid.mass.volume-std::f64::consts::PI*20.0).abs()<1e-10);
+        let analytic=solid.analytic_brep.unwrap();
+        assert_eq!(analytic["seam_edge_id"],2);
+        assert_eq!(analytic["seam_coedge_ids"],json!([4,5]));
+        assert_eq!(analytic["u_periodic"],true);
+        assert_eq!(analytic["coedges"].as_array().unwrap().len(),6);
+    }
+
+    #[test]
+    fn json_analytic_cylinder_rejects_invalid_parameters() {
+        for request in [
+            r#"{"operation":"analytic_cylinder","origin":[0,0,0],"radius":0,"height":1}"#,
+            r#"{"operation":"analytic_cylinder","origin":[0,0,0],"radius":1,"height":2,"segments":3}"#,
+            r#"{"operation":"analytic_cylinder","origin":[0,0,0],"radius":1,"height":2,"tolerance":{"absolute_length":-1}}"#,
+        ] {
+            let response=process(request);
+            assert!(!response.ok,"{request}");
+            assert!(response.solid.is_none());
+        }
     }
 
 }

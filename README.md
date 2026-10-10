@@ -181,3 +181,24 @@ engineering-scale "within tolerance" classification, and shared robust 2D
 predicates now back the core polygon operations. This remains an independent
 polyhedral modeling prototype: surfaces are evaluable mathematically, but
 curved surfaces are not yet bound as native curved topology or exportable STEP.
+
+
+## Native analytic B-rep cylinder (preview)
+
+```rust
+use rustsolid::{CylindricalBrep, GeometryTolerance, Point3, FaceId, Surface3};
+let cylinder = CylindricalBrep::upright(
+    Point3 { x:0.0, y:0.0, z:0.0 }, 5.0, 20.0, GeometryTolerance::default())?;
+assert!(matches!(cylinder.face_surface(FaceId(2)), Some(Surface3::Cylinder(_))));
+assert_eq!(cylinder.coedges[4].face, cylinder.coedges[5].face); // UV seam
+let render_mesh = cylinder.tessellate(96)?;
+assert_eq!(render_mesh.triangle_faces.len(), render_mesh.triangles.len());
+# Ok::<(), rustsolid::GeometryError>(())
+```
+
+The topology contains exact circular edges and an analytic cylindrical side
+with distinct periodic UV seam trims. The displayed triangles are a
+resolution-dependent approximation; the underlying curves, surfaces and
+analytic mass do not depend on facet count. Supports the new `analytic_cylinder`
+JSON CLI request (default 64 facets). Native curved Boolean and Euler operations
+are not yet supported.

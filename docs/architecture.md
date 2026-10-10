@@ -270,3 +270,55 @@ Remaining work: permanent geometry ownership in sparse arenas, native curved
 B-rep trims, arc/conic and rational B-spline support, bounded-surface
 intersections, tolerance propagation through edits, stable geometry naming,
 per-surface meshing, and face classification for Boolean modeling.
+
+## v0.8 preview: first native curved B-rep (right circular cylinder)
+
+The **separate** `CylindricalBrep` geometry type models an exact analytic right
+circular cylinder, independently of tessellation. This first implementation
+intentionally does **not** pretend to be a subtype of the older polygonal
+`Solid`, whose face model requires >=3 distinct boundary vertices and exactly
+two incident coedges on **different** faces. Those invariants would incorrectly
+reject circles and periodic seam edges. Both types reuse the same typed vertex,
+edge, coedge, loop and shell data structures, as well as `Curve3`, `Curve2`,
+`Surface3` and their geometry bindings.
+
+A complete capped cylinder has 2 vertices, 3 edges, 6 coedges, 3 loops,
+3 faces and 1 closed shell (`V−E+F=2`). The two circular edges are closed and
+have a single vertex each. The seam edge joins the two vertices and is used
+twice by the same lateral face. The lateral UV trim is the rectangle
+`[0, 2π] × [0, height]`: its two vertical sides map to one 3D seam edge via
+**different** coedge pcurves at `u=0` and `u=2π`. Each cap has a single
+closed circle coedge. The bottom cap frame is reversed, keeping all three
+outward surface orientations consistent.
+
+`CylindricalBrep::validate()` traverses directed coedge loops, checks twins,
+incidence, UV/3D mapping at endpoints and interior samples, analytic normals,
+periodicity, mass and axis-aligned bounds. The scoped validator is not a
+mathematical proof against every possible geometric defect.
+
+`CylindricalBrep::tessellate(segments)` produces a separate watertight indexed
+mesh with `triangle_faces` preserving exact face ownership. It includes no
+physical seam duplication, so vertices are welded at the UV seam in 3D. The
+analytic cylinder radius, curvature and volume remain unchanged by facet
+resolution. Facet volume is smaller than analytic volume; never use mesh
+volume as the solid's authoritative volume.
+
+The opt-in `geometry.v1` CLI operation `analytic_cylinder` returns the same
+existing `solid` mesh fields, plus `solid.analytic_brep` describing the analytic
+carrier relationships and periodic seam. All legacy requests remain unchanged.
+This new curved model is not yet the canonical `GeometryStore` for other
+solids and has no native Boolean, fillet, hole, serialization, history or
+Euler edit operations.
+
+### Mathematical definition
+
+With a right-handed frame `(O, X, Y, N=X×Y)` and `r>0`, `h>0`:
+
+- `S(u,v) = O + r (X cos u + Y sin u) + v N`
+- `∂S/∂u = r (-X sin u + Y cos u)`; `∂S/∂v = N`
+- Normal `normalize(∂S/∂u × ∂S/∂v) = X cos u + Y sin u`
+- `u∈[0,2π]` periodic; `v∈[0,h]`
+- `V=πr²h`; `A=2πr²+2πrh`
+
+This is an independent implementation of public differential geometry, not
+code or proprietary numerical internals copied from Parasolid.

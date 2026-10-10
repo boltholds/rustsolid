@@ -16,6 +16,7 @@ mod history;
 mod euler;
 mod predicates;
 mod geometry;
+mod curved_brep;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -24,6 +25,7 @@ pub use journal::JournalStats;
 pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, HistoryTransition};
 pub use euler::{KillEdgeVertex, KillEdgeFace};
 pub use predicates::{Orientation, PredicateClassification, PredicateKernel, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
+pub use curved_brep::{CylindricalBrep, CurvedFace, CurvedFaceKind};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
