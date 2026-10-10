@@ -133,7 +133,7 @@ pub(crate) fn from_faces(faces: &mut [Face]) -> Result<(Vec<Edge>, Vec<Coedge>, 
 }
 
 fn orient2(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
-    (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+    crate::predicates::determinant2d([a.0,a.1],[b.0,b.1],[c.0,c.1])
 }
 
 fn on_segment2(a: (f64, f64), p: (f64, f64), b: (f64, f64), length: f64, area: f64) -> bool {

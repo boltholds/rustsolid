@@ -21,7 +21,60 @@ pub fn orient2d(a: [f64;2], b: [f64;2], c: [f64;2]) -> Result<Orientation, Geome
     if ![a,b,c].iter().flatten().all(|v| v.is_finite()) {
         return Err(GeometryError::InvalidDimension("orientation coordinates must be finite"));
     }
-    sign(robust::orient2d(Coord{x:a[0],y:a[1]}, Coord{x:b[0],y:b[1]}, Coord{x:c[0],y:c[1]}))
+    sign(determinant2d(a,b,c))
+}
+
+
+/// A single adaptive two-dimensional determinant shared by the polygon
+/// builder, B-rep loop validator, triangulator and sketch face editor.
+/// Preconditions for internal callers: all coordinates are finite.
+pub(crate) fn determinant2d(a:[f64;2], b:[f64;2], c:[f64;2]) -> f64 {
+    robust::orient2d(Coord{x:a[0],y:a[1]}, Coord{x:b[0],y:b[1]}, Coord{x:c[0],y:c[1]})
+}
+
+/// Engineering-tolerance classification is explicitly separate from the exact
+/// orientation sign of representable IEEE-754 input coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PredicateClassification { Positive, Negative, WithinTolerance }
+
+#[derive(Debug, Clone, Copy)]
+pub struct PredicateKernel {
+    pub tolerance: GeometryTolerance,
+}
+
+impl PredicateKernel {
+    pub fn new(tolerance: GeometryTolerance) -> Result<Self, GeometryError> {
+        tolerance.validate()?;
+        Ok(Self {tolerance})
+    }
+
+    pub fn orient2d(self, a:[f64;2], b:[f64;2], c:[f64;2])
+        -> Result<PredicateClassification, GeometryError>
+    {
+        if ![a,b,c].iter().flatten().all(|v|v.is_finite()) {
+            return Err(GeometryError::InvalidDimension("orientation coordinates must be finite"));
+        }
+        let determinant=determinant2d(a,b,c);
+        if !determinant.is_finite() {
+            return Err(GeometryError::InvalidDimension("orientation calculation overflowed"));
+        }
+        // Derive a LOCAL geometric extent to avoid dependence on a part's
+        // distance from global origin; determinant sign is adaptive-exact,
+        // but "near-zero" remains a user-controlled engineering decision.
+        let extent = (b[0]-a[0]).hypot(b[1]-a[1])
+            .max((c[0]-a[0]).hypot(c[1]-a[1]))
+            .max((c[0]-b[0]).hypot(c[1]-b[1]));
+        if !extent.is_finite() {
+            return Err(GeometryError::InvalidDimension("orientation extent overflowed"));
+        }
+        if determinant.abs() <= self.tolerance.area_at(extent) {
+            Ok(PredicateClassification::WithinTolerance)
+        } else if determinant > 0.0 {
+            Ok(PredicateClassification::Positive)
+        } else {
+            Ok(PredicateClassification::Negative)
+        }
+    }
 }
 
 pub fn orient3d(a: Point3, b: Point3, c: Point3, d: Point3) -> Result<Orientation, GeometryError> {

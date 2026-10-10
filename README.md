@@ -155,3 +155,29 @@ are future work.
 `Solid::kill_edge_vertex(vertex)` collapses a straight degree-two vertex, and `Solid::kill_edge_face(edge, removed_face)` merges adjacent coplanar faces. These inverse Euler edits can target compatible earlier splits even after unrelated modeling edits. The kill path currently rebuilds and compacts the closed polygonal B-rep; named surviving entities are rebound, and any changed numeric ID invalidates its former runtime generational handle. This path has a full-body copy and is deliberately separate from the incremental make-only transaction path. These are scoped inverse operators, not unrestricted solid topology algebra.
 
 `predicates` provides adaptive exact-sign `orient2d`/`orient3d` (using the MIT/Apache-licensed `robust` crate), and tolerance-aware plane/plane and segment/plane classifications. Geometric intersection coordinates are approximate floating point; trimmed surface intersection, NURBS, and solid Boolean are not implemented.
+
+### Geometry Foundation v0.7
+
+The new `geometry` module separates analytic carriers from B-rep topology:
+`Curve2` (2D p-curves), `Curve3` (lines, circles), `Surface3` (planes, cylinders,
+spheres), explicit parameter domains, UV frames and evaluated derivatives.
+`GeometryStore::from_solid` connects the existing polyhedral B-rep to planar
+support surfaces, line edge carriers and oriented UV trim lines. Each view is
+bound to one body incarnation and revision and must be rebuilt after an edit.
+
+```rust
+use rustsolid::{GeometryStore, ModelUnits, Point3, Solid, FaceId, Surface3};
+
+let body = Solid::block(Point3 { x:0.0, y:0.0, z:0.0 },2.0,3.0,4.0)?;
+let geometry = GeometryStore::from_solid(&body, ModelUnits::default())?;
+geometry.validate_bindings(&body)?;
+assert!(matches!(geometry.face_surface(FaceId(0)), Some(Surface3::Plane(_))));
+# Ok::<(), rustsolid::GeometryError>(())
+```
+
+Per-edge and per-vertex geometry-view tolerance overrides are supported.
+`PredicateKernel` distinguishes adaptive exact-sign orientation from
+engineering-scale "within tolerance" classification, and shared robust 2D
+predicates now back the core polygon operations. This remains an independent
+polyhedral modeling prototype: surfaces are evaluable mathematically, but
+curved surfaces are not yet bound as native curved topology or exportable STEP.

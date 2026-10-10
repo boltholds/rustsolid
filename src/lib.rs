@@ -15,6 +15,7 @@ mod journal;
 mod history;
 mod euler;
 mod predicates;
+mod geometry;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -22,7 +23,11 @@ pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, Topolo
 pub use journal::JournalStats;
 pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, HistoryTransition};
 pub use euler::{KillEdgeVertex, KillEdgeFace};
-pub use predicates::{Orientation, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
+pub use predicates::{Orientation, PredicateClassification, PredicateKernel, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
+pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
+    Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
+    PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
+    Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {
@@ -167,7 +172,7 @@ pub struct Solid {
 }
 
 fn cross2(a: Point2, b: Point2, c: Point2) -> f64 {
-    (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x)
+    predicates::determinant2d([a.x,a.z],[b.x,b.z],[c.x,c.z])
 }
 fn dist2(a: Point2, b: Point2) -> f64 {
     (a.x - b.x).powi(2) + (a.z - b.z).powi(2)

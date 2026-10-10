@@ -221,3 +221,52 @@ intersection points are approximate f64; a line between infinite supporting
 planes is **not** a trimmed face intersection. Surface-surface intersection
 curves, NURBS, exact intersection constructions and arbitrary Boolean solid
 splitting remain future work.
+
+## v0.7: Geometry Foundation (first vertical slice)
+
+The independent `geometry` module introduces explicit `Curve2`, `Curve3`,
+`Surface3`, `Frame3`, `ParameterRange`, `ParameterDomain2`, typed carrier IDs,
+UV face domains, and 2D trimming curves. Evaluated 3D curves include lines and
+circles; evaluated analytic surfaces include planes, cylinders, and spheres.
+Surface evaluation returns position and partial derivatives. Domains declare
+periodicity (cylinder/sphere `u` is periodic), while 2D coedge trims have their
+own bounded parameter interval.
+
+**B-rep integration:** `GeometryStore::from_solid(solid, units)` (or
+`solid.geometry_store(units)`) maps every *existing polygonal* B-rep edge to an
+analytic line, every planar face to a planar supporting surface with projected
+UV bounds, and each directed coedge to an oriented 2D trimming line on its
+owning face's surface. It verifies edge endpoints and coedge UV-to-3D
+reconstruction against scoped tolerances. Carrier IDs and bindings belong to a
+revision- and body-token-bound **derived view**, not yet an owned, persistent
+`GeometryStore` in `Solid`. After editing, rebuild the view; `check_current`
+rejects stale revisions or bodies. Curved Surface3 evaluation is available,
+but cylinder/sphere surfaces are **not yet bindable as curved B-rep faces** and
+there is no true curve/surface intersection or Boolean.
+
+`GeometryStore` supports per-edge and per-vertex tolerance overrides, validated
+against each bound edge length. Underlying B-rep edit validation still uses
+its model-wide `GeometryTolerance` until the full tolerance propagation layer
+is implemented. Length units are explicit metadata (`Millimeter`, `Meter`,
+`Inch`); analytic curve/surface parameters use radians and kernel model units.
+No implicit rescaling is performed when selecting a unit; convert values
+explicitly before constructing a body.
+
+The `PredicateKernel` centralizes `robust` adaptive exact-sign 2D orientation
+predicates and a separate model-tolerance classification. The legacy profile
+builder, B-rep planar loop validator, and face editing now use the same robust
+2D determinant function instead of separate naive cross products. Area
+thresholds are still tolerance-based and there are remaining non-predicate
+geometric operations to harden. Exact orientation signs do not imply exact
+intersection coordinates, stable floating-point construction, or full 3D
+intersection certificates.
+
+Acceptance tests cover planar edge/face/trim associations, UV reconstruction,
+analytic surface derivatives, scoped tolerances, stale revision detection,
+large-coordinate translations and numerically challenging orientations.
+The pre-existing `geometry.v1` JSON API remains unchanged.
+
+Remaining work: permanent geometry ownership in sparse arenas, native curved
+B-rep trims, arc/conic and rational B-spline support, bounded-surface
+intersections, tolerance propagation through edits, stable geometry naming,
+per-surface meshing, and face classification for Boolean modeling.

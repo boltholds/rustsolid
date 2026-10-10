@@ -348,7 +348,7 @@ fn split_edge_local(body: &mut Solid, id: EdgeId, fraction: f64) -> Result<EdgeS
 #[derive(Clone, Copy)]
 struct P2 { u: f64, v: f64 }
 fn cross(a: P2, b: P2, c: P2) -> f64 {
-    (b.u-a.u)*(c.v-a.v) - (b.v-a.v)*(c.u-a.u)
+    crate::predicates::determinant2d([a.u,a.v],[b.u,b.v],[c.u,c.v])
 }
 fn on_segment(a: P2, b: P2, p: P2, length_eps: f64, area_eps: f64) -> bool {
     cross(a,b,p).abs() <= area_eps && p.u >= a.u.min(b.u)-length_eps
