@@ -665,7 +665,9 @@ mod tests {
     #[test]
     fn probe_operation_reports_reproducible_boundary_accuracy() {
         let response=process(r#"{"operation":"probe_kernel","seed":13}"#);
-        assert!(response.ok,"{:?}",response.error);
+        assert!(response.ok,"error={:?}; failing cases={:#?}", response.error,
+            response.data.as_ref().and_then(|d|d["outcomes"].as_array())
+                .map(|cases|cases.iter().filter(|c|c["passed"]==false).collect::<Vec<_>>()));
         assert!(response.solid.is_none());
         let data=response.data.unwrap();
         assert_eq!(data["seed"],13);
