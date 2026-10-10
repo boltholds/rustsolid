@@ -149,3 +149,9 @@ The present split-edge / split-face operators preserve Euler characteristic;
 undo removes *their own* generated topology using incremental inverse frames.
 Independent make/kill Euler operations and arbitrary topology reconciliation
 are future work.
+
+## v0.6 scoped independent inverse Euler operators
+
+`Solid::kill_edge_vertex(vertex)` collapses a straight degree-two vertex, and `Solid::kill_edge_face(edge, removed_face)` merges adjacent coplanar faces. These inverse Euler edits can target compatible earlier splits even after unrelated modeling edits. The kill path currently rebuilds and compacts the closed polygonal B-rep; named surviving entities are rebound, and any changed numeric ID invalidates its former runtime generational handle. This path has a full-body copy and is deliberately separate from the incremental make-only transaction path. These are scoped inverse operators, not unrestricted solid topology algebra.
+
+`predicates` provides adaptive exact-sign `orient2d`/`orient3d` (using the MIT/Apache-licensed `robust` crate), and tolerance-aware plane/plane and segment/plane classifications. Geometric intersection coordinates are approximate floating point; trimmed surface intersection, NURBS, and solid Boolean are not implemented.

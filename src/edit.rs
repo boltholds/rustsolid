@@ -400,7 +400,7 @@ fn diagonal_is_inside(body:&Solid,points:&[P2],i:usize,j:usize)->bool{
     }
     true
 }
-fn triangulate_ring(body:&Solid,ring:&[VertexId])->Result<Vec<[u32;3]>,GeometryError>{
+pub(crate) fn triangulate_ring(body:&Solid,ring:&[VertexId])->Result<Vec<[u32;3]>,GeometryError>{
     let pts=project_ring(body,ring)?;
     let area=signed_area(&pts);
     let eps=body.tolerance.area_at(polygon_extent(&pts));

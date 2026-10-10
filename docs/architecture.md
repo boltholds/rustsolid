@@ -187,3 +187,37 @@ process-local; durable state requires a regenerated source + serialized command
 log (with future schema migration support). Full-model validation still runs
 per operation; inverse journals are incremental in stored *data*, not yet in
 validation complexity.
+
+## v0.6: independent inverse Euler edits and analytic plane predicates
+
+The first independent inverse operations are `Solid::kill_edge_vertex(vertex_id)`
+(valence-two collinear vertex collapse) and `Solid::kill_edge_face(edge_id,
+removed_face)` (merge two coplanar adjacent faces). They can remove a supported
+split without reversing subsequent **unrelated** history commands. Live Euler
+operators still work only for one closed genus-zero polyhedral shell; this is
+not yet a general MEV/KEV/MEF/KEF calculus for holes and arbitrary shells.
+
+Unlike the append-only `split_*` path, a kill operation currently rebuilds the
+contiguous vertex/face topology and triangulation on a candidate body, validates
+it, rebinds names with original provenance, and swaps it in on success. This is
+an intentionally slower, whole-body transactional fallback until reusable
+sparse slot arenas and local Euler edit proofs are implemented. Moving an ID
+invalidates its old `TopologyHandle`; resolve its `TopologyName` to get a new
+runtime handle. Untouched elements at unchanged IDs retain their handle. Killed
+IDs are no longer addressable by name. No mesh or B-rep will be partially
+mutated on a failed kill.
+
+`EulerCommand` accepts make (split) and kill variants. If a batch contains a
+kill operator, `CommandHistory` uses a guarded full-Solid Memento and executes
+all commands on a working copy. Incremental inverse frames remain the default
+for make-only batches. Undo of a kill restores the former geometry; redo
+replays the named command. The command log remains the source of truth for
+rebuilding after serialization. This path is intentionally not low-memory.
+
+`predicates.rs` uses `robust` 1.2 (MIT OR Apache-2.0) for adaptive exact-sign
+orientation tests with finite IEEE-754 coordinates, and provides independently
+unit-tested plane/plane and segment/plane classifications. Constructed
+intersection points are approximate f64; a line between infinite supporting
+planes is **not** a trimmed face intersection. Surface-surface intersection
+curves, NURBS, exact intersection constructions and arbitrary Boolean solid
+splitting remain future work.

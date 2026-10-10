@@ -268,3 +268,124 @@ impl Solid {
         self.identities.resolve(handle)
     }
 }
+
+impl TopologyIdentity {
+    /// Rebind surviving semantic names after compaction. For an entity whose
+    /// numeric slot changed, mint a fresh generation so stale handles cannot
+    /// resolve to a different object occupying its old slot.
+    pub(crate) fn rebind_after_kill(
+        &self,old:&Solid,new:&Solid,map:&crate::euler::RebuildMappings,
+    ) -> Result<Self,GeometryError> {
+        use crate::{CoedgeId,EdgeId,FaceId,LoopId,VertexId};
+        let mut new_to_old:BTreeMap<TopologyEntity,TopologyEntity>=BTreeMap::new();
+        let mut put=|src:TopologyEntity,dst:TopologyEntity|->Result<(),GeometryError>{
+            if let Some(previous)=new_to_old.insert(dst,src) {
+                return Err(GeometryError::InvalidTopology(format!(
+                    "Euler identity collision: {src:?} and {previous:?} map to {dst:?}")));
+            }
+            Ok(())
+        };
+        put(TopologyEntity::Body,TopologyEntity::Body)?;
+        for (i,maybe) in map.vertices.iter().enumerate() {
+            if let Some(id)=maybe {put(TopologyEntity::Vertex(VertexId(i as u32)),TopologyEntity::Vertex(*id))?;}
+        }
+        for (i,maybe) in map.faces.iter().enumerate() {
+            if let Some(id)=maybe {put(TopologyEntity::Face(FaceId(i as u32)),TopologyEntity::Face(*id))?;}
+        }
+        for s in &old.shells {
+            put(TopologyEntity::Shell(s.id),TopologyEntity::Shell(s.id))?;
+        }
+        // The rebuilt `from_faces` assigns one loop for each face in face order.
+        for (i,maybe) in map.faces.iter().enumerate() {
+            if let Some(id)=maybe {
+                let old_loop=old.faces[i].loops[0];
+                let new_loop=new.faces[id.0 as usize].loops[0];
+                put(TopologyEntity::Loop(old_loop),TopologyEntity::Loop(new_loop))?;
+            }
+        }
+        let edge_lookup:BTreeMap<(VertexId,VertexId),EdgeId>=new.edges.iter()
+            .map(|e|((e.start,e.end),e.id)).collect();
+        let map_edge=|e:&crate::Edge|->Option<EdgeId>{
+            if e.id==map.retired_edge { return None; }
+            let pair=(if let Some((merged,ends))=map.merged_edge {
+                if merged==e.id {
+                    Some((ends[0].min(ends[1]),ends[0].max(ends[1])))
+                } else {None}
+            } else {None}).or_else(||{
+                let a=map.vertices.get(e.start.0 as usize)?.as_ref()?;
+                let b=map.vertices.get(e.end.0 as usize)?.as_ref()?;
+                Some(((*a).min(*b),(*a).max(*b)))
+            })?;
+            edge_lookup.get(&pair).copied()
+        };
+        for e in &old.edges {
+            if e.id==map.retired_edge {continue;}
+            let new_edge=map_edge(e).ok_or_else(||GeometryError::InvalidTopology(format!("cannot rebind {e:?}")))?;
+            put(TopologyEntity::Edge(e.id),TopologyEntity::Edge(new_edge))?;
+        }
+        let directed:BTreeMap<(FaceId,VertexId,VertexId),CoedgeId>=new.coedges.iter().map(|c|{
+            let e=&new.edges[c.edge.0 as usize];
+            ((c.face,c.start_vertex(e),c.end_vertex(e)),c.id)
+        }).collect();
+        for c in &old.coedges {
+            if c.edge==map.retired_edge {continue;}
+            let new_face=match map.coedge_face.get(c.face.0 as usize).copied().flatten(){
+                Some(value)=>value,None=>continue,
+            };
+            let edge=&old.edges[c.edge.0 as usize];
+            let start=c.start_vertex(edge);let end=c.end_vertex(edge);
+            let (a,b)=if let Some((retained,ends))=map.merged_edge {
+                if retained==c.edge {
+                    let mapped=map.vertices.get(start.0 as usize).copied().flatten()
+                        .or_else(||map.vertices.get(end.0 as usize).copied().flatten())
+                        .ok_or_else(||GeometryError::InvalidTopology("cannot rebind merged coedge".into()))?;
+                    let other=if mapped==ends[0]{ends[1]}else if mapped==ends[1]{ends[0]}
+                        else{return Err(GeometryError::InvalidTopology("invalid merged coedge endpoints".into()));};
+                    if map.vertices[start.0 as usize].is_some(){(mapped,other)}else{(other,mapped)}
+                } else {
+                    let a=map.vertices[start.0 as usize];let b=map.vertices[end.0 as usize];
+                    match (a,b) { (Some(a),Some(b))=>(a,b),_=>continue }
+                }
+            } else {
+                let a=map.vertices[start.0 as usize];let b=map.vertices[end.0 as usize];
+                match (a,b) { (Some(a),Some(b))=>(a,b),_=>continue }
+            };
+            let new_id=directed.get(&(new_face,a,b)).copied().ok_or_else(||
+                GeometryError::InvalidTopology(format!("cannot rebind old coedge {:?} on {:?}: {:?}->{:?}",c.id,new_face,a,b)))?;
+            put(TopologyEntity::Coedge(c.id),TopologyEntity::Coedge(new_id))?;
+        }
+        let operation=self.next_operation.checked_add(1)
+            .ok_or_else(||GeometryError::InvalidEdit("Euler identity ordinal overflow".into()))?;
+        let mut next=Self{body_token:self.body_token,feature_key:self.feature_key.clone(),
+            entries:BTreeMap::new(),names:BTreeMap::new(),allocations:Vec::new(),next_operation:operation};
+        let mut new_entities=Vec::new();
+        new_entities.push(TopologyEntity::Body);
+        new_entities.extend(new.vertices.iter().map(|e|TopologyEntity::Vertex(e.id)));
+        new_entities.extend(new.faces.iter().map(|e|TopologyEntity::Face(e.id)));
+        new_entities.extend(new.edges.iter().map(|e|TopologyEntity::Edge(e.id)));
+        new_entities.extend(new.coedges.iter().map(|e|TopologyEntity::Coedge(e.id)));
+        new_entities.extend(new.loops.iter().map(|e|TopologyEntity::Loop(e.id)));
+        new_entities.extend(new.shells.iter().map(|e|TopologyEntity::Shell(e.id)));
+        for new_entity in new_entities {
+            let old_entity=new_to_old.get(&new_entity).ok_or_else(||GeometryError::InvalidTopology(
+                format!("new entity without surviving identity: {new_entity:?}")))?;
+            let old_slot=self.entries.get(old_entity).ok_or_else(||GeometryError::InvalidTopology(
+                format!("missing old identity: {old_entity:?}")))?;
+            let invalidate=map.merged_edge.is_some_and(|(id,_)|{
+                *old_entity==TopologyEntity::Edge(id) || match old_entity {
+                    TopologyEntity::Coedge(coedge_id)=>old.coedges[coedge_id.0 as usize].edge==id,
+                    _=>false,
+                }
+            });
+            let generation=if *old_entity==new_entity && !invalidate {old_slot.generation}
+                else {fresh_incarnation()};
+            let name=old_slot.name.clone();
+            if next.names.insert(name.clone(),new_entity).is_some(){
+                return Err(GeometryError::InvalidTopology("Euler rebind duplicated a name".into()));
+            }
+            next.entries.insert(new_entity,NamedSlot{name,generation,parent:old_slot.parent.clone()});
+            next.allocations.push(new_entity);
+        }
+        Ok(next)
+    }
+}

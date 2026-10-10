@@ -13,12 +13,16 @@ mod edit;
 mod identity;
 mod journal;
 mod history;
+mod euler;
+mod predicates;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
 pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, TopologyIdentity};
 pub use journal::JournalStats;
 pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, HistoryTransition};
+pub use euler::{KillEdgeVertex, KillEdgeFace};
+pub use predicates::{Orientation, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {
