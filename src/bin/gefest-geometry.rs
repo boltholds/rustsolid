@@ -1,6 +1,6 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+use rustsolid::{geometry_query, run_boundary_probes, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -17,6 +17,8 @@ enum GeometryRequest {
     },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
     InspectBrep { source: BrepInput },
+    GeometryQuery { source: BrepInput, query: String },
+    ProbeKernel { #[serde(default)] seed: Option<u64> },
     CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
         batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
 }
@@ -95,6 +97,8 @@ struct Response {
     solid: Option<SolidResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<Value>,
 }
 
 fn report_json(report: EditReport) -> Value {
@@ -136,7 +140,7 @@ fn process_analytic_cylinder(
         .and_then(|body| body.tessellate(segments).map(|mesh|(body,mesh)));
     match computed {
         Err(error) => Response {schema_version:"geometry.v1",ok:false,solid:None,
-            error:Some(error.to_string())},
+            error:Some(error.to_string()),data:None},
         Ok((body,mesh)) => {
             let topo = Topology {
                 vertices:body.vertices.len(),edges:body.edges.len(),
@@ -182,7 +186,7 @@ fn process_analytic_cylinder(
                     bbox:[body.bbox.min.array(),body.bbox.max.array()],
                     edit_report:None,history:None,analytic_brep:Some(analytic),brep:None,
                 }),
-                error:None,
+                error:None,data:None,
             }
         }
     }
@@ -286,8 +290,39 @@ fn inspect_brep(input:BrepInput) -> Response {
         })
     });
     match result {
-        Ok(solid)=>Response{schema_version:"geometry.v1",ok:true,solid:Some(solid),error:None},
-        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,error:Some(error.to_string())},
+        Ok(solid)=>Response{schema_version:"geometry.v1",ok:true,solid:Some(solid),error:None,data:None},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
+
+/// Typed, read-only B-rep projection. The AST is validated before resolving
+/// any fields and execution is protected by parser and output budgets.
+fn evaluate_geometry_query(input: BrepInput, query: &str) -> Response {
+    let data = input.prepare().map_err(|e|e.to_string()).and_then(|(body,_)| {
+        let graph=body.shared().map_err(|e|e.to_string())?;
+        geometry_query(&graph,query,QueryLimits::default()).map_err(|e|e.to_string())
+    });
+    match data {
+        Ok(data)=>Response {schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response {schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error),data:None},
+    }
+}
+
+/// Analytic, metamorphic and near-degenerate fixtures. A failure preserves
+/// the full set of reproducible case inputs in response.data.
+fn evaluate_boundary_probes(seed:u64) -> Response {
+    let report=run_boundary_probes(seed);
+    let success=report.all_passed();
+    match serde_json::to_value(&report) {
+        Ok(data)=>Response {schema_version:"geometry.v1",ok:success,
+            solid:None,error:if success {None}
+                else {Some(format!("{} of {} boundary probes failed",report.failed,report.total))},
+            data:Some(data)},
+        Err(e)=>Response {schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(format!("could not serialize probe report: {e}")),data:None},
     }
 }
 
@@ -301,6 +336,10 @@ fn process(input: &str) -> Response {
             SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None,None))
         }
         Ok(GeometryRequest::InspectBrep {source}) => return inspect_brep(source),
+        Ok(GeometryRequest::GeometryQuery {source,query}) =>
+            return evaluate_geometry_query(source,&query),
+        Ok(GeometryRequest::ProbeKernel {seed}) =>
+            return evaluate_boundary_probes(seed.unwrap_or(13)),
         Ok(GeometryRequest::AnalyticCylinder {origin,radius,height,segments,tolerance}) => {
             return process_analytic_cylinder(origin,radius,height,
                 segments.unwrap_or(64),tolerance.unwrap_or_default());
@@ -360,7 +399,7 @@ fn process(input: &str) -> Response {
         }
         Err(error) => return Response {
             schema_version: "geometry.v1", ok: false, solid: None,
-            error: Some(format!("invalid JSON request: {error}")),
+            error: Some(format!("invalid JSON request: {error}")),data:None,
         },
     };
     match result {
@@ -383,10 +422,10 @@ fn process(input: &str) -> Response {
                 analytic_brep: None,
                 brep: None,
             }),
-            error: None,
+            error: None,data:None,
         },
         Err(error) => Response { schema_version: "geometry.v1", ok: false,
-            solid: None, error: Some(error.to_string()) },
+            solid: None, error: Some(error.to_string()), data:None },
     }
 }
 
@@ -591,6 +630,50 @@ mod tests {
         assert!(!process(r#"{"operation":"inspect_brep",
             "source":{"kind":"analytic_cylinder","origin":[0,0,0],
             "radius":0,"height":5}}"#).ok);
+    }
+
+    #[test]
+    fn query_operation_projects_cylinder_without_display_mesh() {
+        let response=process(r#"{
+            "operation":"geometry_query",
+            "source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},
+            "query":"{ body { topology { faceCount seamEdges } faces(kind:\"cylinder\") {id surface {kind radius}} } }"
+        }"#);
+        assert!(response.ok,"{:?}",response.error);
+        assert!(response.solid.is_none());
+        let value=response.data.unwrap();
+        assert_eq!(value["body"]["topology"]["seamEdges"],1);
+        assert_eq!(value["body"]["faces"][0]["surface"]["kind"],"cylinder");
+        assert_eq!(value["body"]["faces"][0]["surface"]["radius"],2.0);
+    }
+
+    #[test]
+    fn query_rejects_unknown_field_and_keeps_legacy_outputs() {
+        let request=r#"{"operation":"geometry_query",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "query":"{body {geometryMutate}}"}"#;
+        let response=process(request);
+        assert!(!response.ok);
+        assert!(response.error.unwrap().contains("query.unknown_field"));
+        let legacy=process(r#"{"operation":"block","origin":[0,0,0],
+            "width":2,"height":3,"depth":4}"#);
+        assert!(legacy.ok);
+        assert!(legacy.data.is_none());
+        assert!(legacy.solid.is_some());
+    }
+
+    #[test]
+    fn probe_operation_reports_reproducible_boundary_accuracy() {
+        let response=process(r#"{"operation":"probe_kernel","seed":13}"#);
+        assert!(response.ok,"{:?}",response.error);
+        assert!(response.solid.is_none());
+        let data=response.data.unwrap();
+        assert_eq!(data["seed"],13);
+        assert_eq!(data["failed"],0);
+        let outcomes=data["outcomes"].as_array().unwrap();
+        assert!(outcomes.len()>=24);
+        assert_eq!(outcomes[0]["case"]["input"]["kind"],"block");
+        assert!(outcomes.iter().any(|v|v["case"]["id"]=="cylinder/eight_facets"));
     }
 
 }
