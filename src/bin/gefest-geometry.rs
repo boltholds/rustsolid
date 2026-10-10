@@ -318,4 +318,26 @@ mod tests {
         assert!(response.solid.is_none());
     }
 
+    #[test]
+    fn json_command_history_independent_kill_and_redo() {
+        let result=process(r#"{
+            "operation":"command_history",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "feature_key":"part/feature",
+            "batches":[
+                {"commands":[{"kind":"make_edge_vertex","edge":"part/feature/edge/0","fraction":0.5}]},
+                {"commands":[{"kind":"kill_edge_vertex","vertex":"part/feature/edge/0/edit-1/vertex"}]}
+            ],
+            "undo":1, "redo":1
+        }"#);
+        assert!(result.ok,"{:?}",result.error);
+        let solid=result.solid.unwrap();
+        assert_eq!(solid.topology.vertices,8);
+        assert_eq!(solid.topology.edges,12);
+        assert_eq!(solid.mass.volume,24.0);
+        let history=solid.history.unwrap();
+        assert_eq!(history["revision"],4);
+        assert_eq!(history["applied_batches"].as_array().unwrap().len(),2);
+    }
+
 }
