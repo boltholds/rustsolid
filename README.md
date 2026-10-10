@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.3 experimental transactional topology slice — planar, genus-zero polyhedral solids only.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.4 experimental transactional topology slice — planar, genus-zero polyhedral solids only.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -99,7 +99,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The `v0.3` model supports only a **single planar boundary loop without holes**; its B-rep is polygonal, not an exact analytic solid. There is no Boolean engine, fillets, NURBS, analytic trim curves/surfaces, per-edge tolerances, shells with holes, persistent naming across model regeneration, STEP/X_T export, or production-grade robust predicates. Extrusion uses XZ/+Y coordinates. Not suitable for safety-critical or precision manufacturing use.
+The `v0.4` model supports only a **single planar boundary loop without holes**; its B-rep is polygonal, not an exact analytic solid. There is no Boolean engine, fillets, NURBS, analytic trim curves/surfaces, per-edge tolerances, shells with holes, persistent naming across model regeneration, STEP/X_T export, or production-grade robust predicates. Extrusion uses XZ/+Y coordinates. Not suitable for safety-critical or precision manufacturing use.
 
 Only geometry-preserving edge subdivision and internal planar face division are transactional today; deletion, vertex move, face extrusion, Boolean splitting and fillets are not implemented yet. Transactions currently clone the entire body (O(n) copy cost).
 
@@ -108,3 +108,7 @@ See [docs/architecture.md](docs/architecture.md) for invariant details, toleranc
 ## License
 
 Mozilla Public License 2.0 (`MPL-2.0`). See [LICENSE](LICENSE).
+
+## v0.4: topology identity and inverse journals
+
+For deterministic topology names call `solid.with_feature_key("part/feature")` before editing. `topology_name`, `resolve_topology_name`, `topology_handle` and `resolve_topology_handle` separate history-relative names from process-local generational handles. Edited descendants have parent provenance and are included in `EditReport.named_changes`. Transactions now mutate through an exclusive borrow with operation-local inverse snapshots and rollback on any failure. `EditReport.journal` exposes snapshot counts. General geometric face matching on arbitrary regeneration and persistent serialized handles remain out of scope.

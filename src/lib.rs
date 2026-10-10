@@ -10,9 +10,13 @@ use std::fmt;
 mod brep;
 mod tolerance;
 mod edit;
+mod identity;
+mod journal;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
+pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, TopologyIdentity};
+pub use journal::JournalStats;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeometryError {
@@ -147,6 +151,7 @@ pub struct Solid {
     pub loops: Vec<Loop>,
     pub faces: Vec<Face>,
     pub shells: Vec<Shell>,
+    pub(crate) identities: TopologyIdentity,
     pub tolerance: GeometryTolerance,
     /// Local edit revision (not a persistent feature identifier).
     pub revision: u64,
@@ -378,9 +383,12 @@ impl Solid {
                           y: height, z: points.iter().map(|p| p.z).fold(f64::NEG_INFINITY, f64::max) },
         };
         let mesh = Mesh { vertices: vertices.iter().map(|v| v.position).collect(), triangles, triangle_faces };
-        let solid = Solid { vertices, edges, coedges, loops, faces, shells, tolerance, revision: 0, mesh, bbox,
+        let mut solid = Solid { vertices, edges, coedges, loops, faces, shells, identities: TopologyIdentity::empty(), tolerance, revision: 0, mesh, bbox,
                             mass: MassProperties { volume: area * height,
                                 surface_area: 2.0 * area + perimeter * height, centroid } };
+        let mut identity = solid.identities.clone();
+        identity.initialize(&solid)?;
+        solid.identities = identity;
         solid.validate()?;
         Ok(solid)
     }
@@ -422,6 +430,7 @@ impl Solid {
     pub fn validate(&self) -> Result<(), GeometryError> {
         self.tolerance.validate()?;
         self.check_topology().map_err(|issue| GeometryError::InvalidTopology(issue.to_string()))?;
+        self.identities.validate(self)?;
         if self.mesh.vertices.len() != self.vertices.len()
             || self.mesh.triangles.len() != self.mesh.triangle_faces.len() {
             return Err(GeometryError::InvalidTopology("mesh indices or ownership invalid".into()));

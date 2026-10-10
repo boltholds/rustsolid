@@ -93,8 +93,15 @@ fn report_json(report: EditReport) -> Value {
             "diagonal_edge_id":s.diagonal_edge.0,
             "created_coedge_ids":[s.created_coedges[0].0,s.created_coedges[1].0]}),
     }).collect();
+    let names = report.named_changes.into_iter().map(|item| json!({
+        "entity": format!("{:?}",item.entity),"name":item.name.0,
+        "parent_name":item.parent.0
+    })).collect::<Vec<_>>();
     json!({"revision_before":report.revision_before,"revision_after":report.revision_after,
-        "changes":changes})
+        "changes":changes,"name_changes":names,
+        "journal":{"frames":report.journal.frames,
+            "topology_snapshots":report.journal.topology_snapshots,
+            "triangle_snapshots":report.journal.triangle_snapshots}})
 }
 
 fn process(input: &str) -> Response {

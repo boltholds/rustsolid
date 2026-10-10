@@ -142,3 +142,10 @@ No proprietary Siemens/Parasolid code, binaries, headers or decompiler outputs
 may be committed to RustSolid. Implementation is independent and based on
 standard computational geometry concepts; any future third-party code must
 have a compatible license and documented provenance.
+
+## v0.4: feature naming and incremental edit rollback
+
+- `TopologyName`: deterministic feature-key + construction/operation path for reproducible, identically indexed feature histories. `NameChange` records parent-to-child provenance and the original name stays with the retained portion.
+- `TopologyHandle`: entity ID, body token and unique process-local generation; prevents a handle from an aborted preview matching a new entity allocated at the same numeric slot. These handles cannot be persisted across sessions.
+- `EditTransaction`: works on an exclusive borrow of Solid. Each operation records the pre-change local edge/coedge/face/loop/shell state and affected triangle slots; appended vectors are reverted by truncation. Drop, closure error or failed validation restores frames in reverse order without cloning the entire body. Structural validation still traverses the complete model per edit.
+- Naming across arbitrary parametric regeneration, face merging/splitting matching, deletion of committed IDs, distributed edit conflicts and robust Boolean operators remain future capabilities. `TopologyName` alone does not prove geometric identity after topology changes.

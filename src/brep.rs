@@ -52,7 +52,7 @@ pub struct Shell {
     pub closed: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TopologyEntity {
     Body,
     Vertex(VertexId),

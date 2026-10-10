@@ -1,14 +1,13 @@
 //! Atomic edits of the oriented polyhedral B-rep.
 //!
-//! Edits are applied to a private working copy. Every operation and the final
-//! commit revalidate topology, tessellation and mass invariants; dropping an
-//! uncommitted transaction leaves the original body untouched. Existing IDs
-//! survive these *local* splits, but are not global persistent feature names.
+//! Edits apply to the borrowed body behind an exclusive transaction.
+//! Operation-local inverse records restore touched objects on drop or error;
+//! no full Solid clone is created. Original IDs survive local splits.
 use crate::{
     Coedge, CoedgeId, Edge, EdgeId, Face, FaceId, GeometryError, Loop, LoopId,
-    LoopRole, Point3, Solid, TopologyEntity, Vertex, VertexId,
+    LoopRole, Point3, Solid, TopologyEntity, Vertex, VertexId, NameChange, JournalStats,
 };
-use std::mem;
+use crate::journal::UndoFrame;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EdgeSplit {
@@ -39,25 +38,26 @@ pub struct EditReport {
     pub revision_after: u64,
     /// Append-only provenance for created objects and retained parents.
     pub changes: Vec<EditDelta>,
+    pub named_changes: Vec<NameChange>,
+    pub journal: JournalStats,
 }
 
-/// Single-writer, copy-on-write transaction. Never exposes mutable geometry.
-/// Every successful edit leaves a fully validated working model.
+/// Exclusive edit session backed by local inverse journal frames.
 pub struct EditTransaction<'a> {
     target: &'a mut Solid,
-    working: Solid,
+    frames: Vec<UndoFrame>,
     changes: Vec<EditDelta>,
+    named_changes: Vec<NameChange>,
     failed: bool,
+    committed: bool,
 }
 
 impl Solid {
     pub fn begin_edit(&mut self) -> Result<EditTransaction<'_>, GeometryError> {
         self.validate()?;
-        let working = self.clone();
-        Ok(EditTransaction { target: self, working, changes: Vec::new(), failed: false })
+        Ok(EditTransaction { target: self, frames: Vec::new(), changes: Vec::new(),
+            named_changes: Vec::new(), failed: false, committed: false })
     }
-
-    /// Run a group of edits atomically. Any error drops the working copy.
     pub fn edit_atomic(
         &mut self,
         f: impl FnOnce(&mut EditTransaction<'_>) -> Result<(), GeometryError>,
@@ -98,39 +98,83 @@ impl Solid {
 }
 
 impl EditTransaction<'_> {
-    pub fn preview(&self) -> &Solid { &self.working }
+    /// Returns the state behind the exclusive transaction borrow.
+    pub fn preview(&self) -> &Solid { &*self.target }
+
+    pub fn journal_stats(&self) -> JournalStats {
+        let mut stats = JournalStats::default();
+        for frame in &self.frames {
+            let item = frame.stats();
+            stats.frames += item.frames;
+            stats.topology_snapshots += item.topology_snapshots;
+            stats.triangle_snapshots += item.triangle_snapshots;
+        }
+        stats
+    }
 
     pub fn split_edge(&mut self, edge: EdgeId, fraction: f64) -> Result<EdgeSplit, GeometryError> {
         if self.failed { return Err(edit_error("transaction already aborted")); }
-        let result = split_edge_local(&mut self.working, edge, fraction)
-            .and_then(|change| { self.working.validate()?; Ok(change) });
+        let frame = match UndoFrame::for_edge(self.target, edge) {
+            Ok(frame) => frame,
+            Err(err) => { self.failed = true; return Err(err); }
+        };
+        self.frames.push(frame);
+        let result = split_edge_local(self.target, edge, fraction).and_then(|change| {
+            let names = self.target.identities.register_delta(EditDelta::SplitEdge(change))?;
+            self.target.validate()?;
+            Ok((change, names))
+        });
         match result {
-            Ok(change) => { self.changes.push(EditDelta::SplitEdge(change)); Ok(change) }
+            Ok((change,names)) => {
+                self.changes.push(EditDelta::SplitEdge(change));
+                self.named_changes.extend(names);
+                Ok(change)
+            }
             Err(err) => { self.failed = true; Err(err) }
         }
     }
 
-    pub fn split_face(
-        &mut self, face: FaceId, start: VertexId, end: VertexId,
-    ) -> Result<FaceSplit, GeometryError> {
+    pub fn split_face(&mut self, face: FaceId, start: VertexId, end: VertexId) -> Result<FaceSplit, GeometryError> {
         if self.failed { return Err(edit_error("transaction already aborted")); }
-        let result = split_face_local(&mut self.working, face, start, end)
-            .and_then(|change| { self.working.validate()?; Ok(change) });
+        let frame = match UndoFrame::for_face(self.target, face) {
+            Ok(frame) => frame,
+            Err(err) => { self.failed = true; return Err(err); }
+        };
+        self.frames.push(frame);
+        let result = split_face_local(self.target, face, start, end).and_then(|change| {
+            let names = self.target.identities.register_delta(EditDelta::SplitFace(change))?;
+            self.target.validate()?;
+            Ok((change, names))
+        });
         match result {
-            Ok(change) => { self.changes.push(EditDelta::SplitFace(change)); Ok(change) }
+            Ok((change,names)) => {
+                self.changes.push(EditDelta::SplitFace(change));
+                self.named_changes.extend(names);
+                Ok(change)
+            }
             Err(err) => { self.failed = true; Err(err) }
         }
     }
 
     pub fn commit(mut self) -> Result<EditReport, GeometryError> {
         if self.failed { return Err(edit_error("cannot commit an aborted transaction")); }
-        self.working.validate()?;
+        self.target.validate()?;
         let before = self.target.revision;
         let after = if self.changes.is_empty() { before }
             else { before.checked_add(1).ok_or_else(|| edit_error("revision overflow"))? };
-        self.working.revision = after;
-        *self.target = self.working;
-        Ok(EditReport { revision_before: before, revision_after: after, changes: self.changes })
+        self.target.revision = after;
+        let journal = self.journal_stats();
+        self.committed = true;
+        Ok(EditReport { revision_before: before, revision_after: after,
+            changes: std::mem::take(&mut self.changes),
+            named_changes: std::mem::take(&mut self.named_changes), journal })
+    }
+}
+impl Drop for EditTransaction<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            while let Some(frame) = self.frames.pop() { frame.restore(self.target); }
+        }
     }
 }
 
@@ -163,26 +207,23 @@ fn split_edge_local(body: &mut Solid, id: EdgeId, fraction: f64) -> Result<EdgeS
 
     // Find the two triangles adjacent to the original *topological* edge and
     // subdivide each without changing winding or face ownership.
-    let old_tris = mem::take(&mut body.mesh.triangles);
-    let old_owners = mem::take(&mut body.mesh.triangle_faces);
-    if old_tris.len() != old_owners.len() { return Err(edit_error("mesh ownership mismatch")); }
+    // Modify only incident triangles. Inverse journal snapshots their slots.
     let mut split_count = 0;
-    for (tri, face) in old_tris.into_iter().zip(old_owners) {
+    let original_count = body.mesh.triangles.len();
+    for index in 0..original_count {
+        let tri = body.mesh.triangles[index];
+        let face = body.mesh.triangle_faces[index];
         let mut directed = None;
-        for [u, v, w] in [[tri[0], tri[1], tri[2]], [tri[1], tri[2], tri[0]], [tri[2], tri[0], tri[1]]] {
+        for [u, v, w] in [[tri[0],tri[1],tri[2]], [tri[1],tri[2],tri[0]], [tri[2],tri[0],tri[1]]] {
             if (u == edge.start.0 && v == edge.end.0) || (u == edge.end.0 && v == edge.start.0) {
-                directed = Some([u, v, w]);
+                directed = Some([u,v,w]);
                 break;
             }
         }
-        if let Some([u, v, w]) = directed {
+        if let Some([u,v,w]) = directed {
             split_count += 1;
-            body.mesh.triangles.push([u, new_vertex.0, w]);
-            body.mesh.triangle_faces.push(face);
+            body.mesh.triangles[index] = [u, new_vertex.0, w];
             body.mesh.triangles.push([new_vertex.0, v, w]);
-            body.mesh.triangle_faces.push(face);
-        } else {
-            body.mesh.triangles.push(tri);
             body.mesh.triangle_faces.push(face);
         }
     }
@@ -410,13 +451,19 @@ fn split_face_local(body:&mut Solid,face:FaceId,start:VertexId,end:VertexId)->Re
     body.faces.push(Face{id:new_face,role:original.role,boundary:new_ring,loops:vec![new_loop]});
     body.shells[0].faces.push(new_face);
 
-    let original_triangles=mem::take(&mut body.mesh.triangles);
-    let original_owners=mem::take(&mut body.mesh.triangle_faces);
-    for (tri,owner) in original_triangles.into_iter().zip(original_owners) {
-        if owner!=face {body.mesh.triangles.push(tri);body.mesh.triangle_faces.push(owner);}
+    // The two resulting polygons have as many total triangles as the original.
+    // Keep unaffected triangle indices stable.
+    let old_indices = body.mesh.triangle_faces.iter().enumerate()
+        .filter(|(_, &owner)| owner == face)
+        .map(|(i, _)| i).collect::<Vec<_>>();
+    let replacements = old_tris.into_iter().map(|tri| (tri,face))
+        .chain(new_tris.into_iter().map(|tri| (tri,new_face))).collect::<Vec<_>>();
+    if old_indices.len() != replacements.len() {
+        return Err(edit_error("face split triangulation changed total triangle count"));
     }
-    for (owner,tris) in [(face,old_tris),(new_face,new_tris)] {
-        for tri in tris {body.mesh.triangles.push(tri);body.mesh.triangle_faces.push(owner);}
+    for (index, (tri,owner)) in old_indices.into_iter().zip(replacements) {
+        body.mesh.triangles[index] = tri;
+        body.mesh.triangle_faces[index] = owner;
     }
     Ok(FaceSplit {original_face:face,created_face:new_face,created_loop:new_loop,
         diagonal_edge:new_edge,created_coedges:[coedge_old,coedge_new]})
