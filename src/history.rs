@@ -4,10 +4,12 @@
 //! An opaque Memento keeps local inverse frames from the original transaction.
 //! Undo restores those frames, deleting the inserted edge/vertex or edge/face
 //! pair; redo replays the command to mint new runtime handle generations.
-//! This is deliberately not a general-purpose KEV/KEF implementation.
+//! KEV/KEF are constrained inverse topology operators: only collinear
+//! valence-two vertices and adjacent coplanar faces are removable.
 
 use crate::{
-    EditReport, EditTransaction, GeometryError, Solid, TopologyEntity, TopologyName,
+    EditDelta, EditReport, EditTransaction, GeometryError, JournalStats, NameChange,
+    Solid, TopologyEntity, TopologyName,
 };
 use crate::edit::EditMemento;
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,14 @@ pub enum EulerCommand {
         start: TopologyName,
         end: TopologyName,
     },
+    /// MEV-compatible edge subdivision. Alias of the historical SplitEdge.
+    MakeEdgeVertex { edge: TopologyName, fraction: f64 },
+    /// MEF-compatible face division. Alias of the historical SplitFace.
+    MakeEdgeFace { face: TopologyName, start: TopologyName, end: TopologyName },
+    /// KEV for a degree-two collinear vertex; no Undo-stack dependency.
+    KillEdgeVertex { vertex: TopologyName },
+    /// KEF for two incident coplanar polygonal faces.
+    KillEdgeFace { edge: TopologyName, removed_face: TopologyName },
 }
 
 impl EulerCommand {
@@ -42,16 +52,61 @@ impl EulerCommand {
             .map_err(|error| command_error(error.to_string()))
     }
 
+    fn resolve_body(solid:&Solid,name:&TopologyName)->Result<TopologyEntity,GeometryError>{
+        let handle=solid.resolve_topology_name(name)
+            .ok_or_else(||command_error(format!("unresolved topology name: {name}")))?;
+        solid.resolve_topology_handle(handle).map_err(|e|command_error(e.to_string()))
+    }
+
+    fn is_kill(&self)->bool {
+        matches!(self,Self::KillEdgeVertex{..}|Self::KillEdgeFace{..})
+    }
+
+    /// Called on a disposable candidate body when the batch requires
+    /// compacting/renumbering Euler kills. Make commands still use local edits.
+    fn apply_to_candidate(&self,solid:&mut Solid)
+        ->Result<(Vec<EditDelta>,Vec<NameChange>),GeometryError>
+    {
+        match self {
+            Self::KillEdgeVertex {vertex} => {
+                let id=match Self::resolve_body(solid,vertex)? {
+                    TopologyEntity::Vertex(id)=>id,
+                    other=>return Err(command_error(format!("KEV expects vertex; got {other:?}"))),
+                };
+                let killed=solid.kill_edge_vertex(id)?;
+                Ok((vec![EditDelta::KillEdgeVertex(killed)],Vec::new()))
+            }
+            Self::KillEdgeFace {edge,removed_face} => {
+                let edge_id=match Self::resolve_body(solid,edge)? {
+                    TopologyEntity::Edge(id)=>id,
+                    other=>return Err(command_error(format!("KEF expects edge; got {other:?}"))),
+                };
+                let face_id=match Self::resolve_body(solid,removed_face)? {
+                    TopologyEntity::Face(id)=>id,
+                    other=>return Err(command_error(format!("KEF expects face; got {other:?}"))),
+                };
+                let killed=solid.kill_edge_face(edge_id,face_id)?;
+                Ok((vec![EditDelta::KillEdgeFace(killed)],Vec::new()))
+            }
+            _=>{
+                let mut tx=solid.begin_edit()?;
+                self.apply(&mut tx)?;
+                let report=tx.commit()?;
+                Ok((report.changes,report.named_changes))
+            }
+        }
+    }
+
     fn apply(&self, tx: &mut EditTransaction<'_>) -> Result<(), GeometryError> {
         match self {
-            Self::SplitEdge { edge, fraction } => {
+            Self::SplitEdge { edge, fraction } | Self::MakeEdgeVertex { edge, fraction } => {
                 let id = match Self::resolve(tx, edge)? {
                     TopologyEntity::Edge(id) => id,
                     other => return Err(command_error(format!("expected edge, found {other:?}"))),
                 };
                 tx.split_edge(id, *fraction)?;
             }
-            Self::SplitFace { face, start, end } => {
+            Self::SplitFace { face, start, end } | Self::MakeEdgeFace { face, start, end } => {
                 let f = match Self::resolve(tx, face)? {
                     TopologyEntity::Face(id) => id,
                     other => return Err(command_error(format!("expected face, found {other:?}"))),
@@ -65,6 +120,9 @@ impl EulerCommand {
                     other => return Err(command_error(format!("expected end vertex, found {other:?}"))),
                 };
                 tx.split_face(f, a, b)?;
+            }
+            Self::KillEdgeVertex { .. } | Self::KillEdgeFace { .. } => {
+                return Err(command_error("kill operator requires snapshot-backed Euler transaction"));
             }
         }
         Ok(())
@@ -154,9 +212,34 @@ impl CommandHistory {
         if batch.commands.is_empty() || batch.commands.len() > MAX_COMMANDS_PER_BATCH {
             return Err(command_error("command batch must have between 1 and 256 commands"));
         }
-        let mut tx = self.solid.begin_edit()?;
-        for command in &batch.commands { command.apply(&mut tx)?; }
-        let (report, memento) = tx.commit_recorded()?;
+        let (report,memento)=if batch.commands.iter().any(EulerCommand::is_kill) {
+            // Kill operators change compact slot IDs and need a validated,
+            // snapshot-backed candidate. Failed batches leave self untouched.
+            let before=self.solid.revision;
+            let after=before.checked_add(1).ok_or_else(||command_error("revision overflow"))?;
+            let mut candidate=self.solid.clone();
+            let mut changes=Vec::new();
+            let mut named_changes=Vec::new();
+            for command in &batch.commands {
+                let (d,n)=command.apply_to_candidate(&mut candidate)?;
+                changes.extend(d);named_changes.extend(n);
+            }
+            candidate.revision=after;
+            candidate.validate()?;
+            let previous=std::mem::replace(&mut self.solid,candidate);
+            let stats=JournalStats{
+                frames:1,
+                topology_snapshots:previous.vertices.len()+previous.edges.len()
+                    +previous.coedges.len()+previous.loops.len()+previous.faces.len()+previous.shells.len(),
+                triangle_snapshots:previous.mesh.triangles.len(),
+            };
+            (EditReport{revision_before:before,revision_after:after,changes,
+                named_changes,journal:stats},EditMemento::snapshot(previous))
+        } else {
+            let mut tx = self.solid.begin_edit()?;
+            for command in &batch.commands { command.apply(&mut tx)?; }
+            tx.commit_recorded()?
+        };
         if clear_redo { self.redo.clear(); }
         self.undo.push(AppliedBatch { batch, memento });
         if self.undo.len() > self.undo_limit {
@@ -199,4 +282,5 @@ impl CommandHistory {
 // These operations preserve Euler characteristic by adding paired elements:
 // split_edge: ΔV=+1, ΔE=+1; split_face: ΔE=+1, ΔF=+1.
 // Their inverse Memento removes those exact paired additions.
-// General independent make/kill Euler operators are a future milestone.
+// KEV and KEF can also be applied independently to compatible earlier edits;
+// arbitrary topological Euler pairs and trimmed-surface Booleans remain future work.

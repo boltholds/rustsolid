@@ -180,6 +180,7 @@ impl TopologyIdentity {
 
     pub(crate) fn register_delta(&mut self, delta: EditDelta) -> Result<Vec<NameChange>, GeometryError> {
         let (parent_entity, additions): (TopologyEntity, Vec<(TopologyEntity, &str)>) = match delta {
+            EditDelta::KillEdgeVertex(_) | EditDelta::KillEdgeFace(_) => return Ok(Vec::new()),
             EditDelta::SplitEdge(s) => (TopologyEntity::Edge(s.original_edge), vec![
                 (TopologyEntity::Vertex(s.inserted_vertex), "vertex"),
                 (TopologyEntity::Edge(s.created_edge), "remainder-edge"),

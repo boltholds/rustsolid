@@ -30,6 +30,8 @@ pub struct FaceSplit {
 pub enum EditDelta {
     SplitEdge(EdgeSplit),
     SplitFace(FaceSplit),
+    KillEdgeVertex(crate::KillEdgeVertex),
+    KillEdgeFace(crate::KillEdgeFace),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,30 +55,44 @@ pub struct EditTransaction<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct EditMemento {
-    frames: Vec<UndoFrame>,
-    body_token: u64,
+pub(crate) enum EditMemento {
+    /// Incremental inverse frames for append-only MEV/MEF commands.
+    Delta { frames: Vec<UndoFrame>, body_token: u64 },
+    /// Whole-body fallback for KEV/KEF operations which compact indices.
+    Snapshot(Box<Solid>),
 }
-
 impl EditMemento {
+    pub(crate) fn snapshot(before: Solid) -> Self { Self::Snapshot(Box::new(before)) }
     pub(crate) fn check_target(&self, solid: &Solid) -> Result<(), GeometryError> {
-        let body = solid.topology_handle(TopologyEntity::Body)
+        let current = solid.topology_handle(TopologyEntity::Body)
             .ok_or_else(|| edit_error("missing body identity for Memento"))?;
-        if self.body_token != body.body_token {
+        let origin = match self {
+            Self::Delta { body_token, .. } => *body_token,
+            Self::Snapshot(body) => body.topology_handle(TopologyEntity::Body)
+                .ok_or_else(|| edit_error("snapshot body identity missing"))?.body_token,
+        };
+        if origin != current.body_token {
             return Err(edit_error("Memento belongs to another body incarnation"));
         }
         Ok(())
     }
-
-    /// Inverse Euler operations from the local journal. Runtime revision stays monotonic.
     pub(crate) fn restore(self, solid: &mut Solid) -> Result<(), GeometryError> {
         self.check_target(solid)?;
         solid.validate()?;
         let revision = solid.revision.checked_add(1)
             .ok_or_else(|| edit_error("revision overflow"))?;
-        for frame in self.frames.into_iter().rev() { frame.restore(solid); }
-        solid.validate()?;
-        solid.revision = revision;
+        match self {
+            Self::Delta { frames, .. } => {
+                for frame in frames.into_iter().rev() { frame.restore(solid); }
+                solid.validate()?;
+                solid.revision = revision;
+            }
+            Self::Snapshot(mut before) => {
+                before.revision = revision;
+                before.validate()?;
+                *solid = *before;
+            }
+        }
         Ok(())
     }
 }
@@ -209,7 +225,7 @@ impl EditTransaction<'_> {
                 .ok_or_else(|| edit_error("body has no identity"))?.body_token)
         } else { None };
         self.target.revision = after;
-        let memento = token.map(|body_token| EditMemento {
+        let memento = token.map(|body_token| EditMemento::Delta {
             frames: std::mem::take(&mut self.frames), body_token,
         });
         self.committed = true;

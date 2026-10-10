@@ -96,6 +96,12 @@ fn report_json(report: EditReport) -> Value {
             "created_face_id":s.created_face.0,"created_loop_id":s.created_loop.0,
             "diagonal_edge_id":s.diagonal_edge.0,
             "created_coedge_ids":[s.created_coedges[0].0,s.created_coedges[1].0]}),
+        EditDelta::KillEdgeVertex(k)=>json!({"kind":"kill_edge_vertex",
+            "removed_vertex_id":k.removed_vertex.0,"removed_edge_id":k.removed_edge.0,
+            "retained_edge_id":k.retained_edge.0}),
+        EditDelta::KillEdgeFace(k)=>json!({"kind":"kill_edge_face",
+            "removed_edge_id":k.removed_edge.0,"removed_face_id":k.removed_face.0,
+            "retained_face_id":k.retained_face.0}),
     }).collect();
     let names = report.named_changes.into_iter().map(|item| json!({
         "entity": format!("{:?}",item.entity),"name":item.name.0,
