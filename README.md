@@ -202,3 +202,25 @@ resolution-dependent approximation; the underlying curves, surfaces and
 analytic mass do not depend on facet count. Supports the new `analytic_cylinder`
 JSON CLI request (default 64 facets). Native curved Boolean and Euler operations
 are not yet supported.
+
+
+## v0.9 — common B-rep interface
+
+`BrepModel` is a single, geometry-backed *read-only* topology graph for both
+`Solid` and `CylindricalBrep`. Build it using the extensible `BrepSource` trait,
+`BrepModel::from_polyhedral`, `BrepModel::from_cylinder`, or the convenience
+`BrepBody::shared()` method. The same methods navigate faces, loops, coedges
+and edge uses, and query their `Surface3`, `Curve3` and `Curve2` geometry.
+
+Closed circular edges and same-face periodic UV seams remain analytic; they are
+not converted into faceted B-rep edges. `BrepBody::tessellate(segments)` produces
+a separate display mesh. Call `BrepModel::validate()` before using untrusted
+or mutated geometry graph data.
+
+A new `inspect_brep` JSON request can query either a polyhedral block/profile
+or an analytic cylinder. It returns the original `geometry.v1` mesh envelope
+with an additional `solid.brep` summary. Editing remains source-specific. This
+stage does **not** provide Boolean modeling, arbitrary radial edge incidence,
+interior holes, or general curved face editing.
+
+See [docs/unified-brep-parasolid-comparison.md](docs/unified-brep-parasolid-comparison.md).
