@@ -191,7 +191,7 @@ impl CylindricalBrep {
         let coedge_geometry=(0..6).map(|i|CoedgeGeometry {
             pcurve:Curve2Id(i),
             domain:if i==1 || i==3 {full_period}else{ParameterRange::Bounded{start:0.0,end:1.0}},
-            face:coedges[i].face,loop_id:coedges[i].loop_id,
+            face:coedges[i as usize].face,loop_id:coedges[i as usize].loop_id,
         }).collect();
         let shells=vec![Shell{id:ShellId(0),faces:vec![FaceId(0),FaceId(1),FaceId(2)],closed:true}];
         let area=2.0*PI*radius*radius+TAU*radius*height;
