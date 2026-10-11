@@ -57,6 +57,25 @@ impl BooleanRegionClassifier {
         let eps=position_eps(body).max(8.0*f64::EPSILON*position_scale(point));
         match body {
             BrepBody::Polyhedral(s)=>classify_polyhedron(s,point,eps),
+            BrepBody::ThroughHole(h)=>{
+                let model=h.model();
+                let lower=model.bbox.min;let upper=model.bbox.max;
+                let q=h.parameters();
+                let inside=point.x>=lower.x-eps && point.x<=upper.x+eps &&
+                    point.y>=lower.y-eps && point.y<=upper.y+eps &&
+                    point.z>=lower.z-eps && point.z<=upper.z+eps;
+                if !inside {return Ok(VolumePosition::Outside);}
+                let radial=(point.x-q.center_x).hypot(point.z-q.center_z);
+                if radial<q.radius-eps {return Ok(VolumePosition::Outside);}
+                if (radial-q.radius).abs()<=eps ||
+                    [ (point.x-lower.x).abs(),(point.x-upper.x).abs(),
+                      (point.y-lower.y).abs(),(point.y-upper.y).abs(),
+                      (point.z-lower.z).abs(),(point.z-upper.z).abs()]
+                        .iter().any(|d|*d<=eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
             BrepBody::Cylinder(c)=>{
                 let offset=point.sub(c.frame.origin);
                 let along=offset.dot(c.frame.normal);
