@@ -155,3 +155,62 @@ fn classification_is_stable_under_large_common_translation(){
     assert_eq!(plan.state,GraphRegionState::ClassifiedPreview);
     assert_eq!(plan.samples.len(),6);
 }
+
+#[test]
+fn two_open_plane_cylinder_traces_receive_local_side_decisions(){
+    let block=BrepBody::from(Solid::block(p(0.,1.,-3.),2.,2.,6.).unwrap());
+    let cyl=cylinder();
+    let a=block.shared().unwrap();
+    let face=a.faces.iter().find(|f|{
+        if let Some(rustsolid::Surface3::Plane(s))=a.face_surface(f.id) {
+            s.frame.origin.x==0.0 && s.frame.normal.x.abs()>0.9
+        } else {false}
+    }).unwrap().id;
+    let graph=IntersectionGraphBuilder::new(tol()).unwrap()
+        .intersect_faces(&a,face,&cyl.shared().unwrap(),FaceId(2)).unwrap();
+    assert_eq!(graph.arcs.len(),2);
+    let classified=Classifier::classify_graph(&graph,&block,face,&cyl,FaceId(2),
+        BooleanOperation::Difference).unwrap();
+    assert_eq!(classified.state,GraphRegionState::ClassifiedPreview);
+    assert_eq!(classified.samples.len(),12);
+    assert!(classified.samples.iter().all(|s|
+        s.positive_other!=s.negative_other &&
+        s.keep_positive!=s.keep_negative));
+}
+#[test]
+fn tangent_intersection_cannot_masquerade_as_a_cut(){
+    let block=BrepBody::from(Solid::block(p(2.,1.,-3.),2.,2.,6.).unwrap());
+    let cyl=cylinder();
+    let model=block.shared().unwrap();
+    let face=model.faces.iter().find(|f|{
+        if let Some(rustsolid::Surface3::Plane(s))=model.face_surface(f.id) {
+            s.frame.origin.x==2.0 && s.frame.normal.x.abs()>0.9
+        } else {false}
+    }).unwrap().id;
+    let graph=IntersectionGraphBuilder::new(tol()).unwrap()
+        .intersect_faces(&model,face,&cyl.shared().unwrap(),FaceId(2)).unwrap();
+    let plan=Classifier::classify_graph(&graph,&block,face,&cyl,FaceId(2),
+        BooleanOperation::Union).unwrap();
+    assert_eq!(plan.state,GraphRegionState::Held);
+    assert_eq!(plan.hold,Some(rustsolid::RegionHold::Tangency));
+    assert!(plan.samples.is_empty());
+    assert!(!plan.can_apply());
+}
+#[test]
+fn near_tangent_intersection_is_held_without_region_guess(){
+    let block=BrepBody::from(Solid::block(p(2.0+4e-10,1.,-3.),2.,2.,6.).unwrap());
+    let cyl=cylinder();
+    let model=block.shared().unwrap();
+    let face=model.faces.iter().find(|f|{
+        if let Some(rustsolid::Surface3::Plane(s))=model.face_surface(f.id) {
+            s.frame.normal.x.abs()>0.9 && (s.frame.origin.x-(2.0+4e-10)).abs()<1e-12
+        } else {false}
+    }).unwrap().id;
+    let graph=IntersectionGraphBuilder::new(tol()).unwrap()
+        .intersect_faces(&model,face,&cyl.shared().unwrap(),FaceId(2)).unwrap();
+    let plan=Classifier::classify_graph(&graph,&block,face,&cyl,FaceId(2),
+        BooleanOperation::Intersection).unwrap();
+    assert_eq!(plan.state,GraphRegionState::Held);
+    assert_eq!(plan.hold,Some(rustsolid::RegionHold::AmbiguousIntersection));
+    assert!(plan.samples.is_empty());
+}
