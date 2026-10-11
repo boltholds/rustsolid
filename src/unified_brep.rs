@@ -121,6 +121,7 @@ impl BrepSource for CylindricalBrep {
 pub enum BrepBody {
     Polyhedral(Solid),
     Cylinder(CylindricalBrep),
+    ThroughHole(ThroughHoleBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
