@@ -416,3 +416,46 @@ fn maximum_32_mixed_disjoint_features_form_closed_exact_genus_16_body(){
     assert!(m.faceting_volume_error>=0.);
     assert_eq!(e.model().summary().genus,16);
 }
+
+#[test]
+fn deterministic_mixed_display_reconstruction_keeps_exact_body_untouched(){
+    let e=model(&mix());
+    let prior=e.snapshot();
+    let a=e.tessellate(48).unwrap();
+    let b=e.tessellate(48).unwrap();
+    assert_eq!(a.mesh.vertices,b.mesh.vertices);
+    assert_eq!(a.mesh.triangles,b.mesh.triangles);
+    assert_eq!(a.mesh.triangle_faces,b.mesh.triangle_faces);
+    assert_eq!(a.bottom,b.bottom);
+    assert_eq!(a.top,b.top);
+    assert_eq!(a.faceted_volume,b.faceted_volume);
+    assert_eq!(a.faceted_surface_area,b.faceted_surface_area);
+    e.check_snapshot(&prior).unwrap();
+    assert_eq!(e.revision(),0);
+}
+#[test]
+fn thirty_third_mixed_feature_is_rejected_without_committing_earlier_geometry(){
+    let mut cuts=Vec::new();
+    for row in 0..6{
+        for column in 0..6{
+            if cuts.len()==32{break;}
+            let x=-2.25+column as f64*0.9;
+            let z=-2.25+row as f64*0.9;
+            cuts.push(if cuts.len()%2==0 {
+                through(x,z,0.18)
+            }else{
+                blind(x,z,0.18,1.4)
+            });
+        }
+        if cuts.len()==32{break;}
+    }
+    let mut e=model(&cuts);
+    let snapshot=e.snapshot();
+    let mut tx=e.begin_transaction();
+    assert!(tx.add(through(1.35,2.25,0.18)).is_err());
+    assert!(tx.commit().is_err());
+    e.check_snapshot(&snapshot).unwrap();
+    assert_eq!(e.cut_count(),32);
+    assert_eq!(e.revision(),0);
+    prove(&e,16,16);
+}
