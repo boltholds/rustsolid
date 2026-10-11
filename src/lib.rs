@@ -31,6 +31,7 @@ mod boolean;
 mod boolean_region;
 mod through_hole;
 mod blind_hole;
+mod composite_blind;
 mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
