@@ -224,6 +224,30 @@ impl BrepModel {
         let face = self.faces.get(id.0 as usize).filter(|f| f.id == id)?;
         self.geometry.surfaces.get(face.geometry.surface.0 as usize).copied()
     }
+    pub fn face_sense(&self,id:FaceId)->Option<FaceSense>{
+        self.faces.get(id.0 as usize).filter(|f|f.id==id).map(|f|f.sense)
+    }
+    /// The actual outward orientation of a face, not necessarily the
+    /// cross-product of its support UV chart. User-facing CAD tools must
+    /// use this for blind-hole floors and subtractive cylindrical walls.
+    pub fn oriented_face_normal(&self,id:FaceId,u:f64,v:f64)
+        ->Result<Point3,GeometryError>
+    {
+        let face=self.faces.get(id.0 as usize).filter(|f|f.id==id)
+            .ok_or_else(||invalid("oriented face references invalid face"))?;
+        let surface=self.face_surface(id)
+            .ok_or_else(||invalid("oriented face missing surface"))?;
+        let sample=surface.evaluate(u,v)?;
+        let mut normal=sample.du.cross(sample.dv);
+        if face.sense==FaceSense::Reversed {
+            normal=normal.scale(-1.0);
+        }
+        let size=normal.length_squared().sqrt();
+        if !size.is_finite()||size<=self.tolerance.absolute_length{
+            return Err(invalid("degenerate oriented support normal"));
+        }
+        Ok(normal.scale(1.0/size))
+    }
     pub fn edge_curve(&self, id: EdgeId) -> Option<Curve3> {
         let edge = self.edges.get(id.0 as usize).filter(|e| e.id == id)?;
         let geom = self.geometry.edges.get(edge.id.0 as usize)?;
