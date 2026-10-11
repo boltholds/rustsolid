@@ -31,6 +31,18 @@ jobs:
         run: cargo test --test topology_delta_plan
       - name: Sparse generational BrepArena and atomic command regressions
         run: cargo test --test brep_arena
+      - name: Certified exact box Boolean B-rep mathematical contracts
+        run: cargo test --test boolean_box
+      - name: Boolean CLI exact volume and failure semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"boolean","mode":"intersection","left":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},"right":{"kind":"block","origin":[1,1,1],"width":2,"height":3,"depth":4}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["solid"]["mass"]["volume"]==6.0 and r["solid"]["topology"]["euler_characteristic"]==2 and r["data"]["state"]=="solid" and len(r["data"]["face_sources"])==r["solid"]["topology"]["faces"], r'
+          printf '%s' '{"operation":"boolean","mode":"difference","left":{"kind":"block","origin":[0,0,0],"width":3,"height":3,"depth":3},"right":{"kind":"block","origin":[1,1,1],"width":1,"height":1,"depth":1}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "topology not yet supported" in r["error"] and "solid" not in r, r'
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

@@ -2,6 +2,7 @@
 //! entire batch atomically; source solids cannot be externally mutated halfway.
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
+    BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
@@ -37,6 +38,7 @@ enum GeometryRequest {
         #[serde(default)] samples:Option<usize> },
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
+    Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
     RegressionCorpus,
@@ -960,6 +962,60 @@ fn evaluate_arena_transaction(
     }
 }
 
+
+fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Response{
+    let result=(||->Result<rustsolid::BooleanResult,GeometryError>{
+        let (left,_)=left.prepare()?;
+        let (right,_)=right.prepare()?;
+        BooleanKernel::apply(&left,&right,mode)
+            .map_err(|error|GeometryError::InvalidEdit(error.to_string()))
+    })();
+    match result {
+        Err(error)=>Response {
+            schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(error.to_string()),data:None,
+        },
+        Ok(result)=>{
+            let lineage=result.face_sources.iter().map(|f|json!({
+                "result_face_id":f.result_face.0,
+                "operand":match f.operand {
+                    BooleanOperand::Left=>"left",BooleanOperand::Right=>"right"},
+                "source_face_id":f.source_face.0,
+                "reversed":f.reversed,
+            })).collect::<Vec<_>>();
+            match result.outcome {
+                BooleanOutcome::Empty=>Response{
+                    schema_version:"geometry.v1",ok:true,solid:None,error:None,
+                    data:Some(json!({"kind":"boolean","mode":mode,"state":"empty",
+                        "face_sources":lineage})),
+                },
+                BooleanOutcome::Solid(body)=>Response{
+                    schema_version:"geometry.v1",ok:true,error:None,
+                    data:Some(json!({"kind":"boolean","mode":mode,"state":"solid",
+                        "representation":"exact_planar_box_arrangement",
+                        "face_sources":lineage})),
+                    solid:Some(SolidResponse{
+                        vertices:body.mesh.vertices.iter().map(|p|p.array()).collect(),
+                        faces:body.mesh.triangles,
+                        triangle_face_ids:body.mesh.triangle_faces.iter().map(|id|id.0).collect(),
+                        topology:Topology{
+                            vertices:body.vertices.len(),edges:body.edges.len(),
+                            coedges:body.coedges.len(),loops:body.loops.len(),
+                            faces:body.faces.len(),shells:body.shells.len(),
+                            euler_characteristic:body.vertices.len() as isize -
+                                body.edges.len() as isize + body.faces.len() as isize,
+                        },
+                        mass:Mass {volume:body.mass.volume,surface_area:body.mass.surface_area,
+                            centroid:body.mass.centroid.array()},
+                        bbox:[body.bbox.min.array(),body.bbox.max.array()],
+                        edit_report:None,history:None,analytic_brep:None,brep:None,
+                    }),
+                }
+            }
+        }
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -978,6 +1034,8 @@ fn process(input: &str) -> Response {
             return evaluate_topology_delta_plan(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::ArenaTransaction{source,batches,undo,redo}) =>
             return evaluate_arena_transaction(source,batches,undo,redo),
+        Ok(GeometryRequest::Boolean{left,right,mode}) =>
+            return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -1533,6 +1591,49 @@ mod tests {
         assert!(!process(&too_many).ok);
     }
 
+
+    #[test]
+    fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){
+        for (mode,expected) in [("intersection",6.0),("union",42.0),("difference",18.0)] {
+            let request=format!(r#"{{"operation":"boolean","mode":"{}",
+                "left":{{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4}},
+                "right":{{"kind":"block","origin":[1,1,1],"width":2,"height":3,"depth":4}}}}"#,mode);
+            let result=process(&request);
+            assert!(result.ok,"{:?}",result.error);
+            let solid=result.solid.unwrap();
+            assert_eq!(solid.mass.volume,expected);
+            assert_eq!(solid.topology.euler_characteristic,2);
+            let info=result.data.unwrap();
+            assert_eq!(info["state"],"solid");
+            assert_eq!(info["representation"],"exact_planar_box_arrangement");
+            assert_eq!(info["face_sources"].as_array().unwrap().len(),solid.topology.faces);
+        }
+    }
+    #[test]
+    fn json_boolean_empty_and_unsupported_result_have_distinct_contracts(){
+        let empty=process(r#"{"operation":"boolean","mode":"intersection",
+            "left":{"kind":"block","origin":[0,0,0],"width":1,"height":1,"depth":1},
+            "right":{"kind":"block","origin":[5,0,0],"width":1,"height":1,"depth":1}}"#);
+        assert!(empty.ok);
+        assert!(empty.solid.is_none());
+        assert_eq!(empty.data.unwrap()["state"],"empty");
+        let unsupported=process(r#"{"operation":"boolean","mode":"difference",
+            "left":{"kind":"block","origin":[0,0,0],"width":3,"height":3,"depth":3},
+            "right":{"kind":"block","origin":[1,1,1],"width":1,"height":1,"depth":1}}"#);
+        assert!(!unsupported.ok);
+        assert!(unsupported.solid.is_none());
+        assert!(unsupported.data.is_none());
+        assert!(unsupported.error.unwrap().contains("topology not yet supported"));
+    }
+    #[test]
+    fn json_boolean_analytic_operand_is_refused_not_faceted(){
+        let unsupported=process(r#"{"operation":"boolean","mode":"difference",
+            "left":{"kind":"block","origin":[0,0,0],"width":3,"height":3,"depth":3},
+            "right":{"kind":"analytic_cylinder","origin":[1,1,1],"radius":1,"height":1}}"#);
+        assert!(!unsupported.ok);
+        assert!(unsupported.solid.is_none());
+        assert!(unsupported.error.unwrap().contains("unsupported Boolean operand"));
+    }
     #[test]
     fn json_arena_edits_are_one_atomic_batch_with_names_and_mass(){
         let request=r#"{"operation":"arena_transaction",

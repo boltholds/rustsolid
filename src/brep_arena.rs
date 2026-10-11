@@ -13,6 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
+    BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
 };
@@ -284,6 +285,20 @@ impl BrepArena {
             }
         }
         Ok(())
+    }
+    /// Non-destructive, exact planar box Boolean. The resulting Solid, when
+    /// present, is an independent B-rep with a fresh identity incarnation;
+    /// operands and their revision/Undo stacks stay completely unchanged.
+    /// General polyhedral or analytic curved Booleans are not yet executable.
+    pub fn boolean(&self,other:&BrepArena,op:BooleanOperation)
+        ->Result<BooleanResult,BooleanError>
+    {
+        match (&self.storage,&other.storage) {
+            (ArenaKernel::Editable(a),ArenaKernel::Editable(b)) =>
+                BooleanKernel::apply_solids(a.solid(),b.solid(),op),
+            _ => Err(BooleanError::UnsupportedOperand(
+                "analytical curved B-rep Boolean requires mutable curved topology")),
+        }
     }
     pub fn begin_transaction(&mut self)->Result<ArenaTransaction<'_>,GeometryError>{
         if !self.is_editable(){return Err(invalid("analytical curved B-rep is read-only in v0.17"));}

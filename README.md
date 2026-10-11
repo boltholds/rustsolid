@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.18 experimental kernel: dependency-aware Euler batches, sparse generational identity arena, atomic polyhedral editing and read-only analytic B-rep snapshots.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.19 experimental kernel: exact Boolean union/intersection/difference for certified axis-aligned boxes, dependency-aware Euler batches, sparse generational identity arena, and read-only analytic cylinder B-reps.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -10,6 +10,7 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Maintain explicit oriented B-rep: shells, faces, loops, coedges (twin/next/prev), edges and vertices.
 - Edit the polyhedral B-rep atomically: split edges and faces, maintain twin/loop links, preserve unaffected local handles, validate and rollback on failure.
 - Chain Euler operations using typed outputs created earlier in the same transaction, with one Undo/Redo step for the batch.
+- Compute exact planar B-rep Boolean union/intersection/difference for two validated axis-aligned boxes; reject unsupported topology, cavities, and curved operands explicitly.
 - Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -100,9 +101,9 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The `v0.4` model supports only a **single planar boundary loop without holes**; its B-rep is polygonal, not an exact analytic solid. There is no Boolean engine, fillets, NURBS, analytic trim curves/surfaces, per-edge tolerances, shells with holes, persistent naming across model regeneration, STEP/X_T export, or production-grade robust predicates. Extrusion uses XZ/+Y coordinates. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral editor still represents **one connected genus-zero shell with a single outer loop per face**. The first Boolean executor only supports two exact axis-aligned boxes; it deliberately rejects general polyhedral and curved-surface Boolean operands, disconnected outputs, cavities and genus-changing cuts. Analytic cylinders are queryable, but not editable or Boolean-operable. Generalized Boolean classification, NURBS, mutable trim loops, permanent topological naming across regeneration, STEP/X_T export, fillets and production-grade robust tolerance/quality guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
-Only geometry-preserving edge subdivision and internal planar face division are transactional today; deletion, vertex move, face extrusion, Boolean splitting and fillets are not implemented yet. Transactions currently clone the entire body (O(n) copy cost).
+The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
 See [docs/architecture.md](docs/architecture.md) for invariant details, tolerance semantics, limits, and the next gates.
 
@@ -155,7 +156,7 @@ are future work.
 
 `Solid::kill_edge_vertex(vertex)` collapses a straight degree-two vertex, and `Solid::kill_edge_face(edge, removed_face)` merges adjacent coplanar faces. These inverse Euler edits can target compatible earlier splits even after unrelated modeling edits. The kill path currently rebuilds and compacts the closed polygonal B-rep; named surviving entities are rebound, and any changed numeric ID invalidates its former runtime generational handle. This path has a full-body copy and is deliberately separate from the incremental make-only transaction path. These are scoped inverse operators, not unrestricted solid topology algebra.
 
-`predicates` provides adaptive exact-sign `orient2d`/`orient3d` (using the MIT/Apache-licensed `robust` crate), and tolerance-aware plane/plane and segment/plane classifications. Geometric intersection coordinates are approximate floating point; trimmed surface intersection, NURBS, and solid Boolean are not implemented.
+`predicates` provides adaptive exact-sign `orient2d`/`orient3d` (using the MIT/Apache-licensed `robust` crate), and tolerance-aware plane/plane and segment/plane classifications. Geometric intersection coordinates are approximate floating point; arbitrary trimmed-surface Boolean and NURBS editing are not implemented. v0.19 provides a separate exact-planar Boolean path for two certified axis-aligned boxes.
 
 ### Geometry Foundation v0.7
 
@@ -260,6 +261,29 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.19: exact planar box Boolean B-rep
+
+[The first Boolean executor](docs/boolean-box.md) performs `union`, `intersection`
+and ordered `difference` on two independently certified axis-aligned
+parallelepipeds. It partitions the exact source face coordinates into Cartesian
+3D regions, classifies occupied cells, builds outward planar B-rep patches and
+validates every result through `Solid::validate`, including manifold incidence,
+Euler characteristic, mesh ownership, volume and area. This uses exact planar
+source positions, **not approximate faceting of curved input**.
+
+`BooleanResult` explicitly distinguishes an `Empty` result from a validated
+`Solid`, and reports per-result-face lineage back to left/right source
+faces (including reversed cut faces for subtraction). Non-manifold results,
+multi-body outputs, enclosed cavities, near-coincident distinct planes,
+general extrusions and analytic cylinders are rejected with explicit errors.
+`BrepArena::boolean` leaves both source arenas untouched and creates a new
+independent result, rather than falsely preserving historical handles.
+
+The `geometry.v1` CLI exposes `{"operation":"boolean","mode":"union|intersection|difference",
+"left":{...},"right":{...}}` with standard solid output and face lineage
+metadata. [Independent Boolean regressions](tests/boolean_box.rs) and CLI smoke
+tests are pinned by CI. See the [Boolean scope and next gates](docs/boolean-box.md).
 
 ## v0.18: dependency-aware B-rep transactions
 
