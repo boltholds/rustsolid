@@ -150,6 +150,7 @@ impl BrepBody {
         match self {
             Self::Polyhedral(body) => body,
             Self::Cylinder(body) => body,
+            Self::ThroughHole(body) => body,
         }
     }
 }
