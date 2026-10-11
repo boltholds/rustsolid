@@ -278,12 +278,12 @@ data**.
 
 ## Acceptance and important limitations
 
-`tests/composite_cut.rs` pins 20 independent regressions: mixed
+`tests/composite_cut.rs` pins 22 independent regressions: mixed
 genus/mass/centroid, input-order metamorphism, true face/UV ownership,
 planar floor loops, signed/closed display manifold and its volume
 convergence, obsolete/foreign/abandoned handles, clone isolation,
 atomic batch rollback, query/Arena compatibility, 32 mixed-cut stress,
-and source-bound Boolean operand lineage. Mandatory GitHub Actions
+source-bound Boolean operand lineage, 32-feature stress, deterministic\nmesh replay, and 33rd-feature refusal. Mandatory GitHub Actions
 gates run both this module and independent CLI positive/failure cases,
 alongside all earlier v0.25 tests.
 
