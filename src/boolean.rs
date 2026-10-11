@@ -154,13 +154,24 @@ pub struct BooleanKernel;
 impl BooleanKernel {
     pub fn apply(left: &BrepBody, right: &BrepBody,
                  operation: BooleanOperation) -> Result<BooleanResult, BooleanError> {
-        let BrepBody::Polyhedral(a) = left else {
-            return Err(BooleanError::UnsupportedOperand("left is not a planar box"));
-        };
-        let BrepBody::Polyhedral(b) = right else {
-            return Err(BooleanError::UnsupportedOperand("right is not a planar box"));
-        };
-        Self::apply_solids(a,b,operation)
+        match (left,right,operation) {
+            (BrepBody::Polyhedral(a),BrepBody::Cylinder(c),BooleanOperation::Difference) => {
+                AxisBox::certify(a,"left must be an axis-aligned box")?;
+                let analytic=crate::ThroughHoleBrep::from_operands(a,c)
+                    .map_err(|e|BooleanError::UnsupportedResultTopology(e.to_string()))?;
+                let face_sources=a.faces.iter().map(|f|BooleanFaceSource {
+                    result_face:f.id,operand:BooleanOperand::Left,source_face:f.id,reversed:false,
+                }).chain(std::iter::once(BooleanFaceSource {
+                    result_face:FaceId(6),operand:BooleanOperand::Right,
+                    source_face:FaceId(2),reversed:true,
+                })).collect();
+                Ok(BooleanResult {outcome:BooleanOutcome::Analytic(analytic),face_sources})
+            }
+            (BrepBody::Polyhedral(a),BrepBody::Polyhedral(b),operation) =>
+                Self::apply_solids(a,b,operation),
+            _=>Err(BooleanError::UnsupportedOperand(
+                "only planar box CSG or box minus a strictly through cylinder is supported")),
+        }
     }
 
     pub fn apply_solids(a:&Solid,b:&Solid,operation:BooleanOperation)
