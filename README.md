@@ -27,7 +27,7 @@ This implementation is **original code** based on common computational geometry 
 
 ## Build and test
 
-Requires a stable Rust toolchain (Rust 1.70+):
+Requires a stable Rust toolchain; the minimum supported Rust version has not been revalidated for the v0.24 triangulation dependency:
 
 ```sh
 cargo test --all-targets
