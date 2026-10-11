@@ -13,7 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
-    BrepCarrierEditor, BrepStructuralEditor,
+    BrepCarrierEditor, BrepStructuralEditor, BrepCompositeEditor,AnalyticCut,
     ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
@@ -179,16 +179,19 @@ enum ArenaKernel {
     CurvedReadOnly(CylindricalBrep),
     AnalyticHole(ThroughHoleBrep),
     AnalyticBlind(BlindHoleBrep),
+    AnalyticComposite(BrepCompositeEditor),
 }
 impl ArenaKernel {
     fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0,
-        Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision()}}
+        Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision(),
+        Self::AnalyticComposite(h)=>h.revision()}}
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         match self {
             Self::Editable(h)=>BrepModel::from_polyhedral(h.solid(),ModelUnits::default()),
             Self::CurvedReadOnly(body)=>BrepModel::from_cylinder(body),
             Self::AnalyticHole(body)=>Ok(body.model().clone()),
             Self::AnalyticBlind(body)=>Ok(body.model().clone()),
+            Self::AnalyticComposite(body)=>Ok(body.model().clone()),
         }
     }
     fn named(&self)->Result<Vec<(TopologyEntity,TopologyName)>,GeometryError>{
@@ -206,7 +209,7 @@ impl ArenaKernel {
             let name=match self {
                 Self::Editable(h)=>h.solid().topology_name(e)
                     .ok_or_else(||invalid(format!("missing semantic name for {e:?}")))?.clone(),
-                Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_)=>{
+                Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_) | Self::AnalyticComposite(_)=>{
                     let (ty,idx)=match e {
                         TopologyEntity::Body=>("body",0),
                         TopologyEntity::Vertex(x)=>("vertex",x.0),
@@ -218,6 +221,7 @@ impl ArenaKernel {
                     };
                     let prefix=match self {Self::AnalyticHole(_)=>"analytic_through_hole",
                         Self::AnalyticBlind(_)=>"analytic_blind_hole",
+                        Self::AnalyticComposite(_)=>"analytic_composite_cuts",
                         _=>"analytic_cylinder"};
                     TopologyName(format!("{prefix}/{ty}/{idx}"))
                 },
@@ -260,6 +264,9 @@ impl BrepArena {
             },
             BrepBody::BlindHole(body)=>{
                 body.validate()?;ArenaKernel::AnalyticBlind(body)
+            },
+            BrepBody::Composite(body)=>{
+                body.validate()?;ArenaKernel::AnalyticComposite(body)
             }
         };
         let mut registry=Registry::empty();
@@ -270,6 +277,7 @@ impl BrepArena {
     pub fn from_cylinder(body:CylindricalBrep)->Result<Self,GeometryError>{Self::new(BrepBody::Cylinder(body))}
     pub fn from_through_hole(body:ThroughHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::ThroughHole(body))}
     pub fn from_blind_hole(body:BlindHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::BlindHole(body))}
+    pub fn from_composite(body:BrepCompositeEditor)->Result<Self,GeometryError>{Self::new(BrepBody::Composite(body))}
     pub fn arena_token(&self)->u64{self.registry.token}
     pub fn revision(&self)->u64{self.storage.revision()}
     pub fn is_editable(&self)->bool{matches!(&self.storage,ArenaKernel::Editable(_))}
@@ -291,8 +299,25 @@ impl BrepArena {
                 BrepStructuralEditor::new(history.solid().clone()),
             ArenaKernel::AnalyticHole(hole)=>
                 BrepStructuralEditor::from_through_hole(hole),
-            ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_)=>
+            ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_) | ArenaKernel::AnalyticComposite(_)=>
                 Err(invalid("only box and full-height through-hole are supported structural sources")),
+        }
+    }
+    /// Begin an isolated genus-changing compositional edit without changing
+    /// the source Arena's legacy polyhedral/Euler or analytic feature history.
+    /// Rebuilt cut identities are scoped to the returned editor, not this Arena.
+    pub fn detached_composite_editor(&self)->Result<BrepCompositeEditor,GeometryError>{
+        match &self.storage {
+            ArenaKernel::Editable(h)=>BrepCompositeEditor::new(h.solid().clone()),
+            ArenaKernel::AnalyticHole(h)=>BrepCompositeEditor::from_cuts(
+                h.template_solid().clone(),&[AnalyticCut::Through(h.parameters())]),
+            ArenaKernel::AnalyticBlind(h)=>BrepCompositeEditor::from_cuts(
+                h.template_solid().clone(),&[AnalyticCut::Blind(h.parameters())]),
+            ArenaKernel::AnalyticComposite(h)=>BrepCompositeEditor::from_cuts(
+                h.source_box().clone(),&h.bindings().iter().map(|b|b.cut)
+                    .collect::<Vec<_>>()),
+            ArenaKernel::CurvedReadOnly(_)=>Err(invalid(
+                "standalone analytic cylinder has no certified box source for cut composition")),
         }
     }
     pub fn snapshot(&self)->Result<ArenaSnapshot,GeometryError>{
