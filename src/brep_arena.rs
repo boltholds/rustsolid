@@ -251,7 +251,7 @@ impl BrepArena {
     }
     pub fn begin_transaction(&mut self)->Result<ArenaTransaction<'_>,GeometryError>{
         if !self.is_editable(){return Err(invalid("analytical curved B-rep is read-only in v0.17"));}
-        Ok(ArenaTransaction{arena:self,ops:Vec::new()})
+        Ok(ArenaTransaction{arena:self,ops:Vec::new(),failed:false})
     }
     /// The v0.16 intersection plan is a mathematical *candidate*, not a
     /// committed topology delta. It cannot bypass missing region classification,
@@ -351,20 +351,29 @@ enum ArenaOperation {
 pub struct ArenaTransaction<'a> {
     arena:&'a mut BrepArena,
     ops:Vec<ArenaOperation>,
+    // Like Solid::EditTransaction, one rejected operation poisons the entire
+    // staged batch. Ignoring its Result must never commit earlier operations.
+    failed:bool,
 }
 impl ArenaTransaction<'_> {
-    fn checked(&self,handle:ArenaHandle,kind:&str)->Result<(),GeometryError>{
-        let found=self.arena.resolve(handle).map_err(|e|invalid(e.to_string()))?.entity;
-        let actual=match found {
-            TopologyEntity::Vertex(_)=>"vertex",TopologyEntity::Edge(_)=>"edge",
-            TopologyEntity::Face(_)=>"face",_=>"other",
-        };
-        if actual!=kind {return Err(invalid(format!("expected {kind}, found {actual}")));}
-        Ok(())
+    fn checked(&mut self,handle:ArenaHandle,kind:&str)->Result<(),GeometryError>{
+        if self.failed {return Err(invalid("arena transaction already failed"));}
+        let result=self.arena.resolve(handle).map_err(|e|invalid(e.to_string()))
+            .and_then(|binding|{
+                let actual=match binding.entity {
+                    TopologyEntity::Vertex(_)=>"vertex",TopologyEntity::Edge(_)=>"edge",
+                    TopologyEntity::Face(_)=>"face",_=>"other",
+                };
+                if actual!=kind {Err(invalid(format!("expected {kind}, found {actual}")))}
+                else {Ok(())}
+            });
+        if result.is_err(){self.failed=true;}
+        result
     }
     pub fn split_edge(&mut self,edge:ArenaHandle,fraction:f64)->Result<(),GeometryError>{
         self.checked(edge,"edge")?;
         if !fraction.is_finite()||fraction<=0.0||fraction>=1.0 {
+            self.failed=true;
             return Err(invalid("split fraction must be strictly interior and finite"));
         }
         self.ops.push(ArenaOperation::SplitEdge{edge,fraction});Ok(())
@@ -384,5 +393,8 @@ impl ArenaTransaction<'_> {
         self.ops.push(ArenaOperation::KillEdgeFace{edge,removed_face});Ok(())
     }
     pub fn staged_len(&self)->usize{self.ops.len()}
-    pub fn commit(self)->Result<ArenaCommit,GeometryError>{self.arena.commit_ops(self.ops)}
+    pub fn commit(self)->Result<ArenaCommit,GeometryError>{
+        if self.failed {return Err(invalid("cannot commit an arena transaction after a rejected stage"));}
+        self.arena.commit_ops(self.ops)
+    }
 }

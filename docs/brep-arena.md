@@ -88,3 +88,11 @@ without a partial solid. The existing API operations remain unchanged.
    `TopologyDeltaPlan` as an executable topology delta.
 4. Optimize history duplication into an arena-level transaction journal once
    the first-party semantic and failure-injection regressions remain green.
+
+### Rejected staging is an abort, not a partial batch
+
+A staging error (including wrong entity kind, foreign/stale handle, or invalid
+edge fraction) **poisons** the transaction. Subsequent staging and `commit()`
+fail even when the caller ignores the earlier `Err`. Geometry, sparse slots,
+generations, revision, Undo/Redo stack and the snapshot remain untouched.
+See `staging_failure_poison_is_atomic_even_when_caller_ignores_error`.

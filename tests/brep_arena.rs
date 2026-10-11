@@ -287,3 +287,48 @@ fn failed_undo_and_stale_snapshot_does_not_mutate_registry(){
     assert!(arena.check_snapshot(&original).is_err()); // monotonic runtime revision
     mass(&arena);
 }
+
+fn failed_staging_poison_prevents_partial_commit(){
+    let mut arena=cube();
+    let before=arena.snapshot().unwrap();
+    let original_bindings=arena.bindings();
+    let original_slots=arena.allocated_slots();
+    let edge=h(&arena,TopologyEntity::Edge(EdgeId(0)));
+    let face=h(&arena,TopologyEntity::Face(FaceId(0)));
+    let vertex=h(&arena,TopologyEntity::Vertex(VertexId(0)));
+    {
+        let mut tx=arena.begin_transaction().unwrap();
+        tx.split_edge(edge,0.5).unwrap();
+        assert_eq!(tx.staged_len(),1);
+        assert!(tx.split_edge(face,0.5).is_err(),"wrong-entity handle must poison transaction");
+        assert!(tx.split_face(face,vertex,vertex).is_err(),"subsequent stages are blocked");
+        assert!(tx.commit().is_err(),"ignore-Err must not commit previous staged changes");
+    }
+    assert_eq!(arena.revision(),0);
+    assert_eq!(arena.bindings(),original_bindings);
+    assert_eq!(arena.allocated_slots(),original_slots);
+    assert_eq!((arena.undo_depth(),arena.redo_depth()),(0,0));
+    arena.check_snapshot(&before).unwrap();
+    mass(&arena);
+    {
+        let mut tx=arena.begin_transaction().unwrap();
+        tx.split_edge(edge,0.5).unwrap();
+        assert!(tx.split_edge(edge,f64::NAN).is_err(),"invalid fraction poisons transaction too");
+        assert!(tx.commit().is_err());
+    }
+    assert_eq!(arena.bindings(),original_bindings);
+    arena.check_snapshot(&before).unwrap();
+    {
+        let mut tx=arena.begin_transaction().unwrap();
+        tx.split_edge(edge,0.5).unwrap();
+        assert!(tx.split_edge(ArenaHandle{arena_token:u64::MAX,..edge},0.5).is_err());
+        assert!(tx.commit().is_err());
+    }
+    assert_eq!(arena.revision(),0);
+    arena.check_snapshot(&before).unwrap();
+    mass(&arena);
+}
+#[test]
+fn staging_failure_poison_is_atomic_even_when_caller_ignores_error(){
+    failed_staging_poison_prevents_partial_commit();
+}
