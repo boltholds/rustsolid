@@ -36,11 +36,17 @@ pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, Analyti
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
+/// The physical shell orientation may differ from the mathematical
+/// parameterization of the underlying support surface. Cylinder walls of
+/// voids and the planar floor of a top-entry blind bore are reversed.
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+pub enum FaceSense { Forward, Reversed }
 #[derive(Debug, Clone)]
 pub struct BrepFace {
     pub id: FaceId,
     pub loops: Vec<LoopId>,
     pub geometry: FaceGeometry,
+    pub sense:FaceSense,
 }
 
 #[derive(Debug, Clone)]
