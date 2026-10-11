@@ -107,9 +107,13 @@ the generalized `TopologyDeltaPlan` executor. Those remain required gates.
 
 Returns `ok:true`, `data.kind="boolean_region_plan"`,
 `data.state="classified_preview"`, `intersection_arcs:1`, and six
-per-face-region witness samples. `topology_committed:false`,
-`can_apply:false`, and **no solid result** are mandatory.
-`Held` results carry a typed `hold_reason`.
+per-face-region witness samples. The response also contains the independent
+source-validated `topology_intent`: symbolic vertices/arcs/face-change
+counts and **remaining full Boolean requirements**, including
+`region_classification` because sampling a single face pair does not certify
+global region-arrangement completeness.
+`topology_committed:false`, `can_apply:false`, and **no solid result**
+are mandatory. `Held` results carry a typed `hold_reason`.
 
 Run:
 
