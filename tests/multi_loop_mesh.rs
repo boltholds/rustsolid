@@ -204,3 +204,39 @@ fn far_from_origin_stays_watertight_with_local_chart_coordinates(){
         144.-4.*PI*(0.49+0.81),1e-9);
     assert!((result.faceted_volume-result.analytic_volume).abs()<1.0);
 }
+
+#[test]
+fn thirty_two_nonintersecting_holes_stay_watertight_with_bounded_display_work(){
+    let mut holes=Vec::new();
+    for row in 0..6 {
+        for column in 0..6 {
+            if holes.len()==32 {break;}
+            holes.push(params(-2.25+column as f64*0.9,
+                -2.25+row as f64*0.9,0.18));
+        }
+        if holes.len()==32 {break;}
+    }
+    assert_eq!(holes.len(),32);
+    let e=built(&holes);
+    let mesh=e.tessellate(12).unwrap();
+    assert_eq!(e.model().summary().genus,32);
+    assert_eq!(e.model().summary().euler_characteristic,-62);
+    assert_eq!(mesh.bottom_region.loop_count,33);
+    assert_eq!(mesh.mesh.triangle_faces.iter()
+        .filter(|f|f.0>=6).count(),32*12*2);
+    check_facets(&mesh.mesh,e.model(),32,12);
+    assert_close(mesh.analytic_volume,144.-4.*PI*32.*0.18*0.18,1e-8);
+}
+#[test]
+fn fixed_structure_and_resolution_have_deterministic_mesh_and_certificate(){
+    let e=built(&[params(-1.5,-0.2,0.6),params(1.5,0.2,0.7)]);
+    let a=e.tessellate(24).unwrap();
+    let b=e.tessellate(24).unwrap();
+    assert_eq!(a.mesh.vertices,b.mesh.vertices);
+    assert_eq!(a.mesh.triangles,b.mesh.triangles);
+    assert_eq!(a.mesh.triangle_faces,b.mesh.triangle_faces);
+    assert_eq!(a.faceted_volume,b.faceted_volume);
+    assert_eq!(a.faceted_surface_area,b.faceted_surface_area);
+    assert_eq!(a.bottom_region,b.bottom_region);
+    assert_eq!(a.top_region,b.top_region);
+}
