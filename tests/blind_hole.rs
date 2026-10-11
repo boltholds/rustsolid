@@ -371,3 +371,38 @@ fn existing_through_hole_and_standalone_cylinder_have_correct_material_face_sens
     let outward=canonical.oriented_face_normal(FaceId(2),0.0,1.0).unwrap();
     close(outward.x,1.);
 }
+
+#[test]
+fn canonical_brep_validator_rejects_tampered_blind_floor_and_side_orientation(){
+    let b=blind();
+    let mut changed=b.model().clone();
+    changed.faces[7].sense=rustsolid::FaceSense::Forward;
+    assert!(changed.validate().is_err());
+    let mut changed=b.model().clone();
+    changed.faces[6].sense=rustsolid::FaceSense::Forward;
+    assert!(changed.validate().is_err());
+    b.validate().unwrap();
+}
+#[test]
+fn carrier_uv_edits_preserve_material_face_sense_on_blind_floor(){
+    let body=BrepBody::from(blind());
+    let mut editor=rustsolid::BrepCarrierEditor::from_body(&body).unwrap();
+    let original=editor.snapshot();
+    let floor=editor.handle(rustsolid::CarrierOwner::Face(FaceId(7))).unwrap();
+    let side=editor.handle(rustsolid::CarrierOwner::Face(FaceId(6))).unwrap();
+    let mut tx=editor.begin_transaction();
+    tx.rebase_face_uv(floor,0.15,-0.3).unwrap();
+    tx.rebase_face_uv(side,0.0,0.2).unwrap();
+    tx.commit().unwrap();
+    editor.validate().unwrap();
+    assert_eq!(editor.model().face_sense(FaceId(7)),
+        Some(rustsolid::FaceSense::Reversed));
+    assert_eq!(editor.model().face_sense(FaceId(6)),
+        Some(rustsolid::FaceSense::Reversed));
+    close(editor.model().oriented_face_normal(FaceId(7),0.0,0.0).unwrap().y,1.0);
+    close(editor.model().oriented_face_normal(FaceId(6),0.0,0.5).unwrap().x,-1.0);
+    assert_eq!(editor.model().mass,original.model.mass);
+    editor.undo().unwrap().unwrap();
+    assert_eq!(editor.model().face_sense(FaceId(7)),
+        Some(rustsolid::FaceSense::Reversed));
+}
