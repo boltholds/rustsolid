@@ -13,7 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
-    EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
+    EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,6 +21,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_ARENA: AtomicU64 = AtomicU64::new(1);
+static NEXT_TRANSACTION: AtomicU64 = AtomicU64::new(1);
 
 fn invalid(msg:impl Into<String>)->GeometryError {GeometryError::InvalidEdit(msg.into())}
 
@@ -30,6 +31,40 @@ pub struct ArenaHandle {
     pub slot:u32,
     pub generation:u64,
 }
+/// Identifies a staged operation, scoped to one transaction instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ArenaStep {
+    transaction_token: u64,
+    index: usize,
+}
+impl ArenaStep {
+    pub fn index(self) -> usize { self.index }
+    pub fn output(self, role: ArenaOutput) -> ArenaEntityRef {
+        ArenaEntityRef::Created { step: self, role }
+    }
+}
+
+/// Only outputs with a meaningful role in the current Euler operators can
+/// become operands of later commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ArenaOutput {
+    InsertedVertex,
+    RemainderEdge,
+    CreatedFace,
+    DiagonalEdge,
+}
+
+/// Existing handles are resolved by semantic name; created references are
+/// transaction-local and have no persistent arena handle before commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArenaEntityRef {
+    Existing(ArenaHandle),
+    Created { step: ArenaStep, role: ArenaOutput },
+}
+impl From<ArenaHandle> for ArenaEntityRef {
+    fn from(value: ArenaHandle) -> Self { Self::Existing(value) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArenaHandleError {ForeignArena,StaleHandle}
 impl fmt::Display for ArenaHandleError {
@@ -251,7 +286,11 @@ impl BrepArena {
     }
     pub fn begin_transaction(&mut self)->Result<ArenaTransaction<'_>,GeometryError>{
         if !self.is_editable(){return Err(invalid("analytical curved B-rep is read-only in v0.17"));}
-        Ok(ArenaTransaction{arena:self,ops:Vec::new(),failed:false})
+        let token = NEXT_TRANSACTION.fetch_add(1, Ordering::Relaxed);
+        if token == 0 || token == u64::MAX {
+            return Err(invalid("arena transaction token generator exhausted"));
+        }
+        Ok(ArenaTransaction{arena:self,token,ops:Vec::new(),failed:false})
     }
     /// The v0.16 intersection plan is a mathematical *candidate*, not a
     /// committed topology delta. It cannot bypass missing region classification,
@@ -262,42 +301,63 @@ impl BrepArena {
         }
         Err(invalid("generalized curved/Boolean delta executor is not implemented"))
     }
-    fn commit_ops(&mut self,ops:Vec<ArenaOperation>)->Result<ArenaCommit,GeometryError>{
-        if ops.is_empty(){return Err(invalid("empty arena transaction"));}
-        let before=self.registry.clone();
-        let mut batch=Vec::with_capacity(ops.len());
-        for op in ops {
-            let named=|h:ArenaHandle,kind:&str|->Result<TopologyName,GeometryError>{
-                let binding=self.resolve(h).map_err(|err|invalid(err.to_string()))?;
-                let found=match binding.entity {
-                    TopologyEntity::Edge(_)=>"edge",TopologyEntity::Vertex(_)=>"vertex",
-                    TopologyEntity::Face(_)=>"face",_=>"other",
-                };
-                if found!=kind{return Err(invalid(format!("expected {kind}, found {found}")));}
-                Ok(binding.name)
-            };
-            batch.push(match op {
-                ArenaOperation::SplitEdge{edge,fraction}=>EulerCommand::MakeEdgeVertex{
-                    edge:named(edge,"edge")?,fraction},
-                ArenaOperation::SplitFace{face,start,end}=>EulerCommand::MakeEdgeFace{
-                    face:named(face,"face")?,start:named(start,"vertex")?,end:named(end,"vertex")?},
-                ArenaOperation::KillEdgeVertex{vertex}=>EulerCommand::KillEdgeVertex{
-                    vertex:named(vertex,"vertex")?},
-                ArenaOperation::KillEdgeFace{edge,removed_face}=>EulerCommand::KillEdgeFace{
-                    edge:named(edge,"edge")?,removed_face:named(removed_face,"face")?},
-            });
+    fn commit_ops(&mut self, ops: Vec<ArenaOperation>, transaction_token: u64)
+        -> Result<ArenaCommit, GeometryError>
+    {
+        if ops.is_empty() || ops.len() > 256 {
+            return Err(invalid("arena batch must have between 1 and 256 operations"));
         }
-        let ArenaKernel::Editable(current)=&self.storage else{return Err(invalid("arena is read-only"));};
-        let mut candidate=current.clone();
-        let report=candidate.execute(CommandBatch{commands:batch})?;
-        // Reconcile *before* the swap: any error, including registry allocation
-        // or identity mismatch, preserves BOTH the body and identity indexes.
-        let storage=ArenaKernel::Editable(candidate);
-        let mut registry=before.clone();
+        let ArenaKernel::Editable(current) = &self.storage else {
+            return Err(invalid("arena is read-only"));
+        };
+        let before = self.registry.clone();
+        // Never expose partially compiled, edited or reconciled state.
+        let mut candidate = current.clone();
+        let needs_preview = ops.iter().any(ArenaOperation::uses_created);
+        // Only dependent batches require a second private Solid. Use actual
+        // EditDelta outputs; never infer newly minted numeric IDs or names.
+        let mut preview = needs_preview.then(|| current.solid().clone());
+        let mut produced = BTreeMap::<(usize, ArenaOutput), TopologyName>::new();
+        let mut commands = Vec::with_capacity(ops.len());
+        for (index, operation) in ops.iter().enumerate() {
+            let command = compile_operation(
+                &before, operation, transaction_token, index,
+                preview.as_ref(), &produced,
+            )?;
+            if let Some(body) = preview.as_mut() {
+                let (deltas, _) = command.apply_to_candidate(body)?;
+                if deltas.len() != 1 {
+                    return Err(invalid("Euler preview produced an unexpected delta count"));
+                }
+                for (role, entity) in emitted_entities(&deltas[0]) {
+                    let name = body.topology_name(entity)
+                        .ok_or_else(||invalid("new Euler output has no semantic name"))?.clone();
+                    if produced.insert((index, role), name).is_some() {
+                        return Err(invalid("duplicate Euler step output"));
+                    }
+                }
+            }
+            commands.push(command);
+        }
+        // One replayable batch -> one revision and a single undo/redo step.
+        let report = candidate.execute(CommandBatch{commands})?;
+        if let Some(preview) = preview {
+            // Divergence in identity liveness between preflight and committed
+            // batch must abort before publication.
+            for name in produced.values() {
+                let compiled_live = preview.resolve_topology_name(name).is_some();
+                let replay_live = candidate.solid().resolve_topology_name(name).is_some();
+                if compiled_live != replay_live {
+                    return Err(invalid("dependent Euler preview diverged from atomic replay"));
+                }
+            }
+        }
+        let storage = ArenaKernel::Editable(candidate);
+        let mut registry = before.clone();
         registry.reconcile(&storage.named()?)?;
-        let summary=commit_summary(&before,&registry,report);
-        self.storage=storage;
-        self.registry=registry;
+        let summary = commit_summary(&before, &registry, report);
+        self.storage = storage;
+        self.registry = registry;
         debug_assert!(self.validate().is_ok());
         Ok(summary)
     }
@@ -315,6 +375,98 @@ impl BrepArena {
         self.registry=registry;
         debug_assert!(self.validate().is_ok());
         Ok(Some(value))
+    }
+}
+
+/// Classifies topology without relying on the current dense numeric ID.
+fn entity_kind(entity: TopologyEntity) -> &'static str {
+    match entity {
+        TopologyEntity::Vertex(_) => "vertex",
+        TopologyEntity::Edge(_) => "edge",
+        TopologyEntity::Face(_) => "face",
+        _ => "other",
+    }
+}
+
+fn resolve_operand(
+    registry: &Registry,
+    operand: ArenaEntityRef,
+    expected_kind: &str,
+    transaction_token: u64,
+    before_step: usize,
+    preview: Option<&Solid>,
+    produced: &BTreeMap<(usize, ArenaOutput), TopologyName>,
+) -> Result<TopologyName, GeometryError> {
+    let name = match operand {
+        ArenaEntityRef::Existing(handle) => {
+            let binding = registry.binding(handle).map_err(|e|invalid(e.to_string()))?;
+            if entity_kind(binding.entity) != expected_kind {
+                return Err(invalid(format!("expected {expected_kind}, found {}",entity_kind(binding.entity))));
+            }
+            binding.name
+        }
+        ArenaEntityRef::Created { step, role } => {
+            if step.transaction_token != transaction_token || step.index >= before_step {
+                return Err(invalid("foreign or forward Euler output reference"));
+            }
+            produced.get(&(step.index, role)).cloned()
+                .ok_or_else(|| invalid("Euler step output was not produced"))?
+        }
+    };
+    if let Some(body) = preview {
+        // Kills may compact IDs or retire an earlier output. A name must
+        // still resolve in the state at the point of its use.
+        let handle = body.resolve_topology_name(&name)
+            .ok_or_else(||invalid(format!("Euler operand retired before use: {name}")))?;
+        let entity = body.resolve_topology_handle(handle)
+            .map_err(|error|invalid(error.to_string()))?;
+        if entity_kind(entity) != expected_kind {
+            return Err(invalid(format!("expected {expected_kind}, found {}",entity_kind(entity))));
+        }
+    }
+    Ok(name)
+}
+
+fn compile_operation(
+    registry: &Registry,
+    operation: &ArenaOperation,
+    transaction_token: u64,
+    index: usize,
+    preview: Option<&Solid>,
+    produced: &BTreeMap<(usize, ArenaOutput), TopologyName>,
+) -> Result<EulerCommand, GeometryError> {
+    let name = |reference, expected| resolve_operand(
+        registry, reference, expected, transaction_token, index, preview, produced);
+    Ok(match *operation {
+        ArenaOperation::SplitEdge { edge, fraction } => EulerCommand::MakeEdgeVertex {
+            edge: name(edge, "edge")?, fraction,
+        },
+        ArenaOperation::SplitFace { face, start, end } => EulerCommand::MakeEdgeFace {
+            face: name(face, "face")?,
+            start: name(start, "vertex")?,
+            end: name(end, "vertex")?,
+        },
+        ArenaOperation::KillEdgeVertex { vertex } => EulerCommand::KillEdgeVertex {
+            vertex: name(vertex, "vertex")?,
+        },
+        ArenaOperation::KillEdgeFace { edge, removed_face } => EulerCommand::KillEdgeFace {
+            edge: name(edge, "edge")?,
+            removed_face: name(removed_face, "face")?,
+        },
+    })
+}
+
+fn emitted_entities(delta: &EditDelta) -> Vec<(ArenaOutput, TopologyEntity)> {
+    match delta {
+        EditDelta::SplitEdge(split) => vec![
+            (ArenaOutput::InsertedVertex, TopologyEntity::Vertex(split.inserted_vertex)),
+            (ArenaOutput::RemainderEdge, TopologyEntity::Edge(split.created_edge)),
+        ],
+        EditDelta::SplitFace(split) => vec![
+            (ArenaOutput::CreatedFace, TopologyEntity::Face(split.created_face)),
+            (ArenaOutput::DiagonalEdge, TopologyEntity::Edge(split.diagonal_edge)),
+        ],
+        EditDelta::KillEdgeVertex(_) | EditDelta::KillEdgeFace(_) => Vec::new(),
     }
 }
 
