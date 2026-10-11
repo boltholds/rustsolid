@@ -17,6 +17,8 @@ jobs:
         run: cargo test --all-targets
       - name: Independent source-controlled regression cases
         run: cargo test --test regression_corpus
+      - name: Mandatory operator contract gate (analytic, metamorphic, boundaries)
+        run: cargo test --test operator_contracts
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

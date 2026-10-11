@@ -9,7 +9,7 @@
 
 use crate::{
     EditDelta, EditReport, EditTransaction, GeometryError, JournalStats, NameChange,
-    Solid, TopologyEntity, TopologyName,
+    ModelingOperator, Solid, TopologyEntity, TopologyName,
 };
 use crate::edit::EditMemento;
 use serde::{Deserialize, Serialize};
@@ -45,6 +45,20 @@ pub enum EulerCommand {
 }
 
 impl EulerCommand {
+    /// Exhaustive mapping: introducing a new command must update its operator
+    /// quality contract. The pinned manifest then requires analytically
+    /// independent, metamorphic, and boundary witnesses for that new ID.
+    pub fn operator_kind(&self) -> ModelingOperator {
+        match self {
+            Self::SplitEdge { .. } => ModelingOperator::SplitEdge,
+            Self::SplitFace { .. } => ModelingOperator::SplitFace,
+            Self::MakeEdgeVertex { .. } => ModelingOperator::MakeEdgeVertex,
+            Self::MakeEdgeFace { .. } => ModelingOperator::MakeEdgeFace,
+            Self::KillEdgeVertex { .. } => ModelingOperator::KillEdgeVertex,
+            Self::KillEdgeFace { .. } => ModelingOperator::KillEdgeFace,
+        }
+    }
+
     fn resolve(tx: &EditTransaction<'_>, name: &TopologyName) -> Result<TopologyEntity, GeometryError> {
         let handle = tx.preview().resolve_topology_name(name)
             .ok_or_else(|| command_error(format!("unresolved topology name: {name}")))?;

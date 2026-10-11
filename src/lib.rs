@@ -21,6 +21,7 @@ mod unified_brep;
 mod query;
 mod accuracy;
 mod regression;
+mod operator_contract;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -38,6 +39,7 @@ pub use regression::{run_regression_corpus, run_builtin_regressions, minimize_fa
     AnalyticGolden, MetamorphicRelation, RegressionCheck, RegressionCorpus,
     RegressionFixture, RegressionOutcome, RegressionReport, REGRESSION_SCHEMA,
     BUILTIN_REGRESSIONS};
+pub use operator_contract::{ModelingOperator, ALL_MODELING_OPERATORS};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,

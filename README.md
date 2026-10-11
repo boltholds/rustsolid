@@ -234,3 +234,7 @@ CLI operations: `geometry_query` (requires `source` and a selection `query`) and
 ## v0.11: first-party regression corpus
 
 No external CAD engine is treated as a correctness oracle. See [self-contained regression fixtures](docs/regression-corpus.md): pinned independent analytical golden data, metamorphic relations, and reproducible counterexample shrinking, plus a bounded seed-based discovery suite. CI checks the permanent 20-fixture corpus. The `regression_corpus` JSON request produces an outcome report without importing OpenCascade or Parasolid.
+
+## v0.12: mandatory operator quality contracts
+
+The [modeling operator contract gate](docs/operator-contracts.md) covers each registered primitive constructor and every `EulerCommand` variant with an independent analytic oracle, a metamorphic property and at least two invalid-boundary scenarios. The executable, pinned inventory lives in [tests/fixtures/operator_contracts.v1.json](tests/fixtures/operator_contracts.v1.json), while [tests/operator_contracts.rs](tests/operator_contracts.rs) exercises real modeling operations and intentionally malformed manifests. Adding an Euler command without updating its exhaustive operation-kind match cannot compile; omitting its quality contract fails CI. No external CAD backend serves as a truth oracle.

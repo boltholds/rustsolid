@@ -1,0 +1,243 @@
+{
+  "schema": "rustsolid.operator_contracts.v1",
+  "title": "Executable analytic, metamorphic and boundary witness coverage for every supported modeling operator",
+  "operators": [
+    {
+      "operator": "block",
+      "scenarios": [
+        {
+          "id": "block/analytic",
+          "category": "analytic",
+          "fixture": "known/block_2_3_4"
+        },
+        {
+          "id": "block/metamorphic",
+          "category": "metamorphic",
+          "fixture": "known/block_2_3_4"
+        },
+        {
+          "id": "block/boundary/1",
+          "category": "boundary",
+          "fixture": "reject/block_zero_height"
+        },
+        {
+          "id": "block/boundary/2",
+          "category": "boundary",
+          "fixture": "reject/block_sliver_below_tolerance"
+        }
+      ]
+    },
+    {
+      "operator": "extrude_xz",
+      "scenarios": [
+        {
+          "id": "extrude_xz/analytic",
+          "category": "analytic",
+          "fixture": "known/prism_concave_L"
+        },
+        {
+          "id": "extrude_xz/metamorphic",
+          "category": "metamorphic",
+          "fixture": "known/prism_concave_L"
+        },
+        {
+          "id": "extrude_xz/boundary/1",
+          "category": "boundary",
+          "fixture": "reject/profile_bow_tie"
+        },
+        {
+          "id": "extrude_xz/boundary/2",
+          "category": "boundary",
+          "fixture": "reject/profile_duplicate_vertex"
+        }
+      ]
+    },
+    {
+      "operator": "analytic_cylinder",
+      "scenarios": [
+        {
+          "id": "analytic_cylinder/analytic",
+          "category": "analytic",
+          "fixture": "known/cylinder_radius_2"
+        },
+        {
+          "id": "analytic_cylinder/metamorphic",
+          "category": "metamorphic",
+          "fixture": "known/cylinder_radius_2"
+        },
+        {
+          "id": "analytic_cylinder/boundary/1",
+          "category": "boundary",
+          "fixture": "reject/cylinder_tiny_radius"
+        },
+        {
+          "id": "analytic_cylinder/boundary/2",
+          "category": "boundary",
+          "fixture": "reject/cylinder_bad_mesh"
+        }
+      ]
+    },
+    {
+      "operator": "split_edge",
+      "scenarios": [
+        {
+          "id": "split_edge/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "split_edge/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "split_edge/boundary/fraction_zero",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "fraction_zero"
+        },
+        {
+          "id": "split_edge/boundary/fraction_near_endpoint",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "fraction_near_endpoint"
+        }
+      ]
+    },
+    {
+      "operator": "split_face",
+      "scenarios": [
+        {
+          "id": "split_face/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "split_face/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "split_face/boundary/adjacent",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "adjacent"
+        },
+        {
+          "id": "split_face/boundary/repeated",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "repeated"
+        }
+      ]
+    },
+    {
+      "operator": "make_edge_vertex",
+      "scenarios": [
+        {
+          "id": "make_edge_vertex/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "make_edge_vertex/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "make_edge_vertex/boundary/fraction_zero",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "fraction_zero"
+        },
+        {
+          "id": "make_edge_vertex/boundary/fraction_near_endpoint",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "fraction_near_endpoint"
+        }
+      ]
+    },
+    {
+      "operator": "make_edge_face",
+      "scenarios": [
+        {
+          "id": "make_edge_face/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "make_edge_face/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "make_edge_face/boundary/adjacent",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "adjacent"
+        },
+        {
+          "id": "make_edge_face/boundary/repeated",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "repeated"
+        }
+      ]
+    },
+    {
+      "operator": "kill_edge_vertex",
+      "scenarios": [
+        {
+          "id": "kill_edge_vertex/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "kill_edge_vertex/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "kill_edge_vertex/boundary/ordinary_vertex",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "ordinary_vertex"
+        },
+        {
+          "id": "kill_edge_vertex/boundary/unknown_vertex",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "unknown_vertex"
+        }
+      ]
+    },
+    {
+      "operator": "kill_edge_face",
+      "scenarios": [
+        {
+          "id": "kill_edge_face/analytic",
+          "category": "analytic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "kill_edge_face/metamorphic",
+          "category": "metamorphic",
+          "driver": "euler_cuboid"
+        },
+        {
+          "id": "kill_edge_face/boundary/noncoplanar",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "noncoplanar"
+        },
+        {
+          "id": "kill_edge_face/boundary/unknown_face",
+          "category": "boundary",
+          "driver": "euler_cuboid",
+          "variant": "unknown_face"
+        }
+      ]
+    }
+  ]
+}
