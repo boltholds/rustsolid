@@ -46,7 +46,8 @@ impl ArenaStep {
 
 /// Only outputs with a meaningful role in the current Euler operators can
 /// become operands of later commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ArenaOutput {
     InsertedVertex,
     RemainderEdge,
