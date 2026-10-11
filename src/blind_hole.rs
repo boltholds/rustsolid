@@ -188,6 +188,8 @@ impl BlindHoleBrep {
         let expected=Self::build(&self.template,self.parameters)?;
         if self.model.origin!=expected.origin ||
             self.model.summary()!=expected.summary() ||
+            self.model.faces.iter().zip(&expected.faces)
+                .any(|(a,b)|a.sense!=b.sense) ||
             self.model.vertices.iter().map(|v|v.position).collect::<Vec<_>>()!=
                 expected.vertices.iter().map(|v|v.position).collect::<Vec<_>>() ||
             self.model.geometry.curves3!=expected.geometry.curves3 ||
