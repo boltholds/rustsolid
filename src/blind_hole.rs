@@ -513,6 +513,9 @@ fn certify_blind_display(box_:&Solid,model:&BrepModel,mesh:&Mesh,
         let centroid=v0.add(v1).add(v2).scale(1.0/3.0);
         match *owner {
             FaceId(6)=>{
+                if model.face_sense(*owner)!=Some(crate::FaceSense::Reversed){
+                    return Err(invalid("subtractive blind cylinder wall must reverse surface orientation"));
+                }
                 if normal.dot(Point3{x:p.center_x-centroid.x,y:0.0,
                     z:p.center_z-centroid.z})<=0.0 ||
                    [v0,v1,v2].iter().any(|v|{
