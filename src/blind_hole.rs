@@ -564,12 +564,6 @@ fn certify_blind_display(box_:&Solid,model:&BrepModel,mesh:&Mesh,
     }
     Ok((volume,area))
 }
-// Kept local to this constrained analytic floor classifier.
-trait AbsoluteDifference {fn sub_abs(self,rhs:f64)->f64;}
-impl AbsoluteDifference for f64 {
-    fn sub_abs(self,rhs:f64)->f64{(self-rhs).abs()}
-}
-
 impl BrepSource for BlindHoleBrep {
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         self.validate()?;
