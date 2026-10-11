@@ -14,7 +14,8 @@ BooleanOperation::Difference)`, with:
 
 - Left: a fully validated **six-face, eight-vertex axis-aligned box**. A
   generic convex or concave shape is not silently replaced by its AABB.
-- Right: a validated `CylindricalBrep` with a strictly **+Y** axis, its
+- Right: a validated `CylindricalBrep` with a strictly **+Y** axis
+  (machine-representability, not angular-model-tolerance snapping), its
   mathematical upper cap on the box's top (+Y) face, and lower cap
   **strictly inside** the material above the box bottom.
 - The entire circular cross-section is strictly inside all four box
@@ -208,7 +209,7 @@ This avoids confusing the block Z-depth with the bore Y-depth.
 
 ## Independent acceptance and future scope
 
-The **20 independent** `tests/blind_hole.rs` regressions cover exact Euler/genus/loop ownership,
+The **22 independent** `tests/blind_hole.rs` regressions cover exact Euler/genus/loop ownership,
 analytical mass and centroid, source-bound opening traces and tampering
 protection, true cavity material classification, closed display mesh
 orientation, convergence, translated-world robustness, atomic radius/
