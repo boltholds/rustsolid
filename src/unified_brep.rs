@@ -129,6 +129,9 @@ impl From<Solid> for BrepBody {
 impl From<CylindricalBrep> for BrepBody {
     fn from(body: CylindricalBrep) -> Self { Self::Cylinder(body) }
 }
+impl From<ThroughHoleBrep> for BrepBody {
+    fn from(body: ThroughHoleBrep) -> Self { Self::ThroughHole(body) }
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
