@@ -237,7 +237,10 @@ impl BrepModel {
         self.faces.get(id.0 as usize).filter(|f| f.id == id).map(|f| f.loops.as_slice())
     }
     pub fn euler_characteristic(&self) -> isize {
-        self.vertices.len() as isize - self.edges.len() as isize + self.faces.len() as isize
+        // Face domains with holes are not disks: every inner trim loop
+        // subtracts one from the cellular Euler characteristic.
+        let holes=self.loops.iter().filter(|lp|lp.role==crate::LoopRole::Inner).count();
+        self.vertices.len() as isize - self.edges.len() as isize + self.faces.len() as isize - holes as isize
     }
     pub fn summary(&self) -> BrepSummary {
         let mut out = BrepSummary {
