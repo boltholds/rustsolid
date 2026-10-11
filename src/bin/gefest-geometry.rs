@@ -2178,6 +2178,49 @@ mod tests {
 
 
     #[test]
+    fn json_structural_opt_in_display_mesh_preserves_true_analytic_brep(){
+        let input=r#"{"operation":"structural_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add_through_hole","center":[-1.5,0],"radius":0.5},
+            {"kind":"add_through_hole","center":[1.5,0],"radius":0.7}
+          ]],"display_segments":48}"#;
+        let result=process(input);
+        assert!(result.ok,"{:?}",result.error);
+        let data=result.data.unwrap();
+        let solid=result.solid.unwrap();
+        assert_eq!(data["hole_count"],2);
+        assert_eq!(data["topology"]["genus"],2);
+        assert_eq!(data["display_mesh_available"],true);
+        assert_eq!(data["display_mesh_included"],true);
+        assert_eq!(data["display_quality"]["segments_per_hole"],48);
+        assert_eq!(data["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert!(data["display_quality"]["volume_faceting_error"].as_f64().unwrap()>0.0);
+        assert_eq!(data["display_quality"]["bottom_cap_region"]["loop_count"],3);
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        assert_eq!(solid.vertices.len(),8+2*48*2);
+        assert_eq!(solid.topology.faces,8);
+        assert_eq!(solid.topology.euler_characteristic,-2);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["mesh_is_display_only"],true);
+        assert!((solid.mass.volume-(144.0-4.0*std::f64::consts::PI*(0.25+0.49))).abs()<1e-9);
+    }
+    #[test]
+    fn json_structural_display_segmentation_error_does_not_return_partial_brep(){
+        for segments in [0,11,513]{
+            let request=format!(r#"{{"operation":"structural_transaction",
+              "source":{{"kind":"block","origin":[-3,-1,-3],
+                  "width":6,"height":4,"depth":6}},
+              "batches":[[{{"kind":"add_through_hole",
+                  "center":[0,0],"radius":1}}]],
+              "display_segments":{segments}}}"#);
+            let response=process(&request);
+            assert!(!response.ok);
+            assert!(response.solid.is_none());
+            assert!(response.data.is_none());
+            assert!(response.error.unwrap().contains("segments"));
+        }
+    }
+    #[test]
     fn json_structural_brep_adds_two_true_holes_and_recomputes_genus_mass(){
         let input=r#"{"operation":"structural_transaction",
           "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
