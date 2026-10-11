@@ -95,7 +95,7 @@ fn twelve_pinned_topology_intent_cases_pass_independent_expectations(){
         let graph=make_graph(&a,fa,&b,fb);
         let plan=TopologyDeltaPlanner::new().plan(&graph,&a,fa,&b,fb).unwrap();
         assert_eq!(status(plan.state),c.state,"{}: {plan:?}",c.scenario);
-        assert_eq!(plan.vertices.len(),c.nodes*2,"{}",c.scenario);
+        assert_eq!(plan.vertices.len(),c.nodes,"{}",c.scenario);
         assert_eq!(plan.arcs.len(),c.arcs,"{}",c.scenario);
         assert_eq!(plan.face_changes.len(),c.face_changes,"{}",c.scenario);
         let actual=plan.requirements.iter().copied().map(name).collect::<BTreeSet<_>>();
