@@ -439,3 +439,24 @@ fn remove_and_replace_in_same_slot_never_aliases_on_undo_or_redo(){
     assert_eq!(e.resolve(replacement),Err(StructuralHandleError::StaleHole));
     assert_eq!(e.resolve(back),Err(StructuralHandleError::StaleHole));
 }
+
+#[test]
+fn existing_read_only_geometry_query_can_inspect_multi_hole_canonical_brep(){
+    let mut e=editor();
+    {
+        let mut tx=e.begin_transaction();
+        tx.add_through_hole(h(-1.5,0.,0.5)).unwrap();
+        tx.add_through_hole(h(1.5,0.,0.7)).unwrap();
+        tx.commit().unwrap();
+    }
+    let query="query { body { kind topology { faceCount circularEdges seamEdges genus } mass { volume } } }";
+    let result=rustsolid::geometry_query(e.model(),query,
+        rustsolid::QueryLimits::default()).unwrap();
+    assert_eq!(result["body"]["kind"],"analytic_multiple_through_holes");
+    assert_eq!(result["body"]["topology"]["faceCount"],8);
+    assert_eq!(result["body"]["topology"]["circularEdges"],4);
+    assert_eq!(result["body"]["topology"]["seamEdges"],2);
+    assert_eq!(result["body"]["topology"]["genus"],2);
+    eq(result["body"]["mass"]["volume"].as_f64().unwrap(),
+        144.0-4.0*PI*(0.25+0.49));
+}
