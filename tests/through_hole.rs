@@ -174,3 +174,38 @@ fn facet_count_cannot_affect_analytic_hole_geometry(){
         assert!((h.model().mass.volume-reference.volume).abs()<1e-12);
     }
 }
+
+#[test]
+fn display_tessellation_is_watertight_and_converges_without_defining_brep(){
+    use std::collections::BTreeMap;
+    let h=hole();
+    let volume=h.model().mass.volume;
+    let mut errors=Vec::new();
+    for segments in [24,96,384] {
+        let mesh=h.tessellate(segments).unwrap();
+        let mut uses=BTreeMap::<(u32,u32),Vec<bool>>::new();
+        let mut signed_six=0.0;
+        let anchor=p(-3.,-1.,-3.);
+        for triangle in &mesh.triangles {
+            let [a,b,c]=*triangle;
+            for (u,v) in [(a,b),(b,c),(c,a)]{
+                uses.entry((u.min(v),u.max(v))).or_default().push(u<v);
+            }
+            let aa=mesh.vertices[a as usize];
+            let bb=mesh.vertices[b as usize];
+            let cc=mesh.vertices[c as usize];
+            let u=p(aa.x-anchor.x,aa.y-anchor.y,aa.z-anchor.z);
+            let v=p(bb.x-anchor.x,bb.y-anchor.y,bb.z-anchor.z);
+            let w=p(cc.x-anchor.x,cc.y-anchor.y,cc.z-anchor.z);
+            signed_six+=u.x*(v.y*w.z-v.z*w.y)
+                +u.y*(v.z*w.x-v.x*w.z)
+                +u.z*(v.x*w.y-v.y*w.x);
+        }
+        assert!(uses.values().all(|use_dirs|use_dirs.len()==2 &&
+            use_dirs[0]!=use_dirs[1]),"display mesh must be closed and oriented");
+        assert!(signed_six>0.0,"outward display mesh must have positive volume");
+        errors.push((signed_six/6.0-volume).abs());
+    }
+    assert!(errors[2]<errors[0],"tessellation converges to analytic mass");
+    assert!(errors[2]<0.005,"high-resolution display mass is near analytic value");
+}
