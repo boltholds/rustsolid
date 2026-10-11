@@ -401,3 +401,41 @@ fn exceeded_structural_stage_budget_blocks_partial_commit(){
     assert_eq!(e.undo_depth(),0);
     prove(&e,&[]);
 }
+
+#[test]
+fn remove_and_replace_in_same_slot_never_aliases_on_undo_or_redo(){
+    let mut e=editor();
+    let initial={
+        let mut tx=e.begin_transaction();
+        let handle=tx.add_through_hole(h(-1.5,0.,0.5)).unwrap();
+        tx.commit().unwrap();handle
+    };
+    let replacement={
+        let mut tx=e.begin_transaction();
+        tx.remove_through_hole(initial).unwrap();
+        let inserted=tx.add_through_hole(h(1.5,0.,0.5)).unwrap();
+        assert_eq!(inserted.slot,initial.slot);
+        assert_ne!(inserted.generation,initial.generation);
+        let report=tx.commit().unwrap();
+        assert_eq!(report.retired.len(),1);
+        assert_eq!(report.created.len(),1);
+        inserted
+    };
+    prove(&e,&[h(1.5,0.,0.5)]);
+    assert_eq!(e.resolve(initial),Err(StructuralHandleError::StaleHole));
+    e.undo().unwrap().unwrap();
+    prove(&e,&[h(-1.5,0.,0.5)]);
+    let back=e.handle(initial.slot).unwrap();
+    assert_ne!(back,initial,"undo must not resurrect the retired handle");
+    assert_ne!(back,replacement,"undo must not alias replacement with restored hole");
+    assert_eq!(e.resolve(replacement),Err(StructuralHandleError::StaleHole));
+    assert_eq!(e.resolve(initial),Err(StructuralHandleError::StaleHole));
+    e.redo().unwrap().unwrap();
+    prove(&e,&[h(1.5,0.,0.5)]);
+    let redone=e.handle(initial.slot).unwrap();
+    assert_ne!(redone,back);
+    assert_ne!(redone,replacement);
+    assert_ne!(redone,initial);
+    assert_eq!(e.resolve(replacement),Err(StructuralHandleError::StaleHole));
+    assert_eq!(e.resolve(back),Err(StructuralHandleError::StaleHole));
+}
