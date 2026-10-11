@@ -490,63 +490,155 @@ pub struct ArenaCommit {
     pub remapped:Vec<ArenaRemap>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone, Copy)]
 enum ArenaOperation {
-    SplitEdge{edge:ArenaHandle,fraction:f64},
-    SplitFace{face:ArenaHandle,start:ArenaHandle,end:ArenaHandle},
-    KillEdgeVertex{vertex:ArenaHandle},
-    KillEdgeFace{edge:ArenaHandle,removed_face:ArenaHandle},
+    SplitEdge { edge: ArenaEntityRef, fraction: f64 },
+    SplitFace { face: ArenaEntityRef, start: ArenaEntityRef, end: ArenaEntityRef },
+    KillEdgeVertex { vertex: ArenaEntityRef },
+    KillEdgeFace { edge: ArenaEntityRef, removed_face: ArenaEntityRef },
+}
+impl ArenaOperation {
+    fn output_kind(&self, output: ArenaOutput) -> Option<&'static str> {
+        match (self, output) {
+            (Self::SplitEdge { .. }, ArenaOutput::InsertedVertex) => Some("vertex"),
+            (Self::SplitEdge { .. }, ArenaOutput::RemainderEdge) => Some("edge"),
+            (Self::SplitFace { .. }, ArenaOutput::CreatedFace) => Some("face"),
+            (Self::SplitFace { .. }, ArenaOutput::DiagonalEdge) => Some("edge"),
+            _ => None,
+        }
+    }
+    fn uses_created(&self) -> bool {
+        let created = |r: ArenaEntityRef| matches!(r, ArenaEntityRef::Created { .. });
+        match *self {
+            Self::SplitEdge { edge, .. } => created(edge),
+            Self::SplitFace { face, start, end } =>
+                created(face) || created(start) || created(end),
+            Self::KillEdgeVertex { vertex } => created(vertex),
+            Self::KillEdgeFace { edge, removed_face } =>
+                created(edge) || created(removed_face),
+        }
+    }
 }
 
-/// Staged modeling edits. Dropping without commit has no effect. A committed
-/// batch is one CommandHistory revision and one undoable Memento.
+/// Staged modeling edits. A placeholder may refer only to an output from a
+/// strictly earlier stage in the same transaction. Neither staging nor failed
+/// dependency preflight changes the arena. A successful batch is one Memento.
 pub struct ArenaTransaction<'a> {
-    arena:&'a mut BrepArena,
-    ops:Vec<ArenaOperation>,
-    // Like Solid::EditTransaction, one rejected operation poisons the entire
-    // staged batch. Ignoring its Result must never commit earlier operations.
-    failed:bool,
+    arena: &'a mut BrepArena,
+    token: u64,
+    ops: Vec<ArenaOperation>,
+    // Even if the caller ignores Err, a failed stage makes commit impossible.
+    failed: bool,
 }
 impl ArenaTransaction<'_> {
-    fn checked(&mut self,handle:ArenaHandle,kind:&str)->Result<(),GeometryError>{
-        if self.failed {return Err(invalid("arena transaction already failed"));}
-        let result=self.arena.resolve(handle).map_err(|e|invalid(e.to_string()))
-            .and_then(|binding|{
-                let actual=match binding.entity {
-                    TopologyEntity::Vertex(_)=>"vertex",TopologyEntity::Edge(_)=>"edge",
-                    TopologyEntity::Face(_)=>"face",_=>"other",
-                };
-                if actual!=kind {Err(invalid(format!("expected {kind}, found {actual}")))}
-                else {Ok(())}
-            });
-        if result.is_err(){self.failed=true;}
+    fn checked(&mut self, reference: ArenaEntityRef, expected_kind: &str)
+        -> Result<(), GeometryError>
+    {
+        if self.failed { return Err(invalid("arena transaction already failed")); }
+        let result = match reference {
+            ArenaEntityRef::Existing(handle) => self.arena.resolve(handle)
+                .map_err(|error|invalid(error.to_string()))
+                .and_then(|binding| {
+                    let actual = entity_kind(binding.entity);
+                    if actual == expected_kind { Ok(()) }
+                    else { Err(invalid(format!("expected {expected_kind}, found {actual}"))) }
+                }),
+            ArenaEntityRef::Created { step, role } => {
+                if step.transaction_token != self.token {
+                    Err(invalid("output belongs to another arena transaction"))
+                } else if step.index >= self.ops.len() {
+                    Err(invalid("Euler output must come from an earlier stage"))
+                } else {
+                    match self.ops[step.index].output_kind(role) {
+                        Some(actual) if actual == expected_kind => Ok(()),
+                        Some(actual) => Err(invalid(format!(
+                            "expected {expected_kind}, found produced {actual}"))),
+                        None => Err(invalid("operation does not produce the requested Euler output")),
+                    }
+                }
+            }
+        };
+        if result.is_err() { self.failed = true; }
         result
     }
-    pub fn split_edge(&mut self,edge:ArenaHandle,fraction:f64)->Result<(),GeometryError>{
-        self.checked(edge,"edge")?;
-        if !fraction.is_finite()||fraction<=0.0||fraction>=1.0 {
-            self.failed=true;
+    fn stage(&mut self, operation: ArenaOperation) -> Result<ArenaStep, GeometryError> {
+        if self.failed { return Err(invalid("arena transaction already failed")); }
+        if self.ops.len() >= 256 {
+            self.failed = true;
+            return Err(invalid("arena transaction cannot exceed 256 commands"));
+        }
+        let step = ArenaStep { transaction_token: self.token, index: self.ops.len() };
+        self.ops.push(operation);
+        Ok(step)
+    }
+
+    /// Backwards-compatible handle-only API; see split_edge_ref for outputs.
+    pub fn split_edge(&mut self, edge: ArenaHandle, fraction: f64)
+        -> Result<(), GeometryError>
+    {
+        self.split_edge_ref(edge, fraction).map(|_| ())
+    }
+    /// The returned step can supply InsertedVertex and RemainderEdge operands.
+    pub fn split_edge_ref(&mut self, edge: impl Into<ArenaEntityRef>, fraction: f64)
+        -> Result<ArenaStep, GeometryError>
+    {
+        let edge = edge.into();
+        self.checked(edge, "edge")?;
+        if !fraction.is_finite() || fraction <= 0.0 || fraction >= 1.0 {
+            self.failed = true;
             return Err(invalid("split fraction must be strictly interior and finite"));
         }
-        self.ops.push(ArenaOperation::SplitEdge{edge,fraction});Ok(())
+        self.stage(ArenaOperation::SplitEdge { edge, fraction })
     }
-    pub fn split_face(&mut self,face:ArenaHandle,start:ArenaHandle,end:ArenaHandle)
-        ->Result<(),GeometryError>{
-        self.checked(face,"face")?;self.checked(start,"vertex")?;self.checked(end,"vertex")?;
-        self.ops.push(ArenaOperation::SplitFace{face,start,end});Ok(())
+    pub fn split_face(&mut self, face: ArenaHandle, start: ArenaHandle, end: ArenaHandle)
+        -> Result<(), GeometryError>
+    {
+        self.split_face_ref(face, start, end).map(|_| ())
     }
-    pub fn kill_edge_vertex(&mut self,vertex:ArenaHandle)->Result<(),GeometryError>{
-        self.checked(vertex,"vertex")?;
-        self.ops.push(ArenaOperation::KillEdgeVertex{vertex});Ok(())
+    /// The returned step can supply CreatedFace and DiagonalEdge operands.
+    pub fn split_face_ref(
+        &mut self,
+        face: impl Into<ArenaEntityRef>,
+        start: impl Into<ArenaEntityRef>,
+        end: impl Into<ArenaEntityRef>,
+    ) -> Result<ArenaStep, GeometryError> {
+        let (face, start, end) = (face.into(), start.into(), end.into());
+        self.checked(face, "face")?;
+        self.checked(start, "vertex")?;
+        self.checked(end, "vertex")?;
+        self.stage(ArenaOperation::SplitFace { face, start, end })
     }
-    pub fn kill_edge_face(&mut self,edge:ArenaHandle,removed_face:ArenaHandle)
-        ->Result<(),GeometryError>{
-        self.checked(edge,"edge")?;self.checked(removed_face,"face")?;
-        self.ops.push(ArenaOperation::KillEdgeFace{edge,removed_face});Ok(())
+    pub fn kill_edge_vertex(&mut self, vertex: ArenaHandle)
+        -> Result<(), GeometryError>
+    {
+        self.kill_edge_vertex_ref(vertex).map(|_| ())
     }
-    pub fn staged_len(&self)->usize{self.ops.len()}
-    pub fn commit(self)->Result<ArenaCommit,GeometryError>{
-        if self.failed {return Err(invalid("cannot commit an arena transaction after a rejected stage"));}
-        self.arena.commit_ops(self.ops)
+    pub fn kill_edge_vertex_ref(&mut self, vertex: impl Into<ArenaEntityRef>)
+        -> Result<ArenaStep, GeometryError>
+    {
+        let vertex = vertex.into();
+        self.checked(vertex, "vertex")?;
+        self.stage(ArenaOperation::KillEdgeVertex { vertex })
+    }
+    pub fn kill_edge_face(&mut self, edge: ArenaHandle, removed_face: ArenaHandle)
+        -> Result<(), GeometryError>
+    {
+        self.kill_edge_face_ref(edge, removed_face).map(|_| ())
+    }
+    pub fn kill_edge_face_ref(
+        &mut self, edge: impl Into<ArenaEntityRef>,
+        removed_face: impl Into<ArenaEntityRef>,
+    ) -> Result<ArenaStep, GeometryError> {
+        let (edge, removed_face) = (edge.into(), removed_face.into());
+        self.checked(edge, "edge")?;
+        self.checked(removed_face, "face")?;
+        self.stage(ArenaOperation::KillEdgeFace { edge, removed_face })
+    }
+    pub fn staged_len(&self) -> usize { self.ops.len() }
+    pub fn commit(self) -> Result<ArenaCommit, GeometryError> {
+        if self.failed {
+            return Err(invalid("cannot commit an arena transaction after a rejected stage"));
+        }
+        self.arena.commit_ops(self.ops, self.token)
     }
 }
