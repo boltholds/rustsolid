@@ -5,6 +5,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
     ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
+    BrepCompositeEditor,AnalyticCut,CompositeCutTransaction,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -44,6 +45,9 @@ enum GeometryRequest {
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
+    CompositeTransaction {source:SolidSource,batches:Vec<Vec<CompositeCommandInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
@@ -249,6 +253,10 @@ enum BrepInput {
         center:[f64;2],radius:f64,bore_depth:f64,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticCompositeCuts {origin:[f64;3],width:f64,height:f64,depth:f64,
+        cuts:Vec<CompositeCutInput>,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -281,6 +289,15 @@ impl BrepInput {
                     width,height,depth,tolerance.unwrap_or_default())?;
                 let body=BlindHoleBrep::from_box(&block,BlindHoleParameters{
                     center_x:center[0],center_z:center[1],radius,depth:bore_depth})?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticCompositeCuts{origin,width,height,depth,cuts,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let analytic=cuts.into_iter().map(CompositeCutInput::analytic)
+                    .collect::<Vec<_>>();
+                let body=BrepCompositeEditor::from_cuts(block,&analytic)?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
@@ -1212,6 +1229,206 @@ fn structural_binding_json(x:rustsolid::StructuralHoleBinding)->Value{
             x.topology.side_loop.0],
     })
 }
+
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum CompositeCutInput {
+    Through {center:[f64;2],radius:f64},
+    Blind {center:[f64;2],radius:f64,depth:f64},
+}
+impl CompositeCutInput{
+    fn analytic(self)->AnalyticCut{
+        match self{
+            Self::Through{center,radius}=>AnalyticCut::Through(
+                HoleParameters{center_x:center[0],center_z:center[1],radius}),
+            Self::Blind{center,radius,depth}=>AnalyticCut::Blind(
+                BlindHoleParameters{center_x:center[0],center_z:center[1],radius,depth}),
+        }
+    }
+}
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum CompositeCommandInput {
+    Add {cut:CompositeCutInput},
+    Remove {slot:u32},
+    Replace {slot:u32,cut:CompositeCutInput},
+}
+impl CompositeCommandInput{
+    fn stage(self,tx:&mut CompositeCutTransaction<'_>)->Result<(),GeometryError>{
+        match self {
+            Self::Add{cut}=>{tx.add(cut.analytic())?;}
+            Self::Remove{slot}=>{
+                let h=tx.handle(slot).ok_or_else(||
+                    GeometryError::InvalidEdit(format!("unknown composite cut slot {slot}")))?;
+                tx.remove(h)?;
+            }
+            Self::Replace{slot,cut}=>{
+                let h=tx.handle(slot).ok_or_else(||
+                    GeometryError::InvalidEdit(format!("unknown composite cut slot {slot}")))?;
+                tx.replace(h,cut.analytic())?;
+            }
+        }
+        Ok(())
+    }
+}
+fn composite_binding_json(b:rustsolid::CompositeCutBinding)->Value{
+    json!({
+        "slot":b.handle.slot,"generation":b.handle.generation,
+        "editor_token":b.handle.editor_token,
+        "kind":b.cut.kind(),"center":b.cut.center(),
+        "radius":b.cut.radius(),
+        "depth":match b.cut{AnalyticCut::Through(_)=>Value::Null,
+            AnalyticCut::Blind(p)=>json!(p.depth)},
+        "side_face_id":b.topology.side_face.0,
+        "floor_face_id":b.topology.floor_face.map(|f|f.0),
+        "circle_edge_ids":[b.topology.lower_edge.0,b.topology.upper_edge.0],
+        "seam_edge_id":b.topology.seam_edge.0,
+        "loop_ids":[b.topology.lower_loop.0,b.topology.upper_loop.0,
+            b.topology.side_loop.0],
+    })
+}
+fn evaluate_composite_transaction(source:SolidSource,
+    batches:Vec<Vec<CompositeCommandInput>>,undo:usize,redo:usize,
+    display_segments:Option<usize>)->Response
+{
+    let result=(||->Result<(Value,Option<SolidResponse>),GeometryError>{
+        if batches.len()>64 || undo>64 || redo>64 {
+            return Err(GeometryError::InvalidEdit(
+                "composite session requires at most 64 batches and 64 transitions".into()));
+        }
+        let mut editor=BrepCompositeEditor::new(source.build()?)?;
+        let mut commits=Vec::new();
+        for batch in batches {
+            if batch.is_empty() || batch.len()>256 {
+                return Err(GeometryError::InvalidEdit(
+                    "composite cut batch must contain between 1 and 256 operations".into()));
+            }
+            let mut tx=editor.begin_transaction();
+            for op in batch {op.stage(&mut tx)?;}
+            let c=tx.commit()?;
+            let created=c.created.into_iter().map(composite_binding_json)
+                .collect::<Vec<_>>();
+            let retired=c.retired.into_iter().map(composite_binding_json)
+                .collect::<Vec<_>>();
+            let remapped=c.remapped.into_iter().map(|(handle,before,after)|json!({
+                "slot":handle.slot,"generation":handle.generation,
+                "before_side_face_id":before.side_face.0,
+                "after_side_face_id":after.side_face.0,
+                "before_floor_face_id":before.floor_face.map(|f|f.0),
+                "after_floor_face_id":after.floor_face.map(|f|f.0),
+            })).collect::<Vec<_>>();
+            commits.push(json!({
+                "revision_before":c.revision_before,
+                "revision_after":c.revision_after,
+                "command_count":c.command_count,
+                "created":created,"retired":retired,"remapped":remapped,
+            }));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            let t=editor.undo()?.ok_or_else(||
+                GeometryError::InvalidEdit("composite undo exceeds history".into()))?;
+            transitions.push(json!({"kind":"undo","revision_after":t.revision_after}));
+        }
+        for _ in 0..redo{
+            let t=editor.redo()?.ok_or_else(||
+                GeometryError::InvalidEdit("composite redo exceeds history".into()))?;
+            transitions.push(json!({"kind":"redo","revision_after":t.revision_after}));
+        }
+        editor.validate()?;
+        let display=display_segments.map(|n|editor.tessellate(n)).transpose()?;
+        let model=editor.model();
+        let t=model.summary();
+        let bindings=editor.bindings();
+        let through_count=bindings.iter().filter(|b|b.cut.is_through()).count();
+        let blind_count=bindings.len()-through_count;
+        let face_sources=std::iter::once(json!({
+            "result_faces":[0,1,2,3,4,5],
+            "operand":"box",
+        })).chain(bindings.iter().map(|b|json!({
+            "feature_slot":b.handle.slot,
+            "feature_generation":b.handle.generation,
+            "operand":"cut",
+            "cut_kind":b.cut.kind(),
+            "side_result_face_id":b.topology.side_face.0,
+            "side_source_face_id":2,
+            "floor_result_face_id":b.topology.floor_face.map(|f|f.0),
+            "floor_source_face_id":b.topology.floor_face.map(|_|0),
+            "reversed":true,
+        }))).collect::<Vec<_>>();
+        let display_quality=display.as_ref().map(|m|json!({
+            "closed_oriented_manifold_certified":true,
+            "segments_per_cut":m.segments,
+            "facet_triangles":m.mesh.triangles.len(),
+            "bottom_cap":{"loops":m.bottom.loops,
+                "triangles":m.bottom.triangles,"area":m.bottom.polygonal_area},
+            "top_cap":{"loops":m.top.loops,
+                "triangles":m.top.triangles,"area":m.top.polygonal_area},
+            "faceted_volume":m.faceted_volume,
+            "faceted_surface_area":m.faceted_surface_area,
+            "exact_analytic_volume":m.analytic_volume,
+            "volume_faceting_error":m.faceting_volume_error,
+        }));
+        let solid=display.map(|m|SolidResponse{
+            vertices:m.mesh.vertices.iter().map(|v|v.array()).collect(),
+            faces:m.mesh.triangles,
+            triangle_face_ids:m.mesh.triangle_faces.iter()
+                .map(|id|id.0).collect(),
+            topology:Topology {
+                vertices:t.vertices,edges:t.edges,
+                coedges:t.coedges,loops:t.loops,faces:t.faces,
+                shells:t.shells,euler_characteristic:t.euler_characteristic,
+            },
+            mass:Mass{volume:model.mass.volume,
+                surface_area:model.mass.surface_area,
+                centroid:model.mass.centroid.array()},
+            bbox:[model.bbox.min.array(),model.bbox.max.array()],
+            edit_report:None,history:None,
+            analytic_brep:Some(json!({
+                "representation":"analytic_composite_cuts",
+                "through_cuts":through_count,"blind_cuts":blind_count,
+                "inner_loops":model.loops.iter().filter(|lp|
+                    lp.role==rustsolid::LoopRole::Inner).count(),
+                "genus":t.genus,"display_mesh_is_not_boundary_definition":true,
+            })),
+            brep:None,
+        });
+        let data=json!({
+            "kind":"composite_analytic_cuts","state":"committed",
+            "representation":"analytic_composite_cuts",
+            "revision":editor.revision(),"editor_token":editor.editor_token(),
+            "cut_count":bindings.len(),
+            "through_cuts":through_count,"blind_cuts":blind_count,
+            "cuts":bindings.into_iter().map(composite_binding_json)
+                .collect::<Vec<_>>(),
+            "face_sources":face_sources,
+            "topology":{"vertices":t.vertices,"edges":t.edges,
+                "coedges":t.coedges,"loops":t.loops,"faces":t.faces,
+                "shells":t.shells,"genus":t.genus,
+                "euler_characteristic":t.euler_characteristic,
+                "cylindrical_faces":t.cylindrical_faces,
+                "circular_edges":t.circular_edges,"seam_edges":t.seam_edges},
+            "mass":{"volume":model.mass.volume,"surface_area":model.mass.surface_area,
+                "centroid":model.mass.centroid.array()},
+            "topology_committed":true,
+            "display_mesh_available":true,
+            "display_mesh_included":solid.is_some(),
+            "display_quality":display_quality,
+            "undo_depth":editor.undo_depth(),"redo_depth":editor.redo_depth(),
+            "commits":commits,"transitions":transitions,
+            "generalized_topology_delta_can_apply":false,
+            "note":"Independent exact mixed analytic B-rep. Process-local cut handles are never persistent CAD feature IDs."
+        });
+        Ok((data,solid))
+    })();
+    match result{
+        Ok((data,solid))=>Response{schema_version:"geometry.v1",ok:true,
+            solid,data:Some(data),error:None},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,data:None,error:Some(error.to_string())},
+    }
+}
+
 fn evaluate_structural_transaction(
     source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
     undo:usize,redo:usize,display_segments:Option<usize>,
@@ -1625,6 +1842,8 @@ fn process(input: &str) -> Response {
             return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
+        Ok(GeometryRequest::CompositeTransaction{source,batches,undo,redo,display_segments}) =>
+            return evaluate_composite_transaction(source,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
