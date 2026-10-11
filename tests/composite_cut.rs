@@ -376,3 +376,43 @@ fn sequence_rejects_overlap_wrong_mode_and_unsupported_non_cylinders(){
     assert!(rustsolid::BooleanKernel::apply_sequence(&left,
         &[],rustsolid::BooleanOperation::Difference).is_err());
 }
+
+#[test]
+fn cloning_an_editor_creates_a_fresh_feature_handle_namespace(){
+    let original=model(&mix());
+    let live=original.handle(0).unwrap();
+    let cloned=original.clone();
+    assert_ne!(original.editor_token(),cloned.editor_token());
+    assert_eq!(cloned.resolve(live),Err(CompositeHandleError::ForeignEditor));
+    assert_ne!(cloned.handle(0).unwrap(),live);
+    prove(&original,1,1);
+    prove(&cloned,1,1);
+    approx(original.model().mass.volume,cloned.model().mass.volume,1e-9);
+}
+#[test]
+fn maximum_32_mixed_disjoint_features_form_closed_exact_genus_16_body(){
+    let mut cuts=Vec::new();
+    for row in 0..6 {
+        for col in 0..6 {
+            if cuts.len()==32{break;}
+            let x=-2.25+col as f64*0.9;
+            let z=-2.25+row as f64*0.9;
+            let cut=if cuts.len()%2==0 {
+                through(x,z,0.18)
+            }else{
+                blind(x,z,0.18,1.7)
+            };
+            cuts.push(cut);
+        }
+        if cuts.len()==32{break;}
+    }
+    assert_eq!(cuts.len(),32);
+    let e=model(&cuts);
+    prove(&e,16,16);
+    let m=e.tessellate(12).unwrap();
+    assert_eq!(m.bottom.loops,17);
+    assert_eq!(m.top.loops,33);
+    assert_eq!(m.mesh.triangle_faces.len(),m.mesh.triangles.len());
+    assert!(m.faceting_volume_error>=0.);
+    assert_eq!(e.model().summary().genus,16);
+}
