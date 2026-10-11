@@ -413,3 +413,47 @@ fn nonorthonormal_circle_frame_is_rejected_even_when_all_points_match(){
     e.check_snapshot(&snap).unwrap();
     e.validate().unwrap();
 }
+
+#[test]
+fn periodic_trim_outside_its_uv_chart_is_not_a_valid_reparameterization(){
+    let mut e=editor(&cylinder());
+    let baseline=e.snapshot();
+    let source=e.model().coedge_pcurve(CoedgeId(0)).unwrap();
+    let Curve2::Line(line)=source else {panic!("periodic cylindrical side has line pcurve")};
+    // u+2*pi represents the same 3D cylinder point but crosses the
+    // declared [0,2*pi] UV chart. Silent seam relabeling is forbidden.
+    let shifted=Curve2::Line(rustsolid::Line2{
+        origin:Point2Param{u:line.origin.u+TAU,v:line.origin.v},
+        delta:line.delta,
+    });
+    let domain=e.model().geometry.coedges[0].domain;
+    let handle=trim(&e,0);
+    let mut tx=e.begin_transaction();
+    tx.replace_trim(handle,shifted,domain).unwrap();
+    assert!(tx.commit().is_err());
+    assert_eq!(e.revision(),0);
+    e.check_snapshot(&baseline).unwrap();
+    e.validate().unwrap();
+}
+#[test]
+fn committed_cylinder_uv_rebase_keeps_trimmed_intersection_graph_usable(){
+    let other=Solid::block(p(-3.,2.,-3.),6.,1.,6.).unwrap();
+    let other_model=other.geometry_store(rustsolid::ModelUnits::default()).unwrap();
+    let _=other_model; // confirm source geometry adapters remain compatible
+    let first=block().shared().unwrap();
+    let mut editor=editor(&cylinder());
+    let cylindrical_side=face(&editor,2);
+    let mut tx=editor.begin_transaction();
+    tx.rebase_face_uv(cylindrical_side,0.0,0.25).unwrap();
+    tx.commit().unwrap();
+    editor.validate().unwrap();
+    let flat=rustsolid::BrepModel::from_polyhedral(
+        &other,rustsolid::ModelUnits::default()).unwrap();
+    let graph=rustsolid::IntersectionGraphBuilder::new(
+        GeometryTolerance::default()).unwrap()
+        .intersect_faces(&flat,FaceId(0),editor.model(),FaceId(2)).unwrap();
+    assert_eq!(graph.arcs.len(),1);
+    assert!(graph.arcs[0].closed);
+    assert_eq!(editor.model().summary().genus,0);
+    let _=first;
+}
