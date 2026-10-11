@@ -1,6 +1,7 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
+    ArenaHandle, BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
     TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity,
@@ -32,6 +33,8 @@ enum GeometryRequest {
     TopologyDeltaPlan { first: FaceOperand, second: FaceOperand,
         #[serde(default)] tolerance:Option<GeometryTolerance>,
         #[serde(default)] samples:Option<usize> },
+    ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
+        #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
     RegressionCorpus,
@@ -764,6 +767,141 @@ fn evaluate_topology_delta_plan(first:FaceOperand,second:FaceOperand,
     }
 }
 
+
+#[derive(Debug, Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum ArenaCommandInput {
+    SplitEdge {edge_id:u32,fraction:f64},
+    SplitFace {face_id:u32,start_vertex_id:u32,end_vertex_id:u32},
+    KillEdgeVertex {vertex_id:u32},
+    KillEdgeFace {edge_id:u32,removed_face_id:u32},
+}
+#[derive(Debug, Clone, Copy)]
+enum ArenaResolvedCommand {
+    SplitEdge {edge:ArenaHandle,fraction:f64},
+    SplitFace {face:ArenaHandle,start:ArenaHandle,end:ArenaHandle},
+    KillEdgeVertex {vertex:ArenaHandle},
+    KillEdgeFace {edge:ArenaHandle,removed_face:ArenaHandle},
+}
+fn arena_entity_handle(arena:&BrepArena,entity:TopologyEntity)->Result<ArenaHandle,GeometryError>{
+    arena.handle(entity).ok_or_else(||GeometryError::InvalidEdit(format!(
+        "arena transaction references unknown {entity:?}")))
+}
+impl ArenaCommandInput {
+    fn resolve(self,arena:&BrepArena)->Result<ArenaResolvedCommand,GeometryError>{
+        let h=|entity|arena_entity_handle(arena,entity);
+        Ok(match self {
+            Self::SplitEdge{edge_id,fraction}=>ArenaResolvedCommand::SplitEdge{
+                edge:h(TopologyEntity::Edge(EdgeId(edge_id)))?,fraction},
+            Self::SplitFace{face_id,start_vertex_id,end_vertex_id}=>ArenaResolvedCommand::SplitFace{
+                face:h(TopologyEntity::Face(FaceId(face_id)))?,
+                start:h(TopologyEntity::Vertex(VertexId(start_vertex_id)))?,
+                end:h(TopologyEntity::Vertex(VertexId(end_vertex_id)))?,
+            },
+            Self::KillEdgeVertex{vertex_id}=>ArenaResolvedCommand::KillEdgeVertex{
+                vertex:h(TopologyEntity::Vertex(VertexId(vertex_id)))?},
+            Self::KillEdgeFace{edge_id,removed_face_id}=>ArenaResolvedCommand::KillEdgeFace{
+                edge:h(TopologyEntity::Edge(EdgeId(edge_id)))?,
+                removed_face:h(TopologyEntity::Face(FaceId(removed_face_id)))?,
+            }
+        })
+    }
+}
+fn arena_binding_json(binding:&rustsolid::ArenaBinding)->Value{
+    json!({"name":binding.name.as_str(),
+        "entity":format!("{:?}",binding.entity),
+        "handle":{
+            "arena_token":binding.handle.arena_token,
+            "slot":binding.handle.slot,
+            "generation":binding.handle.generation
+        }
+    })
+}
+fn evaluate_arena_transaction(
+    source:BrepInput,batches:Vec<Vec<ArenaCommandInput>>,undo:usize,redo:usize,
+)->Response{
+    let output=(||->Result<Value,GeometryError>{
+        if batches.len()>64 || undo>64 || redo>64 {
+            return Err(GeometryError::InvalidEdit("arena session exceeds 64 batch/transition budget".into()));
+        }
+        let (source,_)=source.prepare()?;
+        let mut arena=BrepArena::new(source)?;
+        let mut reports=Vec::with_capacity(batches.len());
+        for batch in batches {
+            if batch.is_empty() || batch.len()>256 {
+                return Err(GeometryError::InvalidEdit("arena batch needs 1..=256 commands".into()));
+            }
+            // Resolve all selectors against the SAME pre-batch incarnation;
+            // no guessed handles for not-yet-created entities.
+            let ops=batch.into_iter().map(|c|c.resolve(&arena))
+                .collect::<Result<Vec<_>,_>>()?;
+            let mut tx=arena.begin_transaction()?;
+            for cmd in ops {
+                match cmd {
+                    ArenaResolvedCommand::SplitEdge{edge,fraction}=>tx.split_edge(edge,fraction)?,
+                    ArenaResolvedCommand::SplitFace{face,start,end}=>tx.split_face(face,start,end)?,
+                    ArenaResolvedCommand::KillEdgeVertex{vertex}=>tx.kill_edge_vertex(vertex)?,
+                    ArenaResolvedCommand::KillEdgeFace{edge,removed_face}=>tx.kill_edge_face(edge,removed_face)?,
+                }
+            }
+            let commit=tx.commit()?;
+            let created=commit.created.iter().map(arena_binding_json).collect::<Vec<_>>();
+            let retired=commit.retired.iter().map(arena_binding_json).collect::<Vec<_>>();
+            let remapped=commit.remapped.iter().map(|m|json!({
+                "name":m.name.as_str(),"before":format!("{:?}",m.before),
+                "after":format!("{:?}",m.after),
+                "handle":{"arena_token":m.handle.arena_token,
+                    "slot":m.handle.slot,"generation":m.handle.generation}
+            })).collect::<Vec<_>>();
+            reports.push(json!({
+                "revision_before":commit.report.revision_before,
+                "revision_after":commit.report.revision_after,
+                "commands":commit.report.changes.len(),
+                "created":created,"retired":retired,"remapped":remapped,
+                "journal_frames":commit.report.journal.frames
+            }));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            let value=arena.undo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "arena undo exceeds committed history".into()))?;
+            transitions.push(json!({"kind":"undo","revision_after":value.revision_after}));
+        }
+        for _ in 0..redo {
+            let value=arena.redo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "arena redo exceeds available history".into()))?;
+            transitions.push(json!({"kind":"redo","revision_after":value.revision_after}));
+        }
+        arena.validate()?;
+        let snapshot=arena.snapshot()?;
+        let stats=snapshot.model.summary();
+        let mass=snapshot.model.mass;
+        Ok(json!({
+            "kind":"brep_arena",
+            "representation":if arena.is_editable(){"polyhedral"}else{"analytic_cylinder"},
+            "revision":snapshot.revision,
+            "arena_token":snapshot.arena_token,
+            "is_editable":arena.is_editable(),
+            "live_slots":arena.live_slots(),
+            "allocated_slots":arena.allocated_slots(),
+            "undo_depth":arena.undo_depth(),
+            "redo_depth":arena.redo_depth(),
+            "mass":{"volume":mass.volume,"surface_area":mass.surface_area,
+                "centroid":mass.centroid.array()},
+            "topology":{"vertices":stats.vertices,"edges":stats.edges,
+                "coedges":stats.coedges,"loops":stats.loops,
+                "faces":stats.faces,"shells":stats.shells,
+                "euler_characteristic":stats.euler_characteristic},
+            "commits":reports,"transitions":transitions,
+            "note":"Handle tokens are process-local and not transferable across CLI requests"
+        }))
+    })();
+    match output {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -780,6 +918,8 @@ fn process(input: &str) -> Response {
             return evaluate_intersection_graph(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::TopologyDeltaPlan{first,second,tolerance,samples}) =>
             return evaluate_topology_delta_plan(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
+        Ok(GeometryRequest::ArenaTransaction{source,batches,undo,redo}) =>
+            return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -1333,6 +1473,66 @@ mod tests {
         let too_many=input.replace("\"operation\":\"topology_delta_plan\"",
             "\"operation\":\"topology_delta_plan\",\"samples\":1000");
         assert!(!process(&too_many).ok);
+    }
+
+    #[test]
+    fn json_arena_edits_are_one_atomic_batch_with_names_and_mass(){
+        let request=r#"{"operation":"arena_transaction",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[[
+                {"kind":"split_edge","edge_id":0,"fraction":0.25},
+                {"kind":"split_face","face_id":0,"start_vertex_id":0,"end_vertex_id":2}
+            ]]}"#;
+        let result=process(request);
+        assert!(result.ok,"{:?}",result.error);
+        assert!(result.solid.is_none());
+        let value=result.data.unwrap();
+        assert_eq!(value["kind"],"brep_arena");
+        assert_eq!(value["revision"],1);
+        assert_eq!(value["mass"]["volume"],24.0);
+        assert_eq!(value["topology"]["vertices"],9);
+        assert_eq!(value["topology"]["faces"],7);
+        assert_eq!(value["commits"][0]["commands"],2);
+        assert_eq!(value["commits"][0]["journal_frames"],2);
+        assert_eq!(value["undo_depth"],1);
+        assert!(value["commits"][0]["created"].as_array().unwrap().len()>=4);
+    }
+    #[test]
+    fn json_arena_failure_does_not_expose_partial_output(){
+        let result=process(r#"{"operation":"arena_transaction",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[[
+                {"kind":"split_edge","edge_id":0,"fraction":0.5},
+                {"kind":"split_face","face_id":0,"start_vertex_id":0,"end_vertex_id":1}
+            ]]}"#);
+        assert!(!result.ok);
+        assert!(result.data.is_none());
+        assert!(result.solid.is_none());
+    }
+    #[test]
+    fn json_arena_undo_redo_and_curved_rejection(){
+        let result=process(r#"{"operation":"arena_transaction",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[[{"kind":"split_edge","edge_id":0,"fraction":0.5}]],
+            "undo":1,"redo":1}"#);
+        assert!(result.ok,"{:?}",result.error);
+        let value=result.data.unwrap();
+        assert_eq!(value["revision"],3);
+        assert_eq!(value["topology"]["vertices"],9);
+        assert_eq!(value["mass"]["surface_area"],52.0);
+        assert_eq!(value["transitions"].as_array().unwrap().len(),2);
+        assert_eq!(value["commits"][0]["created"][0]["handle"]["arena_token"],value["arena_token"]);
+        let read_only=process(r#"{"operation":"arena_transaction",
+            "source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},
+            "batches":[]}"#);
+        assert!(read_only.ok);
+        let info=read_only.data.unwrap();
+        assert_eq!(info["is_editable"],false);
+        assert_eq!(info["topology"]["faces"],3);
+        let denied=process(r#"{"operation":"arena_transaction",
+            "source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},
+            "batches":[[{"kind":"split_edge","edge_id":0,"fraction":0.5}]]}"#);
+        assert!(!denied.ok);
     }
 
 }

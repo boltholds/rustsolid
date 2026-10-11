@@ -30,7 +30,7 @@ impl Lengths {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct UndoFrame {
     len: Lengths,
     identity_checkpoint: (usize, u64),

@@ -54,7 +54,7 @@ pub struct EditTransaction<'a> {
     committed: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum EditMemento {
     /// Incremental inverse frames for append-only MEV/MEF commands.
     Delta { frames: Vec<UndoFrame>, body_token: u64 },

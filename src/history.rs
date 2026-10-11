@@ -166,6 +166,7 @@ pub struct HistoryTransition {
     pub command_count: usize,
 }
 
+#[derive(Clone)]
 struct AppliedBatch {
     batch: CommandBatch,
     memento: EditMemento,
@@ -174,6 +175,7 @@ struct AppliedBatch {
 /// Owns the working body and enforces single-writer command history.
 /// `archive` retains the complete applied command log when old inverse
 /// Mementos are pruned to bound memory; archived steps cannot be undone.
+#[derive(Clone)]
 pub struct CommandHistory {
     solid: Solid,
     archive: Vec<CommandBatch>,

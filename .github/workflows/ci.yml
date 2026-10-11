@@ -29,6 +29,8 @@ jobs:
         run: cargo test --test intersection_graph
       - name: Pinned symbolic topology delta planning contracts
         run: cargo test --test topology_delta_plan
+      - name: Sparse generational BrepArena and atomic command regressions
+        run: cargo test --test brep_arena
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test
@@ -73,3 +75,10 @@ jobs:
           printf '%s' '{"operation":"topology_delta_plan","first":{"source":{"kind":"block","origin":[-3,2,-3],"width":6,"height":1,"depth":6},"face_id":0},"second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},"face_id":2}}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and d["state"]=="preview_only" and d["can_apply"] is False and len(d["intersection_arcs"])==1 and "inner_loop_construction" in d["requirements"], r'
+      - name: BrepArena API atomic editing CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"arena_transaction","source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},"batches":[[{"kind":"split_edge","edge_id":0,"fraction":0.5}]],"undo":1,"redo":1}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and d["revision"]==3 and d["topology"]["vertices"]==9 and d["mass"]["volume"]==24.0 and len(d["commits"])==1, r'

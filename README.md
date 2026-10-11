@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.16 experimental kernel: analytic cylinder, read-only B-rep intersections and polyhedral-only editing.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.17 experimental kernel: sparse generational identity arena, atomic polyhedral editing and read-only analytic B-rep snapshots.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -258,3 +258,7 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 ## v0.16 — immutable TopologyDeltaPlan
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
+
+## v0.17: sparse generational B-rep arena and atomic edits
+
+The first [BrepArena](docs/brep-arena.md) manages topology through named sparse generational handles, providing read-only geometry snapshots for polyhedral solids and analytical cylinders. It executes type-checked MEV/MEF/KEV/KEF commands as one strongly atomic `CommandHistory` batch with a shared Undo/Redo Memento and named created/retired/remapped entity reports. Candidate edits and the identity registry are reconciled before publishing, so a late failed command changes nothing. Every retired slot increases its generation before reuse. The analytic cylinder is intentionally read-only, and no preview-only `TopologyDeltaPlan` can bypass that restriction. The new `geometry.v1` `arena_transaction` CLI workflow is stateless and returns transient handles valid only within the current process. [Pinned first-party regressions](tests/fixtures/arena_transactions.v1.json) and CI check generations, rollback, reindexing, Undo/Redo, and analytic mass invariance. Candidate cloning is correctness-first; persistent O(changed-elements) editing is future work.

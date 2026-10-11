@@ -1,0 +1,46 @@
+{
+  "schema": "rustsolid.brep_arena.v1",
+  "title": "Independent first-party generational arena and atomic modeling contracts",
+  "cases": [
+    {
+      "id": "arena/atomic_split_batch",
+      "kind": "atomic_split_batch"
+    },
+    {
+      "id": "arena/late_failure_rollback",
+      "kind": "late_failure_rollback"
+    },
+    {
+      "id": "arena/dropped_and_mistyped",
+      "kind": "dropped_and_mistyped"
+    },
+    {
+      "id": "arena/kill_compaction",
+      "kind": "kill_compaction"
+    },
+    {
+      "id": "arena/generation_aba",
+      "kind": "generation_aba"
+    },
+    {
+      "id": "arena/foreign_body",
+      "kind": "foreign_body"
+    },
+    {
+      "id": "arena/curved_read_only",
+      "kind": "curved_read_only"
+    },
+    {
+      "id": "arena/plan_rejected",
+      "kind": "plan_rejected"
+    },
+    {
+      "id": "arena/forged_generation",
+      "kind": "forged_generation"
+    },
+    {
+      "id": "arena/kill_face_compaction",
+      "kind": "kill_face_compaction"
+    }
+  ]
+}
