@@ -2,13 +2,14 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.17 experimental kernel: sparse generational identity arena, atomic polyhedral editing and read-only analytic B-rep snapshots.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.18 experimental kernel: dependency-aware Euler batches, sparse generational identity arena, atomic polyhedral editing and read-only analytic B-rep snapshots.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
 - Extrude a simple, possibly concave, planar XZ profile along +Y, or create a block.
 - Maintain explicit oriented B-rep: shells, faces, loops, coedges (twin/next/prev), edges and vertices.
 - Edit the polyhedral B-rep atomically: split edges and faces, maintain twin/loop links, preserve unaffected local handles, validate and rollback on failure.
+- Chain Euler operations using typed outputs created earlier in the same transaction, with one Undo/Redo step for the batch.
 - Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -258,6 +259,39 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 ## v0.16 — immutable TopologyDeltaPlan
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
+
+
+## v0.18: dependency-aware B-rep transactions
+
+The [BrepArena](docs/brep-arena.md) now supports typed references to geometry
+created earlier in the *same* batch. Use `split_edge_ref` /
+`split_face_ref` to obtain a transaction-scoped `ArenaStep` and pass
+`step.output(ArenaOutput::InsertedVertex)`,
+`step.output(ArenaOutput::RemainderEdge)`,
+`step.output(ArenaOutput::CreatedFace)` or
+`step.output(ArenaOutput::DiagonalEdge)` to later `*_ref` methods.
+The original handle-only methods remain supported.
+
+A CLI example uses the first split's newly created remainder edge as the
+second split's input. The output reference is scoped to the current batch
+and has a zero-based `step` index:
+
+```sh
+printf '%s' '{"operation":"arena_transaction","source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},"batches":[[{"kind":"split_edge","edge_id":0,"fraction":0.25},{"kind":"split_edge","edge_ref":{"step":0,"output":"remainder_edge"},"fraction":0.5}]],"undo":1,"redo":1}' | target/release/gefest-geometry
+```
+
+Forward references, foreign transaction outputs, invalid output roles, retired
+elements and failed geometry validations reject the whole batch. The kernel
+compiles dependencies from actual provisional Euler outputs into replayable
+semantic names; it does not guess future numeric B-rep IDs. Each successful
+batch remains a single revision and Memento, including mixed MEV/MEF/KEV/KEF
+operations. Six new pinned first-party regression cases bring the arena suite
+to 16 scenarios. Dependent preflight currently clones and validates a private
+working body; it is not yet the optimized sparse mutable geometry store.
+
+The analytical cylinder remains read-only. This release does not implement
+general Boolean application of `TopologyDeltaPlan` or a Parasolid-compatible
+B-rep editor.
 
 ## v0.17: sparse generational B-rep arena and atomic edits
 
