@@ -201,8 +201,9 @@ is the explicit path to more than one hole, not a general Boolean kernel.
    surfaces and complete determination of inside/outside/touching regions.
 3. Multi-shell and multi-component B-rep topology, cavity ownership,
    arbitrary genus and rigorous oriented-face/inner-loop validation.
-4. Closed display tessellation of arbitrary multi-hole planar caps and
-   curved side walls as a derived cache, followed by STEP-level exchange.
+4. Generalized face-region and display tessellation for arbitrary non-box
+   planar and curved faces beyond the certified v0.24 box-with-circles
+   family, followed by STEP-level exchange.
 5. Independent mass integrals for arbitrary trimmed analytic surfaces,
    failure-injected generalized Boolean commit and genuine persistent
    feature lineage across regeneration.
