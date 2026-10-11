@@ -46,3 +46,10 @@ jobs:
           printf '%s' '{"operation":"intersect_surfaces","first":{"kind":"plane","origin":[0,3,0],"x_axis":[1,0,0],"y_axis":[0,0,-1]},"second":{"kind":"cylinder","origin":[0,0,0],"radius":2,"x_axis":[1,0,0],"y_axis":[0,0,-1]}}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["kind"]=="crossing" and r["data"]["curves"][0]["kind"]=="periodic_section" and r["data"]["certificate"]["max_residual_first"]<1e-8, r'
+      - name: Bounded B-rep intersection CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"intersect_faces","first":{"source":{"kind":"block","origin":[-3,2,-3],"width":6,"height":1,"depth":6},"face_id":0},"second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},"face_id":2}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["kind"]=="segments" and len(r["data"]["branches"])==1 and r["data"]["branches"][0]["closed"], r'

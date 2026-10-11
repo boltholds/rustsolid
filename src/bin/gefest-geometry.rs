@@ -2,7 +2,8 @@
 //! entire batch atomically; source solids cannot be externally mutated halfway.
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
-    ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+    ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
+    TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -19,6 +20,9 @@ enum GeometryRequest {
     },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
     InspectBrep { source: BrepInput },
+    IntersectFaces { first: FaceOperand, second: FaceOperand,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] samples:Option<usize> },
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
     RegressionCorpus,
@@ -441,6 +445,91 @@ fn evaluate_surface_intersection(
     }
 }
 
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FaceOperand {source:BrepInput,face_id:u32}
+
+/// Bounded, read-only analytic curve clipping against two selected B-rep faces.
+/// Actual face p-curves determine finite spans; display tessellation is ignored.
+fn evaluate_face_intersection(
+    first:FaceOperand,second:FaceOperand,
+    tolerance:GeometryTolerance,samples:usize,
+)->Response{
+    let result=(||->Result<Value,GeometryError>{
+        if !(3..=64).contains(&samples) {
+            return Err(GeometryError::InvalidEdit("trimmed intersection samples must be 3..=64".into()));
+        }
+        let (a,_) = first.source.prepare()?;
+        let (b,_) = second.source.prepare()?;
+        let model_a=a.shared()?;
+        let model_b=b.shared()?;
+        let engine=TrimmedIntersectionEngine::new(tolerance)?;
+        let trimmed=engine.intersect_faces(&model_a,FaceId(first.face_id),&model_b,FaceId(second.face_id))?;
+        let data=match trimmed {
+            TrimmedIntersection::Empty=>json!({"kind":"empty","branches":[],"contacts":[]}),
+            TrimmedIntersection::Ambiguous{reason}=>json!({
+                "kind":"ambiguous",
+                "reason":match reason {
+                    TrimAmbiguity::NearParallel=>"near_parallel",
+                    TrimAmbiguity::NearTangency=>"near_tangency",
+                    TrimAmbiguity::CoincidentSupports=>"coincident_supports",
+                    TrimAmbiguity::UnresolvedBoundaryEvent=>"unresolved_boundary_event"
+                },
+                "branches":[],"contacts":[],"requires_refinement":true
+            }),
+            TrimmedIntersection::Geometry{branches,contacts,certificate}=>{
+                let result_kind=if branches.is_empty() {"points"}
+                    else if contacts.is_empty() {"segments"}else{"mixed"};
+                let output=branches.iter().map(|branch|{
+                    let coords=(0..samples).map(|i|{
+                        let fraction=i as f64/(samples-1) as f64;
+                        Ok(json!({"fraction":fraction,"point":branch.evaluate(fraction)?.array()}))
+                    }).collect::<Result<Vec<Value>,GeometryError>>()?;
+                    Ok(json!({
+                        "contact":match branch.contact {
+                            TrimContact::Crossing=>"crossing",
+                            TrimContact::Tangent=>"tangent",
+                            TrimContact::BoundaryOverlap=>"boundary_overlap"
+                        },
+                        "curve":match branch.carrier {
+                            IntersectionCurve::Line(_)=>"line",
+                            IntersectionCurve::PlaneCylinderSection(_)=>"periodic_section"
+                        },
+                        "parameter_interval":[branch.parameter_start,branch.parameter_end],
+                        "start":branch.start.array(),"end":branch.end.array(),
+                        "closed":branch.closed,"samples":coords
+                    }))
+                }).collect::<Result<Vec<Value>,GeometryError>>()?;
+                let output_contacts=contacts.iter().map(|point|json!({
+                    "point":point.point.array(),
+                    "contact":match point.contact {
+                        TrimContact::Crossing=>"crossing",
+                        TrimContact::Tangent=>"tangent",
+                        TrimContact::BoundaryOverlap=>"boundary_overlap"
+                    }
+                })).collect::<Vec<_>>();
+                json!({
+                    "kind":result_kind,
+                    "branches":output,"contacts":output_contacts,
+                    "sampled_support_certificate":{
+                        "sample_count":certificate.samples,
+                        "max_residual_first":certificate.max_residual_a,
+                        "max_residual_second":certificate.max_residual_b,
+                        "budget":certificate.budget
+                    }
+                })
+            }
+        };
+        Ok(data)
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(error.to_string()),data:None},
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -451,6 +540,8 @@ fn process(input: &str) -> Response {
             SolidSource::Block { origin, width, height, depth, tolerance }.build().map(|body|(body,None,None))
         }
         Ok(GeometryRequest::InspectBrep {source}) => return inspect_brep(source),
+        Ok(GeometryRequest::IntersectFaces{first,second,tolerance,samples}) =>
+            return evaluate_face_intersection(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -859,6 +950,50 @@ mod tests {
             "\"operation\":\"intersect_surfaces\",\"samples\":1000"));
         assert!(!invalid.ok);
         assert!(invalid.data.is_none());
+    }
+
+    #[test]
+    fn json_bounded_circle_keeps_analytic_curve_and_residuals(){
+        let response=process(r#"{
+            "operation":"intersect_faces",
+            "first":{"source":{"kind":"block","origin":[-3,2,-3],
+                "width":6,"height":1,"depth":6},"face_id":0},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2},
+            "samples":9
+        }"#);
+        assert!(response.ok,"{:?}",response.error);
+        let data=response.data.unwrap();
+        assert_eq!(data["kind"],"segments");
+        assert_eq!(data["branches"].as_array().unwrap().len(),1);
+        assert_eq!(data["branches"][0]["curve"],"periodic_section");
+        assert_eq!(data["branches"][0]["closed"],true);
+        let samples=data["branches"][0]["samples"].as_array().unwrap();
+        for point in samples {
+            let [x,y,z] = [point["point"][0].as_f64().unwrap(),
+                point["point"][1].as_f64().unwrap(),
+                point["point"][2].as_f64().unwrap()];
+            assert!((y-2.0).abs()<1e-9);
+            assert!((x*x+z*z-4.0).abs()<1e-9);
+        }
+        assert!(data["sampled_support_certificate"]["max_residual_first"].as_f64().unwrap()<1e-9);
+        assert!(data["sampled_support_certificate"]["max_residual_second"].as_f64().unwrap()<1e-9);
+    }
+    #[test]
+    fn json_trimmed_intersection_rejects_unsupported_face_and_cost(){
+        let base=r#"{
+            "operation":"intersect_faces",
+            "first":{"source":{"kind":"block","origin":[-3,2,-3],
+                "width":6,"height":1,"depth":6},"face_id":999},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2}
+        }"#;
+        let invalid=process(base);
+        assert!(!invalid.ok);
+        assert!(invalid.data.is_none());
+        let oversized=base.replace("\"face_id\":999","\"face_id\":0").replace(
+            "\"operation\":\"intersect_faces\"", "\"operation\":\"intersect_faces\",\"samples\":200");
+        assert!(!process(&oversized).ok);
     }
 
 }
