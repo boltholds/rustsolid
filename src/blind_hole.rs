@@ -12,7 +12,8 @@ use crate::{
     BrepBody, BrepFace, BrepModel, BrepOrigin, BrepSource, Circle2, Curve2,
     Curve3, EdgeId, FaceGeometry, FaceId, Frame3, GeometryError, LoopRole,
     MassProperties, Mesh, ParameterRange, PlaneSurface, Point2Param, Point3,
-    Solid, Surface3, SurfaceId, ThroughHoleBrep,
+    Solid, Surface3, SurfaceId, ThroughHoleBrep, GeometryTolerance,
+    GraphState, TrimContact, IntersectionGraph, IntersectionGraphBuilder,
 };
 use std::collections::BTreeMap;
 use std::f64::consts::{PI,TAU};
@@ -43,6 +44,50 @@ fn probe_inside(point:[f64;2],ring:&[[f64;2]])->bool{
         }
     }
     inside
+}
+
+/// Source-bound analytic opening trace, not an unverified circle obtained
+/// from a cutter bounding box. The upper block face (left FaceId 1) and the
+/// real periodic cutter side (right FaceId 2) must intersect in exactly one
+/// closed, transverse, full-circle trace whose samples lie on the cap plane
+/// and the cylinder's mathematical radius. Near tangencies, fragmented
+/// branches and coincident support ambiguities are refused.
+fn certify_opening_trace(block:&Solid,cutter:&crate::CylindricalBrep)
+    ->Result<IntersectionGraph,GeometryError>
+{
+    let first=BrepModel::from_polyhedral(block,crate::ModelUnits::default())?;
+    let second=BrepModel::from_cylinder(cutter)?;
+    let tolerance=GeometryTolerance {
+        absolute_length:block.tolerance.absolute_length
+            .max(cutter.tolerance.absolute_length),
+        relative_length:block.tolerance.relative_length
+            .max(cutter.tolerance.relative_length),
+        angular:block.tolerance.angular.max(cutter.tolerance.angular),
+    };
+    let graph=IntersectionGraphBuilder::new(tolerance)?
+        .intersect_faces(&first,FaceId(1),&second,FaceId(2))?;
+    graph.validate_against(&first,FaceId(1),&second,FaceId(2))?;
+    if graph.state!=GraphState::Ready||graph.arcs.len()!=1||
+       !graph.arcs[0].closed ||
+       graph.arcs[0].contact==TrimContact::Tangent {
+        return Err(invalid("blind opening has no unique certified closed transverse circle"));
+    }
+    let b=block.bbox;
+    let scale=length(b.max.sub(b.min)).max(cutter.radius*2.0);
+    let floating=16.0*f64::EPSILON*
+        [b.max.y,cutter.frame.origin.y].into_iter()
+        .map(f64::abs).fold(1.0_f64,f64::max);
+    let eps=tolerance.length_at(scale).max(floating);
+    for fraction in [0.0,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1.0] {
+        let sample=graph.arcs[0].evaluate(fraction)?;
+        if !sample.is_finite() ||
+            (sample.y-b.max.y).abs()>eps ||
+            ((sample.x-cutter.frame.origin.x).hypot(
+                sample.z-cutter.frame.origin.z)-cutter.radius).abs()>eps {
+            return Err(invalid("blind opening intersection trace leaves physical cap or cylinder"));
+        }
+    }
+    Ok(graph)
 }
 
 #[derive(Debug,Clone,Copy,PartialEq)]
@@ -116,6 +161,7 @@ impl BlindHoleBrep {
             cutter.frame.origin.y>=b.max.y-eps {
             return Err(invalid("blind bore requires upper cap on box top and lower cap strictly inside"));
         }
+        certify_opening_trace(block,cutter)?;
         let p=BlindHoleParameters{
             center_x:cutter.frame.origin.x,center_z:cutter.frame.origin.z,
             radius:cutter.radius,depth:cutter.height,
@@ -123,6 +169,16 @@ impl BlindHoleBrep {
         Self::from_box(block,p)
     }
     pub fn parameters(&self)->BlindHoleParameters{self.parameters}
+    /// Reconstruct and validate the exact analytic source-face intersection
+    /// defining the closed opening. The graph is read-only and source-bound.
+    pub fn opening_trace(&self)->Result<IntersectionGraph,GeometryError>{
+        let b=self.template.bbox;
+        let p=self.parameters;
+        let cutter=crate::CylindricalBrep::upright(
+            Point3{x:p.center_x,y:b.max.y-p.depth,z:p.center_z},
+            p.radius,p.depth,self.template.tolerance)?;
+        certify_opening_trace(&self.template,&cutter)
+    }
     pub fn template_solid(&self)->&Solid{&self.template}
     pub fn model(&self)->&BrepModel{&self.model}
     pub fn revision(&self)->u64{self.revision}
