@@ -1002,7 +1002,8 @@ fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Respo
                             vertices:body.vertices.len(),edges:body.edges.len(),
                             coedges:body.coedges.len(),loops:body.loops.len(),
                             faces:body.faces.len(),shells:body.shells.len(),
-                            euler_characteristic:body.euler_characteristic(),
+                            euler_characteristic:body.vertices.len() as isize -
+                                body.edges.len() as isize + body.faces.len() as isize,
                         },
                         mass:Mass {volume:body.mass.volume,surface_area:body.mass.surface_area,
                             centroid:body.mass.centroid.array()},
