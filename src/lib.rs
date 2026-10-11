@@ -30,6 +30,7 @@ mod brep_arena;
 mod boolean;
 mod boolean_region;
 mod through_hole;
+mod blind_hole;
 mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
