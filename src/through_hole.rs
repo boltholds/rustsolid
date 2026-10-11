@@ -332,7 +332,6 @@ impl ThroughHoleBrep {
                 mesh.triangle_faces.extend([face,face]);
             }
             // Outer wall quads belong to one of the four source box sides.
-            let p=self.model.vertices[0].position;let _=p;
             let aa=mesh.vertices[a as usize];
             let bb=mesh.vertices[b as usize];
             let eps=self.template.tolerance.length_at(
