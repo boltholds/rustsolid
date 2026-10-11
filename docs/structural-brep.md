@@ -210,10 +210,10 @@ The global `TopologyDeltaPlan::can_apply == false` guard remains.
 For engineering production, the existing Gefest OpenCascade path remains
 the recommended default until equivalent broad coverage is demonstrated.
 
-Nineteen independent first-party regressions include insertion-order
+Twenty independent first-party regressions include insertion-order
 metamorphism, genus and mass invariants, different source/hole counts,
 failed partial commits, ABA on Undo/Redo and same-slot replacement,
-repeat-stage budget exhaustion,
+repeat-stage budget exhaustion, read-only B-rep query compatibility,
 and references surviving dense topology compaction.
 
 Tests: `tests/structural_editor.rs` and the dedicated mandatory
