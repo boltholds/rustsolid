@@ -222,7 +222,8 @@ impl BooleanRegionClassifier {
     }
 }
 fn body_tolerance(body:&BrepBody)->GeometryTolerance{
-    match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance}
+    match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance,
+        BrepBody::ThroughHole(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {
