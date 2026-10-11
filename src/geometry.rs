@@ -197,11 +197,50 @@ impl Circle2 {
         Point2Param::new(self.center.u + self.radius * angle.cos(), self.center.v + self.radius * angle.sin())
     }
 }
+/// A circular 3D edge projected into a planar support frame. The two
+/// orientation vectors permit both clockwise and counterclockwise UV trims
+/// without approximating the closed edge by line segments.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Curve2 { Line(Line2), Circle(Circle2) }
+pub struct OrientedCircle2 {
+    pub center: Point2Param,
+    pub cos_axis: Point2Param,
+    pub sin_axis: Point2Param,
+}
+impl OrientedCircle2 {
+    pub fn new(center:Point2Param, cos_axis:Point2Param, sin_axis:Point2Param,
+        tolerance:GeometryTolerance) -> Result<Self,GeometryError>
+    {
+        tolerance.validate()?;
+        let cos_len=cos_axis.u.hypot(cos_axis.v);
+        let sin_len=sin_axis.u.hypot(sin_axis.v);
+        let dot=cos_axis.u*sin_axis.u+cos_axis.v*sin_axis.v;
+        let scale=cos_len.max(sin_len);
+        if !center.u.is_finite() || !center.v.is_finite() ||
+            !cos_len.is_finite() || !sin_len.is_finite() || scale<=tolerance.absolute_length ||
+            (cos_len-sin_len).abs()>tolerance.length_at(scale) ||
+            dot.abs()>tolerance.angular*cos_len*sin_len {
+            return Err(invalid_dimension("oriented UV circle requires orthogonal equal-length axes"));
+        }
+        Ok(Self{center,cos_axis,sin_axis})
+    }
+    pub fn evaluate(self,t:f64)->Result<Point2Param,GeometryError>{
+        if !t.is_finite() {
+            return Err(invalid_dimension("oriented UV circle angle must be finite"));
+        }
+        Point2Param::new(
+            self.center.u+self.cos_axis.u*t.cos()+self.sin_axis.u*t.sin(),
+            self.center.v+self.cos_axis.v*t.cos()+self.sin_axis.v*t.sin(),
+        )
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve2 { Line(Line2), Circle(Circle2), OrientedCircle(OrientedCircle2) }
 impl Curve2 {
     pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
-        match self { Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t) }
+        match self {
+            Self::Line(l)=>l.evaluate(t), Self::Circle(c)=>c.evaluate(t),
+            Self::OrientedCircle(c)=>c.evaluate(t),
+        }
     }
 }
 
