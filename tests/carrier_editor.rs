@@ -274,3 +274,113 @@ fn committed_edit_after_undo_discards_redo_branch(){
     assert!(e.redo().unwrap().is_none());
     e.validate().unwrap();
 }
+
+#[test]
+fn direct_curve_replacement_and_trim_rebinding_are_source_equivalent(){
+    let mut e=editor(&block());
+    let original=e.snapshot();
+    let h=edge(&e,0);
+    let th=trim(&e,0);
+    let Curve3::Line(line)=e.model().edge_curve(EdgeId(0)).unwrap()
+        else {panic!("block edge is linear")};
+    let Curve2::Line(pcurve)=e.model().coedge_pcurve(CoedgeId(0)).unwrap()
+        else {panic!("block coedge is linear")};
+    let old_edge=e.model().geometry.edges[0].domain;
+    let old_trim=e.model().geometry.coedges[0].domain;
+    let ParameterRange::Bounded{start:a,end:b}=old_edge
+        else {panic!("edge must have bounded parameters")};
+    let ParameterRange::Bounded{start:c,end:d}=old_trim
+        else {panic!("trim must have bounded parameters")};
+    let edge_offset=0.3;
+    let edge_scale=1.75;
+    let trim_offset=0.125;
+    let trim_scale=1.25;
+    let shifted=Curve3::Line(rustsolid::Line3{
+        origin:p(line.origin.x+line.direction.x*edge_offset,
+            line.origin.y+line.direction.y*edge_offset,
+            line.origin.z+line.direction.z*edge_offset),
+        direction:p(line.direction.x*edge_scale,
+            line.direction.y*edge_scale,line.direction.z*edge_scale),
+    });
+    let shifted_uv=Curve2::Line(rustsolid::Line2{
+        origin:Point2Param{u:pcurve.origin.u+pcurve.delta.u*trim_offset,
+            v:pcurve.origin.v+pcurve.delta.v*trim_offset},
+        delta:Point2Param{u:pcurve.delta.u*trim_scale,
+            v:pcurve.delta.v*trim_scale},
+    });
+    let mut tx=e.begin_transaction();
+    tx.replace_edge(h,shifted,
+        ParameterRange::bounded((a-edge_offset)/edge_scale,
+            (b-edge_offset)/edge_scale).unwrap()).unwrap();
+    tx.replace_trim(th,shifted_uv,
+        ParameterRange::bounded((c-trim_offset)/trim_scale,
+            (d-trim_offset)/trim_scale).unwrap()).unwrap();
+    tx.commit().unwrap();
+    e.validate().unwrap();
+    assert_mass_equal(&original.model,e.model());
+}
+
+#[test]
+fn shared_periodic_pcurve_is_copy_on_write_per_coedge_owner(){
+    let mut model=cylinder().shared().unwrap();
+    // Both circular cap UV curves have identical geometry, but the two
+    // coedges must preserve distinct ownership if one is reparameterized.
+    let old_a=model.geometry.coedges[1].pcurve;
+    let old_b=model.geometry.coedges[3].pcurve;
+    assert_eq!(model.geometry.curves2[old_a.0 as usize],
+        model.geometry.curves2[old_b.0 as usize]);
+    model.geometry.coedges[3].pcurve=old_a;
+    model.validate().unwrap();
+    let mut e=BrepCarrierEditor::new(model).unwrap();
+    let a=trim(&e,1);
+    let b=trim(&e,3);
+    assert_eq!(e.resolve(a).unwrap().id,e.resolve(b).unwrap().id);
+    let before_b=e.model().coedge_pcurve(CoedgeId(3));
+    let before_domain=e.model().geometry.coedges[3].domain;
+    let mut tx=e.begin_transaction();
+    tx.reparameterize_trim(a,1.0,TAU).unwrap();
+    tx.commit().unwrap();
+    e.validate().unwrap();
+    assert_ne!(e.resolve(a).unwrap().id,e.resolve(b).unwrap().id);
+    assert_eq!(e.model().coedge_pcurve(CoedgeId(3)),before_b);
+    assert_eq!(e.model().geometry.coedges[3].domain,before_domain);
+    assert_eq!(e.resolve(a).unwrap().handle,a);
+    assert_eq!(e.resolve(b).unwrap().handle,b);
+}
+
+#[test]
+fn editing_the_same_owner_repeatedly_still_respects_transaction_budget(){
+    let mut e=editor(&block());
+    let snap=e.snapshot();
+    let handle=edge(&e,0);
+    let mut tx=e.begin_transaction();
+    for _ in 0..256 {
+        tx.reparameterize_edge(handle,1.0,0.0).unwrap();
+    }
+    assert_eq!(tx.staged_len(),256);
+    assert!(tx.reparameterize_edge(handle,1.0,0.0).is_err());
+    assert!(tx.commit().is_err());
+    assert_eq!(e.revision(),0);
+    e.check_snapshot(&snap).unwrap();
+    assert_mass_equal(&snap.model,e.model());
+}
+#[test]
+fn arena_can_export_an_independent_canonical_editor_without_mutation(){
+    let solid=Solid::block(p(-3.,-1.,-3.),6.,4.,6.).unwrap();
+    let original=ThroughHoleBrep::from_box(&solid,HoleParameters{
+        center_x:0.,center_z:0.,radius:1.}).unwrap();
+    let arena=rustsolid::BrepArena::from_through_hole(original).unwrap();
+    let frozen=arena.snapshot().unwrap();
+    let mut detached=arena.detached_carrier_editor().unwrap();
+    let h=edge(&detached,12);
+    let mut tx=detached.begin_transaction();
+    tx.reparameterize_edge(h,1.0,0.375).unwrap();
+    tx.commit().unwrap();
+    detached.validate().unwrap();
+    assert_eq!(detached.model().summary().genus,1);
+    assert_eq!(detached.revision(),1);
+    assert_eq!(arena.revision(),0);
+    arena.check_snapshot(&frozen).unwrap();
+    assert_eq!(arena.model().unwrap().geometry.curves3,
+        frozen.model.geometry.curves3);
+}
