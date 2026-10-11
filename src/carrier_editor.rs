@@ -64,6 +64,83 @@ fn carrier_budget(model:&BrepModel)->f64 {
         .fold(1.0_f64,f64::max);
     model.tolerance.length_at(extent).max(32.0*f64::EPSILON*coord)
 }
+fn verify_frame(frame:Frame3,angular:f64)->Result<(),GeometryError>{
+    if !frame.origin.is_finite() || !frame.x.is_finite() ||
+       !frame.y.is_finite() || !frame.normal.is_finite() {
+        return Err(invalid("carrier frame contains nonfinite coordinates"));
+    }
+    // The basis vectors are a physical orthonormal frame, not a generic
+    // 3x3 affine map. Keeping sampled curves coincident cannot waive this.
+    let allowance=angular+128.0*f64::EPSILON;
+    for basis in [frame.x,frame.y,frame.normal]{
+        if (length(basis)-1.0).abs()>allowance{
+            return Err(invalid("analytic carrier frame basis is not unit length"));
+        }
+    }
+    if dot(frame.x,frame.y).abs()>allowance ||
+       dot(frame.x,frame.normal).abs()>allowance ||
+       dot(frame.y,frame.normal).abs()>allowance ||
+       length(frame.x.cross(frame.y).sub(frame.normal))>allowance {
+        return Err(invalid("analytic carrier frame is not right-handed and orthogonal"));
+    }
+    Ok(())
+}
+fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
+    let angular=model.tolerance.angular;
+    let min_radius=model.tolerance.absolute_length;
+    for curve in &model.geometry.curves3 {
+        match *curve {
+            Curve3::Line(line)=>{
+                if !line.origin.is_finite() || !line.direction.is_finite() ||
+                    length(line.direction)<=0.0 {
+                    return Err(invalid("invalid 3D line carrier"));
+                }
+            }
+            Curve3::Circle(circle)=>{
+                verify_frame(circle.frame,angular)?;
+                if !circle.radius.is_finite() || circle.radius<=min_radius{
+                    return Err(invalid("invalid circular edge radius"));
+                }
+            }
+        }
+    }
+    for curve in &model.geometry.curves2 {
+        match *curve {
+            Curve2::Line(line)=>{
+                let points=[line.origin.u,line.origin.v,line.delta.u,line.delta.v];
+                if points.iter().any(|x|!x.is_finite()) ||
+                    line.delta.u.hypot(line.delta.v)<=0.0 {
+                    return Err(invalid("invalid 2D linear trim"));
+                }
+            }
+            Curve2::Circle(circle)=>{
+                if !circle.center.u.is_finite() || !circle.center.v.is_finite() ||
+                    !circle.radius.is_finite() || circle.radius<=min_radius {
+                    return Err(invalid("invalid 2D circular trim"));
+                }
+            }
+        }
+    }
+    for surface in &model.geometry.surfaces {
+        match *surface {
+            Surface3::Plane(plane)=>verify_frame(plane.frame,angular)?,
+            Surface3::Cylinder(cylinder)=>{
+                verify_frame(cylinder.frame,angular)?;
+                if !cylinder.radius.is_finite() || cylinder.radius<=min_radius {
+                    return Err(invalid("invalid cylindrical support radius"));
+                }
+            }
+            Surface3::Sphere(sphere)=>{
+                verify_frame(sphere.frame,angular)?;
+                if !sphere.radius.is_finite() || sphere.radius<=min_radius {
+                    return Err(invalid("invalid spherical support radius"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn same_support(old:Surface3,new:Surface3,tol:f64,angular:f64)
     ->Result<(),GeometryError>
 {
@@ -166,6 +243,7 @@ impl BrepCarrierEditor {
     }
     pub fn new(model:BrepModel)->Result<Self,GeometryError>{
         model.validate()?;
+        validate_carrier_forms(&model)?;
         let token=NEXT_CARRIER_EDITOR.fetch_add(1,Ordering::Relaxed);
         if token==0 || token==u64::MAX {return Err(invalid("carrier editor token exhausted"));}
         let mut generations=BTreeMap::new();
@@ -219,6 +297,7 @@ impl BrepCarrierEditor {
     }
     pub fn validate(&self)->Result<(),GeometryError>{
         self.current.validate()?;
+        validate_carrier_forms(&self.current)?;
         certify_equivalent(&self.baseline,&self.current)
     }
     pub fn begin_transaction(&mut self)->BrepCarrierTransaction<'_>{
@@ -236,6 +315,7 @@ impl BrepCarrierEditor {
         let source=if redo {&self.redo}else{&self.undo};
         let Some(candidate)=source.last() else{return Ok(None)};
         candidate.validate()?;
+        validate_carrier_forms(candidate)?;
         certify_equivalent(&self.baseline,candidate)?;
         let before=self.revision;
         let after=before.checked_add(1).ok_or_else(||invalid("carrier revision overflow"))?;
@@ -499,6 +579,7 @@ impl BrepCarrierTransaction<'_> {
         if self.changed.is_empty(){return Err(invalid("empty carrier transaction"));}
         compact_referenced(&mut self.staged)?;
         self.staged.validate()?;
+        validate_carrier_forms(&self.staged)?;
         // Shape and mass must remain invariant. In a later feature-changing
         // editor this gate must be replaced by full independent mass proofs.
         certify_equivalent(&self.editor.current,&self.staged)?;
@@ -569,6 +650,7 @@ fn compact_referenced(model:&mut BrepModel)->Result<(),GeometryError>{
     Ok(())
 }
 fn certify_equivalent(before:&BrepModel,after:&BrepModel)->Result<(),GeometryError>{
+    validate_carrier_forms(after)?;
     if before.summary()!=after.summary() ||
         before.mass!=after.mass || before.bbox!=after.bbox ||
         before.tolerance!=after.tolerance || before.units!=after.units ||
