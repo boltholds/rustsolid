@@ -48,10 +48,18 @@ impl ThroughHoleBrep {
         let n=cylinder.frame.normal;
         let tol=box_.tolerance;
         let h=box_.bbox.max.y-box_.bbox.min.y;
-        let eps=tol.length_at(h.max(cylinder.radius*2.0))
-            .max(cylinder.tolerance.length_at(h.max(cylinder.radius*2.0)));
-        if n.x.abs()>tol.angular || (n.y-1.0).abs()>tol.angular ||
-            n.z.abs()>tol.angular {
+        // A cutter plane displaced by a *physical modeling tolerance*
+        // must not be silently reinterpreted as the exact box end plane.
+        // Permit only machine representability error, not geometric
+        // snapping that changes the topology from blind to through.
+        let coordinate_scale=[
+            cylinder.frame.origin.y,box_.bbox.min.y,box_.bbox.max.y,
+            cylinder.height,h
+        ].into_iter().map(f64::abs).fold(1.0_f64,f64::max);
+        let eps=16.0*f64::EPSILON*coordinate_scale;
+        let exact_axis_budget=16.0*f64::EPSILON;
+        if n.x.abs()>exact_axis_budget || (n.y-1.0).abs()>exact_axis_budget ||
+            n.z.abs()>exact_axis_budget {
             return Err(invalid("through-hole requires a +Y cylinder axis"));
         }
         if (cylinder.frame.origin.y-box_.bbox.min.y).abs()>eps ||
@@ -82,6 +90,8 @@ impl ThroughHoleBrep {
     pub fn validate(&self)->Result<(),GeometryError>{
         let expected=Self::build(&self.template,self.parameters)?;
         if self.model.summary()!=expected.summary() ||
+            self.model.faces.iter().zip(&expected.faces)
+                .any(|(a,b)|a.sense!=b.sense) ||
             self.model.geometry.curves3!=expected.geometry.curves3 ||
             self.model.geometry.curves2!=expected.geometry.curves2 ||
             self.model.geometry.surfaces!=expected.geometry.surfaces ||
@@ -248,7 +258,7 @@ impl ThroughHoleBrep {
         model.faces[0].loops.push(LoopId(6));
         model.faces[1].loops.push(LoopId(7));
         model.faces.push(BrepFace{
-            id:FaceId(6),loops:vec![LoopId(8)],
+            id:FaceId(6),loops:vec![LoopId(8)],sense:crate::FaceSense::Reversed,
             geometry:FaceGeometry{
                 surface:cylinder_surface,outer_loop:LoopId(8),tolerance:tol,
                 bounds:ParameterDomain2{

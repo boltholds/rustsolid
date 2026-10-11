@@ -29,6 +29,8 @@ fn position_eps(body:&BrepBody)->f64{
         BrepBody::Cylinder(c)=>(c.tolerance,c.radius.max(c.height)),
         BrepBody::ThroughHole(h)=>(h.model().tolerance,
             length(h.model().bbox.max.sub(h.model().bbox.min))),
+        BrepBody::BlindHole(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
@@ -72,6 +74,35 @@ impl BooleanRegionClassifier {
                       (point.y-lower.y).abs(),(point.y-upper.y).abs(),
                       (point.z-lower.z).abs(),(point.z-upper.z).abs()]
                         .iter().any(|d|*d<=eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
+            BrepBody::BlindHole(h)=>{
+                let b=h.model().bbox;
+                let p=h.parameters();
+                if point.x<b.min.x-eps || point.x>b.max.x+eps ||
+                    point.y<b.min.y-eps || point.y>b.max.y+eps ||
+                    point.z<b.min.z-eps || point.z>b.max.z+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                let floor=b.max.y-p.depth;
+                let radial=(point.x-p.center_x).hypot(point.z-p.center_z);
+                if radial < p.radius-eps && point.y>floor+eps {
+                    // The upper cap disk is an *opening*, not a
+                    // phantom top planar boundary over empty material.
+                    return Ok(VolumePosition::Outside);
+                }
+                if radial<=p.radius+eps && (point.y-floor).abs()<=eps {
+                    return Ok(VolumePosition::Boundary);
+                }
+                if (radial-p.radius).abs()<=eps && point.y>=floor-eps {
+                    return Ok(VolumePosition::Boundary);
+                }
+                if [(point.x-b.min.x).abs(),(point.x-b.max.x).abs(),
+                    (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
+                    (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
+                    .iter().any(|d|*d<=eps) {
                     return Ok(VolumePosition::Boundary);
                 }
                 Ok(VolumePosition::Inside)
@@ -223,7 +254,8 @@ impl BooleanRegionClassifier {
 }
 fn body_tolerance(body:&BrepBody)->GeometryTolerance{
     match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance,
-        BrepBody::ThroughHole(h)=>h.model().tolerance}
+        BrepBody::ThroughHole(h)=>h.model().tolerance,
+        BrepBody::BlindHole(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {

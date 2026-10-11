@@ -182,7 +182,7 @@ fn shape(kind:Kind, field:&str) -> Option<Shape> {
         Mass => match field {"volume"|"surfaceArea"=>Some(Scalar),"centroid"=>Some(Object(Point)),_=>None},
         Bounds => match field {"min"|"max"=>Some(Object(Point)),_=>None},
         Point => match field {"x"|"y"|"z"=>Some(Scalar),_=>None},
-        Face => match field {"id"=>Some(Scalar),"surface"=>Some(Object(Surface)),"loops"=>Some(List(Loop)),_=>None},
+        Face => match field {"id"|"sense"=>Some(Scalar),"surface"=>Some(Object(Surface)),"loops"=>Some(List(Loop)),_=>None},
         Edge => match field {"id"|"startId"|"endId"|"closed"|"seam"=>Some(Scalar),
             "curve"=>Some(Object(Curve)),"coedges"=>Some(List(Coedge)),_=>None},
         Vertex => match field {"id"=>Some(Scalar),"position"=>Some(Object(Point)),_=>None},
@@ -295,7 +295,7 @@ impl Execution<'_> {
         let bad=||qerr("query.internal",s.at,"field resolver and schema disagree");
         let result=match (node,s.name.as_str()) {
             (Node::Root,"body")=>self.get(Node::Body,&s.fields)?,
-            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes"}),
+            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole"}),
             (Node::Body,"topology")=>self.get(Node::Topology,&s.fields)?,
             (Node::Body,"mass")=>self.get(Node::Mass,&s.fields)?,
             (Node::Body,"bounds")=>self.get(Node::Bounds,&s.fields)?,
@@ -321,6 +321,10 @@ impl Execution<'_> {
             (Node::Bounds,"max")=>self.get(Node::Point(m.bbox.max),&s.fields)?,
             (Node::Point(p),"x")=>json!(p.x),(Node::Point(p),"y")=>json!(p.y),(Node::Point(p),"z")=>json!(p.z),
             (Node::Face(id),"id")=>json!(id.0),
+            (Node::Face(id),"sense")=>json!(match m.face_sense(id).ok_or_else(bad)?{
+                crate::FaceSense::Forward=>"forward",
+                crate::FaceSense::Reversed=>"reversed",
+            }),
             (Node::Face(id),"surface")=>self.get(Node::Surface(m.face_surface(id).ok_or_else(bad)?),&s.fields)?,
             (Node::Face(id),"loops")=>{
                 let face=&m.faces[id.0 as usize];

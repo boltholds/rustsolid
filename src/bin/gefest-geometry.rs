@@ -4,7 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
-    ThroughHoleBrep, HoleParameters,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -245,6 +245,10 @@ enum BrepInput {
         center:[f64;2],radius:f64,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticBlindHole {origin:[f64;3],width:f64,height:f64,depth:f64,
+        center:[f64;2],radius:f64,bore_depth:f64,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -269,6 +273,14 @@ impl BrepInput {
                     width,height,depth,tolerance.unwrap_or_default())?;
                 let body=ThroughHoleBrep::from_box(&block,
                     HoleParameters{center_x:center[0],center_z:center[1],radius})?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticBlindHole{origin,width,height,depth,center,radius,bore_depth,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let body=BlindHoleBrep::from_box(&block,BlindHoleParameters{
+                    center_x:center[0],center_z:center[1],radius,depth:bore_depth})?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
@@ -313,6 +325,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
+                BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -321,6 +334,10 @@ fn inspect_brep(input:BrepInput) -> Response {
             },
             "geometry":{
                 "face_surfaces":surfaces,"edge_curves":curves,
+                "face_senses":graph.faces.iter().map(|f|match f.sense {
+                    rustsolid::FaceSense::Forward=>"forward",
+                    rustsolid::FaceSense::Reversed=>"reversed",
+                }).collect::<Vec<_>>(),
                 "coedge_trims":trims,"cylindrical_faces":stats.cylindrical_faces,
                 "circular_edges":stats.circular_edges,
                 "closed_edges":closed_edges,"seam_edges":seams,
@@ -1301,6 +1318,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
+                BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -1487,6 +1505,75 @@ fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Respo
                                 "display_mesh_is_not_boundary_definition":true})),
                             brep:None,
                         }),
+                    }
+                }
+                BooleanOutcome::BlindHole(body)=>{
+                    let opening=match body.opening_trace(){
+                        Ok(graph)=>graph,
+                        Err(error)=>return Response{schema_version:"geometry.v1",
+                            ok:false,solid:None,data:None,error:Some(error.to_string())},
+                    };
+                    let stats=body.model().summary();
+                    let shape=body.model();
+                    let display=match body.tessellate(64){
+                        Ok(mesh)=>mesh,
+                        Err(error)=>return Response{schema_version:"geometry.v1",
+                            ok:false,solid:None,data:None,error:Some(error.to_string())},
+                    };
+                    Response {
+                        schema_version:"geometry.v1",ok:true,error:None,
+                        data:Some(json!({
+                            "kind":"boolean","mode":mode,"state":"solid",
+                            "representation":"analytic_cylindrical_blind_hole",
+                            "face_sources":lineage,"genus":stats.genus,
+                            "opening_face_id":display.opening_face.0,
+                            "floor_face_id":display.floor_face.0,
+                            "side_face_id":display.side_face.0,
+                            "opening_inner_loops":1,
+                            "source_opening_trace":{
+                                "state":opening.kind(),
+                                "arcs":opening.arcs.len(),
+                                "closed":opening.arcs.iter().all(|arc|arc.closed),
+                                "contact":match opening.arcs[0].contact {
+                                    TrimContact::Crossing=>"crossing",
+                                    TrimContact::Tangent=>"tangent",
+                                    TrimContact::BoundaryOverlap=>"boundary_overlap",
+                                }
+                            },
+                            "faceted_volume":display.faceted_volume,
+                            "faceted_surface_area":display.faceted_surface_area,
+                            "volume_faceting_error":display.faceting_volume_error,
+                            "closed_oriented_display_mesh_certified":true,
+                            "topology_committed":true,
+                        })),
+                        solid:Some(SolidResponse{
+                            vertices:display.mesh.vertices.iter().map(|p|p.array()).collect(),
+                            faces:display.mesh.triangles,
+                            triangle_face_ids:display.mesh.triangle_faces.iter()
+                                .map(|id|id.0).collect(),
+                            topology:Topology{
+                                vertices:stats.vertices,edges:stats.edges,
+                                coedges:stats.coedges,loops:stats.loops,
+                                faces:stats.faces,shells:stats.shells,
+                                euler_characteristic:stats.euler_characteristic,
+                            },
+                            mass:Mass{volume:shape.mass.volume,
+                                surface_area:shape.mass.surface_area,
+                                centroid:shape.mass.centroid.array()},
+                            bbox:[shape.bbox.min.array(),shape.bbox.max.array()],
+                            edit_report:None,history:None,
+                            analytic_brep:Some(json!({
+                                "cylindrical_faces":stats.cylindrical_faces,
+                                "plane_faces":stats.plane_faces,
+                                "circular_edges":stats.circular_edges,
+                                "inner_loops":shape.loops.iter().filter(|l|
+                                    l.role==rustsolid::LoopRole::Inner).count(),
+                                "floor_face_id":display.floor_face.0,
+                                "genus":stats.genus,
+                                "display_mesh_is_not_boundary_definition":true,
+                            })),
+                            brep:None,
+                        })
                     }
                 }
                 BooleanOutcome::Solid(body)=>Response{
@@ -2332,6 +2419,77 @@ mod tests {
         assert!(!result.ok);
         assert!(result.solid.is_none());
         assert!(result.data.is_none());
+    }
+
+    #[test]
+    fn json_blind_cylinder_difference_executes_real_floor_face_and_exact_mass(){
+        let request=r#"{"operation":"boolean","mode":"difference",
+            "left":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "right":{"kind":"analytic_cylinder","origin":[0,1,0],
+                "radius":1,"height":2}}"#;
+        let r=process(request);
+        assert!(r.ok,"{:?}",r.error);
+        let data=r.data.unwrap();
+        let solid=r.solid.unwrap();
+        assert_eq!(data["representation"],"analytic_cylindrical_blind_hole");
+        assert_eq!(data["topology_committed"],true);
+        assert_eq!(data["genus"],0);
+        assert_eq!(data["opening_face_id"],1);
+        assert_eq!(data["floor_face_id"],7);
+        assert_eq!(data["side_face_id"],6);
+        assert_eq!(data["opening_inner_loops"],1);
+        assert_eq!(data["source_opening_trace"]["state"],"ready");
+        assert_eq!(data["source_opening_trace"]["arcs"],1);
+        assert_eq!(data["source_opening_trace"]["closed"],true);
+        assert_eq!(data["closed_oriented_display_mesh_certified"],true);
+        assert_eq!(data["face_sources"].as_array().unwrap().len(),8);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["inner_loops"],1);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["floor_face_id"],7);
+        assert_eq!(solid.topology.euler_characteristic,2);
+        assert_eq!(solid.topology.faces,8);
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        assert!(solid.triangle_face_ids.contains(&7));
+        assert!(solid.triangle_face_ids.contains(&6));
+        assert!((solid.mass.volume-(144.-2.*std::f64::consts::PI)).abs()<1e-9);
+        assert!((solid.mass.surface_area-(168.+4.*std::f64::consts::PI)).abs()<1e-9);
+        assert!(data["volume_faceting_error"].as_f64().unwrap()>0.0);
+    }
+    #[test]
+    fn json_blind_bore_inspection_preserves_3d_curves_and_uv_loops(){
+        let r=process(r#"{"operation":"inspect_brep","source":{
+            "kind":"analytic_blind_hole","origin":[-3,-1,-3],
+            "width":6,"height":4,"depth":6,
+            "center":[0,0],"radius":1,"bore_depth":2,"segments":32}}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let solid=r.solid.unwrap();
+        let model=solid.brep.unwrap();
+        assert_eq!(model["representation"],"analytic_blind_hole");
+        assert_eq!(model["topology"]["faces"],8);
+        assert_eq!(model["topology"]["genus"],0);
+        assert_eq!(model["topology"]["euler_characteristic"],2);
+        assert_eq!(model["geometry"]["cylindrical_faces"],1);
+        assert_eq!(model["geometry"]["circular_edges"],2);
+        assert_eq!(model["geometry"]["face_senses"][6],"reversed");
+        assert_eq!(model["geometry"]["face_senses"][7],"reversed");
+        assert_eq!(model["geometry"]["face_senses"][1],"forward");
+        assert!((solid.mass.volume-(144.-2.*std::f64::consts::PI)).abs()<1e-9);
+    }
+    #[test]
+    fn json_blind_bore_rejects_unmatched_top_cap_and_bottom_tangency(){
+        for right in [
+            r#"{"kind":"analytic_cylinder","origin":[0,1,0],"radius":1,"height":1.99999}"#,
+            r#"{"kind":"analytic_cylinder","origin":[0,-1,0],"radius":1,"height":3}"#,
+            r#"{"kind":"analytic_cylinder","origin":[0,1,0],"radius":3,"height":2}"#
+        ]{
+            let input=format!(r#"{{"operation":"boolean","mode":"difference",
+                "left":{{"kind":"block","origin":[-3,-1,-3],
+                    "width":6,"height":4,"depth":6}},"right":{right}}}"#);
+            let r=process(&input);
+            assert!(!r.ok);
+            assert!(r.solid.is_none());
+            assert!(r.data.is_none());
+        }
     }
     #[test]
     fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){

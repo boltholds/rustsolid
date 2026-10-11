@@ -327,7 +327,7 @@ impl BrepStructuralEditor {
         match body{
             BrepBody::Polyhedral(s)=>Self::new(s.clone()),
             BrepBody::ThroughHole(h)=>Self::from_through_hole(h),
-            BrepBody::Cylinder(_)=>Err(invalid("full cylinder is not a box-shaped structural source")),
+            BrepBody::Cylinder(_) | BrepBody::BlindHole(_)=>Err(invalid("only box and full through-hole are supported structural sources")),
         }
     }
     pub fn revision(&self)->u64{self.revision}

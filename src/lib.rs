@@ -30,6 +30,7 @@ mod brep_arena;
 mod boolean;
 mod boolean_region;
 mod through_hole;
+mod blind_hole;
 mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
@@ -43,7 +44,7 @@ pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, 
 pub use euler::{KillEdgeVertex, KillEdgeFace};
 pub use predicates::{Orientation, PredicateClassification, PredicateKernel, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
 pub use curved_brep::{CylindricalBrep, CurvedFace, CurvedFaceKind};
-pub use unified_brep::{BrepBody, BrepSource, BrepModel, BrepGeometry, BrepFace, BrepOrigin, BrepSummary};
+pub use unified_brep::{BrepBody, BrepSource, BrepModel, BrepGeometry, BrepFace, BrepOrigin, BrepSummary, FaceSense};
 pub use query::{geometry_query, QueryLimits, QueryError};
 pub use accuracy::{generate_boundary_cases, run_boundary_probes, evaluate_probe_case,
     ProbeExpectation, ProbeModel, ProbeCase, ProbeMetrics, ProbeOutcome, ProbeReport};
@@ -71,6 +72,7 @@ pub use boolean::{BooleanKernel, BooleanOperation, BooleanOperand, BooleanFaceSo
 pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionState,
     RegionHold, ArcRegionSample, GraphRegionPlan};
 pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
+pub use blind_hole::{BlindHoleBrep,BlindHoleParameters,BlindHoleTransaction,BlindHoleDisplay};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
     CarrierHandle, CarrierHandleError, CarrierId, CarrierBinding, CarrierSnapshot,
     CarrierCommit, CarrierTransition};

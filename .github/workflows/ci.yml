@@ -97,6 +97,18 @@ jobs:
           printf '%s' '{"operation":"structural_transaction","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"batches":[[{"kind":"add_through_hole","center":[0,0],"radius":1}]],"display_segments":8}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import sys,json; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r and "segments" in r["error"], r'
+      - name: Analytic top-entry blind hole B-rep, face regions and mass contracts
+        run: cargo test --test blind_hole
+      - name: Blind cylindrical difference and invalid source geometry.v1 smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"boolean","mode":"difference","left":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"right":{"kind":"analytic_cylinder","origin":[0,1,0],"radius":1,"height":2}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,math,sys; r=json.load(sys.stdin); s=r["solid"]; d=r["data"]; assert r["ok"] and d["representation"]=="analytic_cylindrical_blind_hole" and d["opening_inner_loops"]==1 and d["floor_face_id"]==7 and d["source_opening_trace"]["arcs"]==1 and d["source_opening_trace"]["closed"] and d["closed_oriented_display_mesh_certified"] and s["topology"]["faces"]==8 and s["topology"]["euler_characteristic"]==2 and s["analytic_brep"]["inner_loops"]==1 and abs(s["mass"]["volume"]-(144-2*math.pi))<1e-9 and abs(s["mass"]["surface_area"]-(168+4*math.pi))<1e-9, r'
+          printf '%s' '{"operation":"boolean","mode":"difference","left":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"right":{"kind":"analytic_cylinder","origin":[0,1,0],"radius":1,"height":1.99999999}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

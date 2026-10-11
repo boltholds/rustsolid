@@ -32,7 +32,7 @@ pub struct BooleanFaceSource {
 }
 
 #[derive(Debug, Clone)]
-pub enum BooleanOutcome { Empty, Solid(Solid), Analytic(crate::ThroughHoleBrep) }
+pub enum BooleanOutcome { Empty, Solid(Solid), Analytic(crate::ThroughHoleBrep), BlindHole(crate::BlindHoleBrep) }
 
 #[derive(Debug, Clone)]
 pub struct BooleanResult {
@@ -41,10 +41,10 @@ pub struct BooleanResult {
 }
 impl BooleanResult {
     pub fn solid(&self) -> Option<&Solid> {
-        match &self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) => None, BooleanOutcome::Solid(s) => Some(s) }
+        match &self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) => None, BooleanOutcome::Solid(s) => Some(s) }
     }
     pub fn into_solid(self) -> Option<Solid> {
-        match self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) => None, BooleanOutcome::Solid(s) => Some(s) }
+        match self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) => None, BooleanOutcome::Solid(s) => Some(s) }
     }
 }
 
@@ -161,21 +161,35 @@ impl BooleanKernel {
         match (left,right,operation) {
             (BrepBody::Polyhedral(a),BrepBody::Cylinder(c),BooleanOperation::Difference) => {
                 AxisBox::certify(a,"left must be an axis-aligned box")?;
-                let analytic=crate::ThroughHoleBrep::from_operands(a,c)
-                    .map_err(|_|BooleanError::UnsupportedOperand(
-                        "through-hole cylinder must span the full box height and remain strictly inside its sides"))?;
-                let face_sources=a.faces.iter().map(|f|BooleanFaceSource {
+                let (outcome,blind)=if let Ok(body)=crate::ThroughHoleBrep::from_operands(a,c){
+                    (BooleanOutcome::Analytic(body),false)
+                }else if let Ok(body)=crate::BlindHoleBrep::from_operands(a,c){
+                    (BooleanOutcome::BlindHole(body),true)
+                }else{
+                    return Err(BooleanError::UnsupportedOperand(
+                        "axis-aligned box difference supports only strict full-height or top-entry blind upright cylinders entirely within its four sides"));
+                };
+                let mut face_sources=a.faces.iter().map(|f|BooleanFaceSource {
                     result_face:f.id,operand:BooleanOperand::Left,source_face:f.id,reversed:false,
-                }).chain(std::iter::once(BooleanFaceSource {
+                }).collect::<Vec<_>>();
+                face_sources.push(BooleanFaceSource {
                     result_face:FaceId(6),operand:BooleanOperand::Right,
                     source_face:FaceId(2),reversed:true,
-                })).collect();
-                Ok(BooleanResult {outcome:BooleanOutcome::Analytic(analytic),face_sources})
+                });
+                if blind {
+                    // New upward-facing cut floor is the reversed source
+                    // cylinder's lower planar cap, not a box source face.
+                    face_sources.push(BooleanFaceSource {
+                        result_face:FaceId(7),operand:BooleanOperand::Right,
+                        source_face:FaceId(0),reversed:true,
+                    });
+                }
+                Ok(BooleanResult {outcome,face_sources})
             }
             (BrepBody::Polyhedral(a),BrepBody::Polyhedral(b),operation) =>
                 Self::apply_solids(a,b,operation),
             _=>Err(BooleanError::UnsupportedOperand(
-                "only planar box CSG or box minus a strictly through cylinder is supported")),
+                "only planar box CSG or certified box minus a strict upright through/blind cylinder is supported")),
         }
     }
 

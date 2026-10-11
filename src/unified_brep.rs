@@ -8,7 +8,7 @@
 //! non-manifold models are deliberately not claimed yet.
 use crate::{
     BoundingBox, Coedge, CoedgeGeometry, CoedgeId, Curve2, Curve3,
-    ThroughHoleBrep,
+    ThroughHoleBrep,BlindHoleBrep,
     CylindricalBrep, Edge, EdgeGeometry, EdgeId, FaceGeometry, FaceId,
     GeometryError, GeometryTolerance, Loop, LoopId, MassProperties,
     Mesh, ModelUnits, ParameterRange, Point3, Shell, Solid, Surface3, Vertex,
@@ -32,15 +32,21 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
+/// The physical shell orientation may differ from the mathematical
+/// parameterization of the underlying support surface. Cylinder walls of
+/// voids and the planar floor of a top-entry blind bore are reversed.
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+pub enum FaceSense { Forward, Reversed }
 #[derive(Debug, Clone)]
 pub struct BrepFace {
     pub id: FaceId,
     pub loops: Vec<LoopId>,
     pub geometry: FaceGeometry,
+    pub sense:FaceSense,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +128,7 @@ pub enum BrepBody {
     Polyhedral(Solid),
     Cylinder(CylindricalBrep),
     ThroughHole(ThroughHoleBrep),
+    BlindHole(BlindHoleBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
@@ -132,12 +139,16 @@ impl From<CylindricalBrep> for BrepBody {
 impl From<ThroughHoleBrep> for BrepBody {
     fn from(body: ThroughHoleBrep) -> Self { Self::ThroughHole(body) }
 }
+impl From<BlindHoleBrep> for BrepBody {
+    fn from(body: BlindHoleBrep) -> Self { Self::BlindHole(body) }
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
             Self::Polyhedral(body) => body.validate(),
             Self::Cylinder(body) => body.validate(),
             Self::ThroughHole(body) => body.validate(),
+            Self::BlindHole(body) => body.validate(),
         }
     }
     pub fn shared(&self) -> Result<BrepModel, GeometryError> {
@@ -151,6 +162,7 @@ impl BrepBody {
             Self::Polyhedral(body) => body,
             Self::Cylinder(body) => body,
             Self::ThroughHole(body) => body,
+            Self::BlindHole(body) => body,
         }
     }
 }
@@ -170,7 +182,7 @@ impl BrepModel {
         let faces = body.faces.iter().map(|f| {
             let geometry = store.faces.get(&f.id).cloned()
                 .ok_or_else(|| invalid(format!("missing surface binding for face {:?}", f.id)))?;
-            Ok(BrepFace { id: f.id, loops: f.loops.clone(), geometry })
+            Ok(BrepFace { id: f.id, loops: f.loops.clone(), geometry, sense:FaceSense::Forward })
         }).collect::<Result<Vec<_>,GeometryError>>()?;
         let result = Self {
             origin: BrepOrigin::Polyhedral,
@@ -190,7 +202,7 @@ impl BrepModel {
     pub fn from_cylinder(body: &CylindricalBrep) -> Result<Self, GeometryError> {
         body.validate()?;
         let faces = body.faces.iter().map(|f| BrepFace {
-            id: f.id, loops: f.loops.clone(), geometry: f.geometry.clone(),
+            id: f.id, loops: f.loops.clone(), geometry: f.geometry.clone(), sense:FaceSense::Forward,
         }).collect();
         let result = Self {
             origin: BrepOrigin::AnalyticCylinder,
@@ -211,6 +223,30 @@ impl BrepModel {
     pub fn face_surface(&self, id: FaceId) -> Option<Surface3> {
         let face = self.faces.get(id.0 as usize).filter(|f| f.id == id)?;
         self.geometry.surfaces.get(face.geometry.surface.0 as usize).copied()
+    }
+    pub fn face_sense(&self,id:FaceId)->Option<FaceSense>{
+        self.faces.get(id.0 as usize).filter(|f|f.id==id).map(|f|f.sense)
+    }
+    /// The actual outward orientation of a face, not necessarily the
+    /// cross-product of its support UV chart. User-facing CAD tools must
+    /// use this for blind-hole floors and subtractive cylindrical walls.
+    pub fn oriented_face_normal(&self,id:FaceId,u:f64,v:f64)
+        ->Result<Point3,GeometryError>
+    {
+        let face=self.faces.get(id.0 as usize).filter(|f|f.id==id)
+            .ok_or_else(||invalid("oriented face references invalid face"))?;
+        let surface=self.face_surface(id)
+            .ok_or_else(||invalid("oriented face missing surface"))?;
+        let sample=surface.evaluate(u,v)?;
+        let mut normal=sample.du.cross(sample.dv);
+        if face.sense==FaceSense::Reversed {
+            normal=normal.scale(-1.0);
+        }
+        let size=normal.length_squared().sqrt();
+        if !size.is_finite()||size<=self.tolerance.absolute_length{
+            return Err(invalid("degenerate oriented support normal"));
+        }
+        Ok(normal.scale(1.0/size))
     }
     pub fn edge_curve(&self, id: EdgeId) -> Option<Curve3> {
         let edge = self.edges.get(id.0 as usize).filter(|e| e.id == id)?;
@@ -300,6 +336,25 @@ impl BrepModel {
             if face.id.0 as usize != i || face.loops.is_empty()
                 || face.geometry.outer_loop != face.loops[0] {
                 return Err(invalid("invalid B-rep face identity or outer-loop owner"));
+            }
+        }
+        // These origins are explicit canonical producer families, not a
+        // general writable oriented-shell class. Certify the material sense
+        // promised by each producer rather than accepting a false cylinder
+        // exterior or an inverted blind floor as a valid closed body.
+        // A future generalized B-rep origin must prove orientation from
+        // local face/edge incidence rather than reusing this producer table.
+        for face in &self.faces {
+            let reversed=match self.origin {
+                BrepOrigin::Polyhedral | BrepOrigin::AnalyticCylinder=>false,
+                BrepOrigin::AnalyticThroughHole |
+                    BrepOrigin::AnalyticMultipleThroughHoles=>face.id.0>=6,
+                BrepOrigin::AnalyticBlindHole=>
+                    face.id==FaceId(6) || face.id==FaceId(7),
+            };
+            let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
+            if face.sense!=expected {
+                return Err(invalid("canonical source face has inconsistent material orientation"));
             }
         }
         let shell = &self.shells[0];

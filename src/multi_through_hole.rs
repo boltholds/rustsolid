@@ -233,7 +233,7 @@ fn append_hole(model:&mut BrepModel,block:&Solid,params:HoleParameters,
     ]);
     model.faces[0].loops.push(lb);
     model.faces[1].loops.push(lt);
-    model.faces.push(BrepFace{id:side,loops:vec![ls],geometry:FaceGeometry{
+    model.faces.push(BrepFace{id:side,loops:vec![ls],sense:crate::FaceSense::Reversed,geometry:FaceGeometry{
         surface:support,outer_loop:ls,tolerance:tol,bounds:ParameterDomain2{
             u:full,v:axial,u_periodic:true,v_periodic:false,
         },
