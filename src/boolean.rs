@@ -32,7 +32,7 @@ pub struct BooleanFaceSource {
 }
 
 #[derive(Debug, Clone)]
-pub enum BooleanOutcome { Empty, Solid(Solid), Analytic(crate::ThroughHoleBrep), BlindHole(crate::BlindHoleBrep) }
+pub enum BooleanOutcome { Empty, Solid(Solid), Analytic(crate::ThroughHoleBrep), BlindHole(crate::BlindHoleBrep), Composite(crate::BrepCompositeEditor) }
 
 #[derive(Debug, Clone)]
 pub struct BooleanResult {
@@ -41,10 +41,10 @@ pub struct BooleanResult {
 }
 impl BooleanResult {
     pub fn solid(&self) -> Option<&Solid> {
-        match &self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) => None, BooleanOutcome::Solid(s) => Some(s) }
+        match &self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) | BooleanOutcome::Composite(_) => None, BooleanOutcome::Solid(s) => Some(s) }
     }
     pub fn into_solid(self) -> Option<Solid> {
-        match self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) => None, BooleanOutcome::Solid(s) => Some(s) }
+        match self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) | BooleanOutcome::BlindHole(_) | BooleanOutcome::Composite(_) => None, BooleanOutcome::Solid(s) => Some(s) }
     }
 }
 
@@ -191,6 +191,75 @@ impl BooleanKernel {
             _=>Err(BooleanError::UnsupportedOperand(
                 "only planar box CSG or certified box minus a strict upright through/blind cylinder is supported")),
         }
+    }
+
+    /// Sequential analytic subtraction for one certified axis-aligned box
+    /// and 1..=32 vertical, mutually disjoint cylindrical cutters. Each
+    /// cutter is individually certified against the actual box support
+    /// planes and promoted to the existing through/blind analytic producer.
+    /// The complete set is then constructed into ONE atomic B-rep, never
+    /// a chain of intermediate triangle-mesh Boolean differences.
+    ///
+    /// Source operands are never mutated. Other Boolean modes and
+    /// overlapping, tangent, tilted or partial-contact cutters fail closed.
+    pub fn apply_sequence(left:&BrepBody,cutters:&[BrepBody],
+        operation:BooleanOperation)->Result<BooleanResult,BooleanError>
+    {
+        if operation!=BooleanOperation::Difference {
+            return Err(BooleanError::UnsupportedOperand(
+                "analytic cutter sequences currently support Difference only"));
+        }
+        let BrepBody::Polyhedral(block)=left else{
+            return Err(BooleanError::UnsupportedOperand(
+                "sequential analytic cuts require a certified box left operand"));
+        };
+        AxisBox::certify(block,"analytic cut sequence left must be an exact box")?;
+        if cutters.is_empty() || cutters.len()>32 {
+            return Err(BooleanError::UnsupportedOperand(
+                "analytic cut sequence requires 1..=32 source cylinders"));
+        }
+        let mut cuts=Vec::with_capacity(cutters.len());
+        for cutter in cutters {
+            let BrepBody::Cylinder(cylinder)=cutter else{
+                return Err(BooleanError::UnsupportedOperand(
+                    "analytic cut sequence accepts only validated cylindrical B-rep cutters"));
+            };
+            if let Ok(proof)=crate::ThroughHoleBrep::from_operands(block,cylinder){
+                cuts.push(crate::AnalyticCut::Through(proof.parameters()));
+            }else if let Ok(proof)=crate::BlindHoleBrep::from_operands(block,cylinder){
+                cuts.push(crate::AnalyticCut::Blind(proof.parameters()));
+            }else{
+                return Err(BooleanError::UnsupportedOperand(
+                    "cutter is neither a strict top-entry blind nor full-height through cylinder"));
+            }
+        }
+        let composition=crate::BrepCompositeEditor::from_cuts(
+            block.clone(),&cuts).map_err(|e|
+                BooleanError::UnsupportedResultTopology(e.to_string()))?;
+        let mut face_sources=block.faces.iter().map(|face|
+            BooleanFaceSource{result_face:face.id,operand:BooleanOperand::Left,
+                source_face:face.id,reversed:false}
+        ).collect::<Vec<_>>();
+        for binding in composition.bindings(){
+            face_sources.push(BooleanFaceSource{
+                result_face:binding.topology.side_face,
+                operand:BooleanOperand::Right,source_face:FaceId(2),
+                reversed:true,
+            });
+            if let Some(floor)=binding.topology.floor_face {
+                face_sources.push(BooleanFaceSource{
+                    result_face:floor,operand:BooleanOperand::Right,
+                    source_face:FaceId(0),reversed:true,
+                });
+            }
+        }
+        if face_sources.len()!=composition.model().faces.len(){
+            return Err(BooleanError::UnsupportedResultTopology(
+                "sequential Boolean source-face ownership is incomplete".into()));
+        }
+        Ok(BooleanResult{
+            outcome:BooleanOutcome::Composite(composition),face_sources
+        })
     }
 
     pub fn apply_solids(a:&Solid,b:&Solid,operation:BooleanOperation)
