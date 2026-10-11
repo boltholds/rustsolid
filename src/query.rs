@@ -321,6 +321,10 @@ impl Execution<'_> {
             (Node::Bounds,"max")=>self.get(Node::Point(m.bbox.max),&s.fields)?,
             (Node::Point(p),"x")=>json!(p.x),(Node::Point(p),"y")=>json!(p.y),(Node::Point(p),"z")=>json!(p.z),
             (Node::Face(id),"id")=>json!(id.0),
+            (Node::Face(id),"sense")=>json!(match m.face_sense(id).ok_or_else(bad)?{
+                crate::FaceSense::Forward=>"forward",
+                crate::FaceSense::Reversed=>"reversed",
+            }),
             (Node::Face(id),"surface")=>self.get(Node::Surface(m.face_surface(id).ok_or_else(bad)?),&s.fields)?,
             (Node::Face(id),"loops")=>{
                 let face=&m.faces[id.0 as usize];
