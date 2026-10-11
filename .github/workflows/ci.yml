@@ -37,3 +37,10 @@ jobs:
           printf '%s' '{"operation":"regression_corpus"}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["total"] == 20 and r["data"]["failed"] == 0, r'
+      - name: Surface intersection CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"intersect_surfaces","first":{"kind":"plane","origin":[0,3,0],"x_axis":[1,0,0],"y_axis":[0,0,-1]},"second":{"kind":"cylinder","origin":[0,0,0],"radius":2,"x_axis":[1,0,0],"y_axis":[0,0,-1]}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["kind"]=="crossing" and r["data"]["curves"][0]["kind"]=="periodic_section" and r["data"]["certificate"]["max_residual_first"]<1e-8, r'

@@ -1,6 +1,8 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
-use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
+    CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
+    ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -20,6 +22,9 @@ enum GeometryRequest {
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
     RegressionCorpus,
+    IntersectSurfaces { first: SurfaceInput, second: SurfaceInput,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] samples:Option<usize> },
     CommandHistory { source: SolidSource, #[serde(default)] feature_key: Option<String>,
         batches: Vec<CommandBatch>, #[serde(default)] undo: usize, #[serde(default)] redo: usize },
 }
@@ -348,6 +353,94 @@ fn evaluate_regression_corpus() -> Response {
     }
 }
 
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum SurfaceInput {
+    Plane { origin:[f64;3], x_axis:[f64;3], y_axis:[f64;3] },
+    Cylinder { origin:[f64;3], x_axis:[f64;3], y_axis:[f64;3], radius:f64 },
+}
+impl SurfaceInput {
+    fn analytic(self,tol:GeometryTolerance)->Result<Surface3,GeometryError>{
+        let vec=|p:[f64;3]|Point3{x:p[0],y:p[1],z:p[2]};
+        match self {
+            Self::Plane{origin,x_axis,y_axis}=>{
+                let frame=Frame3::from_axes(vec(origin),vec(x_axis),vec(y_axis),tol)?;
+                Ok(Surface3::Plane(PlaneSurface{frame}))
+            },
+            Self::Cylinder{origin,x_axis,y_axis,radius}=>{
+                let frame=Frame3::from_axes(vec(origin),vec(x_axis),vec(y_axis),tol)?;
+                Ok(Surface3::Cylinder(CylinderSurface::new(frame,radius,tol)?))
+            },
+        }
+    }
+}
+
+fn evaluate_surface_intersection(
+    first:SurfaceInput, second:SurfaceInput,
+    tolerance:GeometryTolerance, samples:usize,
+)->Response{
+    let result=(||->Result<Value,GeometryError>{
+        if !(3..=64).contains(&samples){
+            return Err(GeometryError::InvalidEdit("intersection sample count must be 3..=64".into()));
+        }
+        let first=first.analytic(tolerance)?;
+        let second=second.analytic(tolerance)?;
+        let engine=SurfaceIntersectionEngine::new(tolerance)?;
+        let intersection=engine.intersect(first,second)?;
+        let data=match &intersection {
+            SurfaceIntersection::Empty=>json!({"kind":"empty","curves":[]}),
+            SurfaceIntersection::Coincident=>json!({"kind":"coincident","curves":[]}),
+            SurfaceIntersection::Ambiguous{reason,gap}=>json!({
+                "kind":"ambiguous",
+                "reason":match reason {
+                    IntersectionAmbiguity::NearParallel=>"near_parallel",
+                    IntersectionAmbiguity::NearTangency=>"near_tangency"
+                },
+                "signed_gap":gap,"curves":[],"requires_refinement":true
+            }),
+            SurfaceIntersection::Curves{contact,curves}=>{
+                let certificate=intersection.certify(first,second,tolerance)?;
+                let branches=curves.iter().map(|curve| {
+                    let bounded=matches!(curve.parameter_domain(),ParameterRange::Bounded{..});
+                    let coords=(0..samples).map(|i|{
+                        let f=i as f64/(samples-1) as f64;
+                        let t=if bounded {f*std::f64::consts::TAU}else{8.0*f-4.0};
+                        curve.evaluate(t).map(|p|json!({"parameter":t,"point":p.array()}))
+                    }).collect::<Result<Vec<_>,_>>()?;
+                    Ok(json!({
+                        "kind":match curve {
+                            IntersectionCurve::Line(_)=>"line",
+                            IntersectionCurve::PlaneCylinderSection(_)=>"periodic_section",
+                        },
+                        "periodic":bounded,"samples":coords
+                    }))
+                }).collect::<Result<Vec<Value>,GeometryError>>()?;
+                json!({
+                    "kind":intersection.kind(),
+                    "contact":match contact{
+                        IntersectionContact::Crossing=>"crossing",
+                        IntersectionContact::Tangent=>"tangent",
+                    },
+                    "curves":branches,
+                    "certificate":{
+                        "sample_count":certificate.samples,
+                        "max_residual_first":certificate.max_residual_a,
+                        "max_residual_second":certificate.max_residual_b,
+                        "budget":certificate.budget
+                    }
+                })
+            }
+        };
+        Ok(data)
+    })();
+    match result {
+        Ok(data)=>Response {schema_version:"geometry.v1",ok:true,solid:None,error:None,data:Some(data)},
+        Err(error)=>Response {schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(error.to_string()),data:None},
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -363,6 +456,8 @@ fn process(input: &str) -> Response {
         Ok(GeometryRequest::ProbeKernel {seed}) =>
             return evaluate_boundary_probes(seed.unwrap_or(13)),
         Ok(GeometryRequest::RegressionCorpus) => return evaluate_regression_corpus(),
+        Ok(GeometryRequest::IntersectSurfaces {first,second,tolerance,samples}) =>
+            return evaluate_surface_intersection(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::AnalyticCylinder {origin,radius,height,segments,tolerance}) => {
             return process_analytic_cylinder(origin,radius,height,
                 segments.unwrap_or(64),tolerance.unwrap_or_default());
@@ -713,6 +808,57 @@ mod tests {
         assert_eq!(report["outcomes"].as_array().unwrap().len(),20);
         assert!(report["outcomes"].as_array().unwrap().iter()
             .any(|outcome|outcome["fixture"]["id"]=="regression/thin_face_frame_2026_10_10"));
+    }
+
+    #[test]
+    fn json_intersection_returns_unfaceted_curve_and_independent_residuals(){
+        let result=process(r#"{
+            "operation":"intersect_surfaces",
+            "first":{"kind":"plane","origin":[0,3,0],"x_axis":[1,0,0],"y_axis":[0,0,-1]},
+            "second":{"kind":"cylinder","origin":[0,0,0],"x_axis":[1,0,0],"y_axis":[0,0,-1],"radius":2},
+            "samples":9
+        }"#);
+        assert!(result.ok,"{:?}",result.error);
+        assert!(result.solid.is_none());
+        let body=result.data.unwrap();
+        assert_eq!(body["kind"],"crossing");
+        assert_eq!(body["contact"],"crossing");
+        assert_eq!(body["curves"][0]["periodic"],true);
+        assert_eq!(body["curves"][0]["samples"].as_array().unwrap().len(),9);
+        for point in body["curves"][0]["samples"].as_array().unwrap(){
+            let p=point["point"].as_array().unwrap();
+            let x=p[0].as_f64().unwrap();
+            let y=p[1].as_f64().unwrap();
+            let z=p[2].as_f64().unwrap();
+            assert!((y-3.0).abs()<1e-9);
+            assert!((x*x+z*z-4.0).abs()<1e-9);
+        }
+        assert!(body["certificate"]["max_residual_first"].as_f64().unwrap()<1e-9);
+        assert!(body["certificate"]["max_residual_second"].as_f64().unwrap()<1e-9);
+    }
+
+    #[test]
+    fn json_intersection_handles_tangency_uncertainty_and_limits(){
+        let source=|x:f64|format!(r#"{{
+            "operation":"intersect_surfaces",
+            "first":{{"kind":"plane","origin":[{x},0,0],
+                "x_axis":[0,1,0],"y_axis":[0,0,1]}},
+            "second":{{"kind":"cylinder","origin":[0,0,0],
+                "x_axis":[1,0,0],"y_axis":[0,0,-1],"radius":2}}
+        }}"#);
+        let tangent=process(&source(2.0));
+        assert!(tangent.ok,"{:?}",tangent.error);
+        assert_eq!(tangent.data.unwrap()["contact"],"tangent");
+        let near=process(&source(2.0+4e-10));
+        assert!(near.ok,"{:?}",near.error);
+        let result=near.data.unwrap();
+        assert_eq!(result["kind"],"ambiguous");
+        assert_eq!(result["reason"],"near_tangency");
+        assert_eq!(result["curves"],json!([]));
+        let invalid=process(&source(2.0).replace("\"operation\":\"intersect_surfaces\"",
+            "\"operation\":\"intersect_surfaces\",\"samples\":1000"));
+        assert!(!invalid.ok);
+        assert!(invalid.data.is_none());
     }
 
 }
