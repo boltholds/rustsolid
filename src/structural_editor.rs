@@ -333,6 +333,13 @@ impl BrepStructuralEditor {
     pub fn revision(&self)->u64{self.revision}
     pub fn editor_token(&self)->u64{self.token}
     pub fn model(&self)->&BrepModel{&self.state.model}
+    /// Geometry ownership stays with this editor; mesh is display-only.
+    pub(crate) fn source_box(&self)->&Solid{&self.template}
+    /// Independently certify planar cap loops and emit a watertight display mesh.
+    pub fn tessellate(&self,segments:usize)
+        ->Result<crate::CertifiedDisplayMesh,GeometryError>{
+        crate::FaceRegionMesher::tessellate(self,segments)
+    }
     pub fn undo_depth(&self)->usize{self.undo.len()}
     pub fn redo_depth(&self)->usize{self.redo.len()}
     pub fn hole_count(&self)->usize{active_holes(&self.state.slots).len()}
