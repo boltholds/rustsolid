@@ -41,7 +41,7 @@ pub struct BooleanResult {
 }
 impl BooleanResult {
     pub fn solid(&self) -> Option<&Solid> {
-        match &self.outcome { BooleanOutcome::Empty => None, BooleanOutcome::Solid(s) => Some(s) }
+        match &self.outcome { BooleanOutcome::Empty | BooleanOutcome::Analytic(_) => None, BooleanOutcome::Solid(s) => Some(s) }
     }
     pub fn into_solid(self) -> Option<Solid> {
         match self.outcome { BooleanOutcome::Empty => None, BooleanOutcome::Solid(s) => Some(s) }
