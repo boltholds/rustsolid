@@ -321,9 +321,9 @@ impl ThroughHoleBrep {
             let j=(i+1)%n;
             let a=(4*i) as u32;let b=(4*j) as u32;
             let quads=[
-                ([a,b,b+1,a+1],FaceId(0),false),
-                ([a+2,b+2,b+3,a+3],FaceId(1),true),
-                ([a+1,b+1,b+3,a+3],FaceId(6),false),
+                ([a,b,b+1,a+1],FaceId(0),true),
+                ([a+2,b+2,b+3,a+3],FaceId(1),false),
+                ([a+1,b+1,b+3,a+3],FaceId(6),true),
             ];
             for (q,face,flip) in quads {
                 let mut tri=[[q[0],q[1],q[2]],[q[0],q[2],q[3]]];
