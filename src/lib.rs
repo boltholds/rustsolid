@@ -31,6 +31,8 @@ mod boolean;
 mod boolean_region;
 mod through_hole;
 mod carrier_editor;
+mod multi_through_hole;
+mod structural_editor;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
