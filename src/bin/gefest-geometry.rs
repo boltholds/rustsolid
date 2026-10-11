@@ -4,7 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
-    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, CompositeBlindBrep,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -44,6 +44,7 @@ enum GeometryRequest {
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
+    ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
@@ -326,6 +327,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
+                BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1319,6 +1321,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
+                BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -1443,6 +1446,41 @@ fn evaluate_carrier_transaction(
             solid:None,error:None,data:Some(data)},
         Err(error)=>Response{schema_version:"geometry.v1",ok:false,
             solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
+
+#[derive(Debug,Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BlindHoleInput{center:[f64;2],radius:f64,depth:f64}
+fn evaluate_composite_blind(source:SolidSource,holes:Vec<BlindHoleInput>)->Response{
+    let result=(||->Result<Value,GeometryError>{
+        let source=source.build()?;
+        let holes=holes.into_iter().map(|x|BlindHoleParameters{
+            center_x:x.center[0],center_z:x.center[1],radius:x.radius,depth:x.depth
+        }).collect::<Vec<_>>();
+        let m=CompositeBlindBrep::build(&source,&holes)?;
+        m.validate()?;
+        let s=m.summary();
+        Ok(json!({"kind":"composite_blind","state":"committed",
+            "representation":"analytic_multiple_blind_holes","hole_count":holes.len(),
+            "topology":{"vertices":s.vertices,"edges":s.edges,"coedges":s.coedges,
+                "loops":s.loops,"faces":s.faces,"shells":s.shells,
+                "genus":s.genus,"euler_characteristic":s.euler_characteristic,
+                "cylindrical_faces":s.cylindrical_faces,"circular_edges":s.circular_edges,
+                "inner_loops":m.loops.iter().filter(|l|l.role==rustsolid::LoopRole::Inner).count()},
+            "floors":(0..holes.len()).map(|i|7+2*i).collect::<Vec<_>>(),
+            "mass":{"volume":m.mass.volume,"surface_area":m.mass.surface_area,
+                "centroid":m.mass.centroid.array()},
+            "topology_committed":true,"display_mesh_included":false,
+            "generalized_topology_delta_can_apply":false
+        }))
+    })();
+    match result{
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,solid:None,
+            error:None,data:Some(data)},
+        Err(e)=>Response{schema_version:"geometry.v1",ok:false,solid:None,
+            error:Some(e.to_string()),data:None}
     }
 }
 
@@ -1623,6 +1661,8 @@ fn process(input: &str) -> Response {
             return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
+        Ok(GeometryRequest::ComposeBlind{source,holes}) =>
+            return evaluate_composite_blind(source,holes),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
@@ -2490,6 +2530,25 @@ mod tests {
             assert!(r.solid.is_none());
             assert!(r.data.is_none());
         }
+    }
+
+    #[test]
+    fn json_composite_blind_valid_and_invalid_are_atomic(){
+        let root=r#"{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6}"#;
+        let good=format!(r#"{{"operation":"compose_blind","source":{root},
+            "holes":[{{"center":[-1.5,0],"radius":0.6,"depth":1.2}},
+                     {{"center":[1.5,0],"radius":0.7,"depth":2.4}}]}}"#);
+        let r=process(&good);assert!(r.ok,"{:?}",r.error);
+        assert!(r.solid.is_none());let d=r.data.unwrap();
+        assert_eq!(d["topology"]["genus"],0);
+        assert_eq!(d["topology"]["faces"],10);
+        assert_eq!(d["topology"]["inner_loops"],2);
+        assert_eq!(d["floors"],json!([7,9]));
+        let wrong=format!(r#"{{"operation":"compose_blind","source":{root},
+            "holes":[{{"center":[-1,0],"radius":1,"depth":1}},
+                     {{"center":[0,0],"radius":1,"depth":2}}]}}"#);
+        let r=process(&wrong);assert!(!r.ok);assert!(r.solid.is_none());
+        assert!(r.data.is_none());
     }
     #[test]
     fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){

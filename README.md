@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.25 experimental kernel: source-verified finite-depth cylindrical blind-hole Booleans with explicit physical face orientation, alongside through-holes, genus-N structural edits and certified display meshing.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.26 experimental kernel: source-certified composition of disjoint top-entry analytic blind bores, in addition to single blind/through Booleans, multi-through structural editing and display meshing.** Not a general curved Boolean kernel.
 
 ## Current capabilities
 
@@ -266,6 +266,24 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.26: composed independent analytic blind-cut regions
+
+[CompositeBlindBrep](docs/composite-blind.md) builds one exact, validated
+genus-zero analytical B-rep from a certified axis-aligned block and up to
+16 pairwise-disjoint top-entry blind cylindrical cuts. Each cut has its
+own certified closed IntersectionGraph source opening, planar disk floor,
+true circular 3D edges, cylindrical side and UV trims. All openings share
+the original top planar face with one inner loop per bore.
+
+The composition rechecks full manifold topology and recomputes exact
+volume, area and centroid using disjoint removed cylinder moments. It is
+available via Rust `CompositeBlindBrep::build` and the new
+`geometry.v1 compose_blind` operation. It intentionally returns analytic
+topology and mass **without inventing a display mesh**, and it does not
+claim to implement general intersecting curved Boolean arrangements or
+mutable composite history. Previously available single-hole editing and
+mesh paths remain unaffected.
 
 ## v0.25: source-certified top-entry analytic blind cylindrical Boolean
 

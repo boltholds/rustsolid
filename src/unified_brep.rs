@@ -32,7 +32,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -351,6 +351,7 @@ impl BrepModel {
                     BrepOrigin::AnalyticMultipleThroughHoles=>face.id.0>=6,
                 BrepOrigin::AnalyticBlindHole=>
                     face.id==FaceId(6) || face.id==FaceId(7),
+                BrepOrigin::AnalyticMultipleBlindHoles=>face.id.0>=6,
             };
             let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
             if face.sense!=expected {
