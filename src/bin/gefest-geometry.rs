@@ -982,6 +982,19 @@ fn evaluate_boolean_region_plan(
         let plan=BooleanRegionClassifier::classify_graph(
             &graph,&left,fa,&right,fb,mode)?;
         plan.validate_against(&graph,&left,fa,&right,fb)?;
+        let topology=TopologyDeltaPlanner::new().plan(&graph,&lm,fa,&rm,fb)?;
+        topology.validate_against(&graph,&lm,fa,&rm,fb)?;
+        let outstanding=topology.requirements.iter().map(|req|match req{
+            PlanRequirement::NumericalRefinement=>"numerical_refinement",
+            PlanRequirement::GeneralizedBrepEditor=>"generalized_brep_editor",
+            PlanRequirement::RegionClassification=>"region_classification",
+            PlanRequirement::InnerLoopConstruction=>"inner_loop_construction",
+            PlanRequirement::OpenTraceCompletion=>"open_trace_completion",
+            PlanRequirement::CurvedEdgeSubdivision=>"curved_edge_subdivision",
+            PlanRequirement::MultipleSplitsSameEdge=>"multiple_splits_same_edge",
+            PlanRequirement::TangencyClassification=>"tangency_classification",
+            PlanRequirement::BoundaryReconciliation=>"boundary_reconciliation",
+        }).collect::<Vec<_>>();
         let position=|v|match v {
             rustsolid::VolumePosition::Inside=>"inside",
             rustsolid::VolumePosition::Outside=>"outside",
@@ -1023,6 +1036,18 @@ fn evaluate_boolean_region_plan(
             "source_faces":[fa.0,fb.0],
             "intersection_arcs":graph.arcs.len(),
             "region_samples":samples,
+            "topology_intent":{
+                "state":match topology.state {
+                    PlanState::NoChange=>"no_change",
+                    PlanState::PreviewOnly=>"preview_only",
+                    PlanState::Held=>"held",
+                },
+                "proposed_vertices":topology.vertices.len(),
+                "proposed_arcs":topology.arcs.len(),
+                "face_changes":topology.face_changes.len(),
+                "remaining_requirements":outstanding,
+                "can_apply":false,
+            },
             "topology_committed":false,
             "can_apply":false,
         }))
@@ -1682,6 +1707,12 @@ mod tests {
         assert_eq!(data["topology_committed"],false);
         assert_eq!(data["intersection_arcs"],1);
         assert_eq!(data["region_samples"].as_array().unwrap().len(),6);
+        assert_eq!(data["topology_intent"]["can_apply"],false);
+        assert!(data["topology_intent"]["remaining_requirements"].as_array().unwrap()
+            .contains(&json!("inner_loop_construction")));
+        assert!(data["topology_intent"]["remaining_requirements"].as_array().unwrap()
+            .contains(&json!("region_classification")),
+            "global region completeness remains a prerequisite");
         assert!(data["region_samples"].as_array().unwrap().iter()
             .any(|v|v["operand"]=="second" && v["reverse_orientation"]==true));
     }
