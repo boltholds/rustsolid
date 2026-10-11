@@ -65,6 +65,18 @@
     {
       "id": "arena/dependent_late_rollback",
       "kind": "dependent_late_rollback"
+    },
+    {
+      "id": "arena/dependent_compaction_remap",
+      "kind": "dependent_compaction_remap"
+    },
+    {
+      "id": "arena/dead_output_rollback",
+      "kind": "dead_output_rollback"
+    },
+    {
+      "id": "arena/dependent_created_face_inverse",
+      "kind": "dependent_created_face_inverse"
     }
   ]
 }
