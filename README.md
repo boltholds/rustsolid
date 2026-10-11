@@ -250,3 +250,7 @@ The [trimmed intersection engine](docs/trimmed-intersections.md) clips analytic 
 ## Evidence-based Parasolid capability comparison
 
 The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid capability map](docs/parasolid-api-crosswalk.md) records release-specific, publicly documented behavior (including v38.0 versus v39.0 differences), current kernel gaps and independently falsifiable acceptance tests. Earlier decompiler-derived symbol names are clearly labeled **not reverified in this audit**; private Siemens code and inferred internal algorithms are never incorporated. A first-party Python CI test ensures every ledger item remains sourced, versioned and paired with a non-vendor correctness oracle.
+
+## v0.15: typed IntersectionGraph candidate topology
+
+[IntersectionGraph](docs/intersection-graph.md) consumes the verified v0.14 UV-clipped intersection branches and builds an **immutable** graph with typed operand-namespaced face provenance, local face tolerance records, physical boundary edge/coedge witnesses, analytic intervals, contact classification, and read-only validation against both input B-reps. Full periodic circles are graph self-loops with a synthetic non-cut seam anchor; partial arcs crossing u=0/2π are coalesced into one unwrapped physical branch. The pinned [12-scenario graph regression corpus](tests/fixtures/intersection_graph.v1.json) is checked by CI along with invariance/tampering tests. The `geometry.v1` API gains read-only `intersection_graph` queries; no Boolean cut or B-rep mutation occurs.

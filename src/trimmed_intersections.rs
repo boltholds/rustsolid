@@ -338,6 +338,17 @@ impl TrimDomain {
     }
 }
 
+
+/// Classify a point against a validated face's actual UV trimming domain.
+/// Internal first-party graph validation uses this exact classifier instead of
+/// inventing face membership from bounding boxes or tessellation.
+pub(crate) fn classify_trim_point(
+    model:&BrepModel,face:FaceId,point:Point3,tolerance:GeometryTolerance,
+)->Result<TrimPosition,GeometryError>{
+    let domain=TrimDomain::from_face(model,face,tolerance)?;
+    domain.classify(point,tolerance)
+}
+
 fn segment_cylinder_angles(start:Point3,end:Point3,cylinder:crate::CylinderSurface,tol:GeometryTolerance)
     ->Result<Vec<f64>,GeometryError>
 {

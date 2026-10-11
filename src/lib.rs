@@ -24,6 +24,7 @@ mod regression;
 mod operator_contract;
 mod intersections;
 mod trimmed_intersections;
+mod intersection_graph;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -47,6 +48,9 @@ pub use intersections::{SurfaceIntersectionEngine, SurfaceIntersection, Intersec
     IntersectionCertificate, IntersectionPair, ALL_INTERSECTION_PAIRS};
 pub use trimmed_intersections::{TrimmedIntersectionEngine, TrimmedIntersection,
     TrimmedBranch, TrimmedPoint, TrimPosition, TrimContact, TrimAmbiguity};
+pub use intersection_graph::{IntersectionGraphBuilder, IntersectionGraph,
+    GraphOperand, GraphNodeId, GraphArcId, GraphFaceSource, GraphBoundarySource,
+    GraphTolerance, GraphNodeKind, GraphNode, GraphArc, GraphState};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,

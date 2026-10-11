@@ -3,7 +3,8 @@
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
-    TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+    TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity,
+    IntersectionGraphBuilder, GraphState, GraphNodeKind, GraphOperand, TrimPosition, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -21,6 +22,9 @@ enum GeometryRequest {
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
     InspectBrep { source: BrepInput },
     IntersectFaces { first: FaceOperand, second: FaceOperand,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] samples:Option<usize> },
+    IntersectionGraph { first: FaceOperand, second: FaceOperand,
         #[serde(default)] tolerance:Option<GeometryTolerance>,
         #[serde(default)] samples:Option<usize> },
     GeometryQuery { source: BrepInput, query: String },
@@ -530,6 +534,105 @@ fn evaluate_face_intersection(
     }
 }
 
+
+/// A read-only candidate-intersection graph with per-face provenance and
+/// tolerance evidence. Does NOT execute a Boolean or topology edit.
+fn evaluate_intersection_graph(
+    first:FaceOperand, second:FaceOperand, tolerance:GeometryTolerance,samples:usize,
+)->Response{
+    let result=(||->Result<Value,GeometryError>{
+        if !(3..=64).contains(&samples) {
+            return Err(GeometryError::InvalidEdit("intersection graph sample count must be 3..=64".into()));
+        }
+        let (left,_) = first.source.prepare()?;
+        let (right,_) = second.source.prepare()?;
+        let a=left.shared()?;
+        let b=right.shared()?;
+        let graph=IntersectionGraphBuilder::new(tolerance)?
+            .intersect_faces(&a,FaceId(first.face_id),&b,FaceId(second.face_id))?;
+        graph.validate_against(&a,FaceId(first.face_id),&b,FaceId(second.face_id))?;
+        let operand=|o:GraphOperand|match o{GraphOperand::First=>"first",GraphOperand::Second=>"second"};
+        let membership=|p:TrimPosition|match p{
+            TrimPosition::Outside=>"outside",TrimPosition::Interior=>"interior",
+            TrimPosition::Boundary=>"boundary",
+        };
+        let contact=|c:TrimContact|match c{
+            TrimContact::Crossing=>"crossing",TrimContact::Tangent=>"tangent",
+            TrimContact::BoundaryOverlap=>"boundary_overlap"
+        };
+        let sources=graph.source_faces.iter().map(|src|json!({
+            "operand":operand(src.operand),"face_id":src.face.0,
+            "surface_id":src.surface.0,
+            "tolerance":{"absolute_length":src.tolerance.absolute_length,
+                "relative_length":src.tolerance.relative_length,
+                "angular":src.tolerance.angular}
+        })).collect::<Vec<_>>();
+        let nodes=graph.nodes.iter().map(|node|{
+            let edges=node.boundary_sources.iter().map(|src|json!({
+                "operand":operand(src.operand),"face_id":src.face.0,
+                "edge_id":src.edge.0,"coedge_id":src.coedge.0,
+            })).collect::<Vec<_>>();
+            json!({"id":node.id.0,"position":node.point.array(),
+                "kind":match node.kind{
+                    GraphNodeKind::Endpoint=>"endpoint",
+                    GraphNodeKind::IsolatedContact=>"isolated_contact",
+                    GraphNodeKind::PeriodicAnchor=>"periodic_anchor",
+                },
+                "contact":node.contact.map(contact),
+                "membership":[membership(node.membership[0]),membership(node.membership[1])],
+                "boundary_sources":edges
+            })
+        }).collect::<Vec<_>>();
+        let arcs=graph.arcs.iter().map(|edge|{
+            let points=(0..samples).map(|i|{
+                let f=i as f64/(samples-1) as f64;
+                Ok(json!({"fraction":f,"point":edge.evaluate(f)?.array()}))
+            }).collect::<Result<Vec<Value>,GeometryError>>()?;
+            Ok(json!({"id":edge.id.0,
+                "from":edge.from.0,"to":edge.to.0,
+                "closed":edge.closed,
+                "contact":contact(edge.contact),
+                "carrier":match edge.curve {
+                    IntersectionCurve::Line(_)=>"line",
+                    IntersectionCurve::PlaneCylinderSection(_)=>"periodic_section"
+                },
+                "parameter_interval":[edge.parameter_start,edge.parameter_end],
+                "samples":points
+            }))
+        }).collect::<Result<Vec<Value>,GeometryError>>()?;
+        let status=match graph.state {
+            GraphState::Empty=>"empty",GraphState::Ready=>"ready",
+            GraphState::Ambiguous(_)=>"ambiguous"
+        };
+        let reason=match graph.state {
+            GraphState::Ambiguous(TrimAmbiguity::NearParallel)=>Some("near_parallel"),
+            GraphState::Ambiguous(TrimAmbiguity::NearTangency)=>Some("near_tangency"),
+            GraphState::Ambiguous(TrimAmbiguity::CoincidentSupports)=>Some("coincident_supports"),
+            GraphState::Ambiguous(TrimAmbiguity::UnresolvedBoundaryEvent)=>Some("unresolved_boundary_event"),
+            _=>None
+        };
+        let certificate=graph.support_certificate.map(|c|json!({
+            "sample_count":c.samples,"max_residual_first":c.max_residual_a,
+            "max_residual_second":c.max_residual_b,"budget":c.budget
+        }));
+        Ok(json!({
+            "kind":status,"reason":reason,"sources":sources,"nodes":nodes,"arcs":arcs,
+            "local_tolerance":{"length":graph.tolerance.length,
+                "angular":graph.tolerance.angular,
+                "evaluation_budget":graph.tolerance.evaluation_budget},
+            "support_certificate":certificate,
+            "topology_committed":false,
+            "requires_refinement":status=="ambiguous"
+        }))
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -542,6 +645,8 @@ fn process(input: &str) -> Response {
         Ok(GeometryRequest::InspectBrep {source}) => return inspect_brep(source),
         Ok(GeometryRequest::IntersectFaces{first,second,tolerance,samples}) =>
             return evaluate_face_intersection(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
+        Ok(GeometryRequest::IntersectionGraph{first,second,tolerance,samples}) =>
+            return evaluate_intersection_graph(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -993,6 +1098,58 @@ mod tests {
         assert!(invalid.data.is_none());
         let oversized=base.replace("\"face_id\":999","\"face_id\":0").replace(
             "\"operation\":\"intersect_faces\"", "\"operation\":\"intersect_faces\",\"samples\":200");
+        assert!(!process(&oversized).ok);
+    }
+
+    #[test]
+    fn json_intersection_graph_preserves_sources_closed_loop_and_tolerance(){
+        let response=process(r#"{
+            "operation":"intersection_graph",
+            "first":{"source":{"kind":"block","origin":[-3,2,-3],
+                "width":6,"height":1,"depth":6},"face_id":0},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2},
+            "samples":9
+        }"#);
+        assert!(response.ok,"{:?}",response.error);
+        assert!(response.solid.is_none());
+        let data=response.data.unwrap();
+        assert_eq!(data["kind"],"ready");
+        assert_eq!(data["nodes"].as_array().unwrap().len(),1);
+        assert_eq!(data["arcs"].as_array().unwrap().len(),1);
+        assert_eq!(data["nodes"][0]["kind"],"periodic_anchor");
+        assert_eq!(data["arcs"][0]["closed"],true);
+        assert_eq!(data["arcs"][0]["from"],data["arcs"][0]["to"]);
+        assert_eq!(data["topology_committed"],false);
+        assert_eq!(data["sources"][0]["operand"],"first");
+        assert_eq!(data["sources"][1]["operand"],"second");
+        assert!(data["local_tolerance"]["length"].as_f64().unwrap()>0.0);
+        for position in data["arcs"][0]["samples"].as_array().unwrap(){
+            let x=position["point"][0].as_f64().unwrap();
+            let y=position["point"][1].as_f64().unwrap();
+            let z=position["point"][2].as_f64().unwrap();
+            assert!((y-2.0).abs()<1e-8);
+            assert!((x*x+z*z-4.0).abs()<1e-8);
+        }
+    }
+    #[test]
+    fn json_intersection_graph_errors_and_ambiguity_are_safe(){
+        let request=r#"{
+            "operation":"intersection_graph",
+            "first":{"source":{"kind":"block","origin":[-3,7,-3],
+                "width":6,"height":1,"depth":6},"face_id":0},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2}
+        }"#;
+        let empty=process(request);
+        assert!(empty.ok,"{:?}",empty.error);
+        assert_eq!(empty.data.unwrap()["arcs"],json!([]));
+        let wrong=request.replace("\"face_id\":0","\"face_id\":777");
+        let rejected=process(&wrong);
+        assert!(!rejected.ok);
+        assert!(rejected.data.is_none());
+        let oversized=request.replace("\"operation\":\"intersection_graph\"",
+            "\"operation\":\"intersection_graph\",\"samples\":1000");
         assert!(!process(&oversized).ok);
     }
 

@@ -1,0 +1,90 @@
+{
+  "schema": "rustsolid.intersection_graph.v1",
+  "title": "First-party event graph mathematical/lineage regressions",
+  "fixtures": [
+    {
+      "id": "intersection_graph/transverse_segment",
+      "scenario": "transverse_segment",
+      "state": "ready",
+      "nodes": 2,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/disjoint_trims",
+      "scenario": "disjoint_trims",
+      "state": "empty",
+      "nodes": 0,
+      "arcs": 0
+    },
+    {
+      "id": "intersection_graph/corner_contact",
+      "scenario": "corner_contact",
+      "state": "ready",
+      "nodes": 1,
+      "arcs": 0
+    },
+    {
+      "id": "intersection_graph/boundary_line",
+      "scenario": "boundary_line",
+      "state": "ready",
+      "nodes": 2,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/coincident_support",
+      "scenario": "coincident_support",
+      "state": "ambiguous",
+      "nodes": 0,
+      "arcs": 0
+    },
+    {
+      "id": "intersection_graph/full_circle",
+      "scenario": "full_circle",
+      "state": "ready",
+      "nodes": 1,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/half_circle",
+      "scenario": "half_circle",
+      "state": "ready",
+      "nodes": 2,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/two_generators",
+      "scenario": "two_generators",
+      "state": "ready",
+      "nodes": 4,
+      "arcs": 2
+    },
+    {
+      "id": "intersection_graph/tangent_generator",
+      "scenario": "tangent_generator",
+      "state": "ready",
+      "nodes": 2,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/near_tangent_uncertain",
+      "scenario": "near_tangent_uncertain",
+      "state": "ambiguous",
+      "nodes": 0,
+      "arcs": 0
+    },
+    {
+      "id": "intersection_graph/cap_seam_boundary",
+      "scenario": "cap_seam_boundary",
+      "state": "ready",
+      "nodes": 1,
+      "arcs": 1
+    },
+    {
+      "id": "intersection_graph/plane_outside_height",
+      "scenario": "plane_outside_height",
+      "state": "empty",
+      "nodes": 0,
+      "arcs": 0
+    }
+  ]
+}
