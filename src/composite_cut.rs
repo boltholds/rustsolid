@@ -397,6 +397,7 @@ impl BrepCompositeEditor{
                 "composite cut generation")?,current:Some(cut)});
         }
         out.state=State{slots,model:construct(&out.source,cuts)?.0};
+        out.validate()?;
         Ok(out)
     }
     pub fn source_box(&self)->&Solid{&self.source}
@@ -425,7 +426,11 @@ impl BrepCompositeEditor{
     }
     pub fn validate(&self)->Result<(),GeometryError>{
         self.state.model.validate()?;
-        let (expected,_)=construct(&self.source,&active(&self.state.slots))?;
+        let (expected,produced)=construct(&self.source,&active(&self.state.slots))?;
+        let identities=self.bindings();
+        if identities.iter().map(|b|b.topology).collect::<Vec<_>>()!=produced {
+            return Err(invalid("composite feature lineage differs from actual attached topology"));
+        }
         if self.state.model.summary()!=expected.summary() ||
            self.state.model.mass!=expected.mass ||
            self.state.model.bbox!=expected.bbox ||
@@ -478,7 +483,11 @@ impl BrepCompositeEditor{
                 }
             }
         }
-        let expected=construct(&self.source,&active(&candidate.slots))?.0;
+        let (expected,topologies)=construct(&self.source,&active(&candidate.slots))?;
+        if bindings(self.token,&candidate.slots).iter().map(|b|b.topology)
+            .collect::<Vec<_>>()!=topologies{
+            return Err(invalid("restored cut lineage and canonical topology diverged"));
+        }
         candidate.model=expected;
         let before=self.revision;
         let after=before.checked_add(1)
@@ -576,7 +585,11 @@ impl CompositeCutTransaction<'_>{
         if self.failed{return Err(invalid("cannot commit poisoned composite transaction"));}
         if self.commands==0{return Err(invalid("empty composite edit batch"));}
         let cuts=active(&self.slots);
-        let (model,_)=construct(&self.owner.source,&cuts)?;
+        let (model,topologies)=construct(&self.owner.source,&cuts)?;
+        let observed=bindings(self.owner.token,&self.slots);
+        if observed.iter().map(|b|b.topology).collect::<Vec<_>>()!=topologies{
+            return Err(invalid("staged feature identity disagrees with validated dense topology"));
+        }
         let before=self.owner.revision;
         let after=before.checked_add(1)
             .ok_or_else(||invalid("composite revision overflow"))?;
