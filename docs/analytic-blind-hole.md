@@ -80,7 +80,9 @@ new circular floor is physically **+Y**, although its canonical UV
 circle shares a **−Y plane support parameterization**; its face also
 has `FaceSense::Reversed`. The derived
 `BrepModel::oriented_face_normal(face,u,v)` evaluates the actual
-material-oriented normal. This is represented in the normal B-rep query
+material-oriented normal. The common B-rep validator also checks that
+faces produced by each existing canonical source have the expected
+material sense; changes that invert only the face orientation fail closed. This is represented in the normal B-rep query
 schema as `faces { sense }` and in `inspect_brep` metadata.
 
 The finite-depth shape is **genus zero**, since only one cap has an
@@ -206,7 +208,7 @@ This avoids confusing the block Z-depth with the bore Y-depth.
 
 ## Independent acceptance and future scope
 
-`tests/blind_hole.rs` covers exact Euler/genus/loop ownership,
+The **20 independent** `tests/blind_hole.rs` regressions cover exact Euler/genus/loop ownership,
 analytical mass and centroid, source-bound opening traces and tampering
 protection, true cavity material classification, closed display mesh
 orientation, convergence, translated-world robustness, atomic radius/
