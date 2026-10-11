@@ -220,3 +220,57 @@ fn invalid_face_and_tampered_model_are_rejected_without_mutation(){
     assert!(matches!(engine().intersect_faces(&a,fa,&b,fb).unwrap(),
         TrimmedIntersection::Ambiguous{reason:TrimAmbiguity::CoincidentSupports}));
 }
+
+
+#[test]
+fn translation_preserves_bounded_intersection_geometry(){
+    let (a,fa,b,fb)=scenario("full_circle");
+    let reference=engine().intersect_faces(&a,fa,&b,fb).unwrap();
+    let shift=[91.0,-43.0,152.0];
+    let moved_plane=block([-3.0+shift[0],2.0+shift[1],-3.0+shift[2]],[6.0,1.0,6.0]);
+    let moved_face=at(&moved_plane,1,2.0+shift[1]);
+    let moved_cylinder=cyl(shift);
+    let moved=engine().intersect_faces(&moved_plane,moved_face,&moved_cylinder,FaceId(2)).unwrap();
+    assert_eq!(moved.kind(),reference.kind());
+    assert_eq!(moved.branches().len(),reference.branches().len());
+    let original=&reference.branches()[0];
+    let translated=&moved.branches()[0];
+    assert!(translated.closed);
+    for t in [0.0,0.15,0.41,0.8,1.0]{
+        let a=original.evaluate(t).unwrap();
+        let b=translated.evaluate(t).unwrap();
+        approx(b.x-a.x,shift[0]);
+        approx(b.y-a.y,shift[1]);
+        approx(b.z-a.z,shift[2]);
+    }
+}
+
+#[test]
+fn rotating_cylinder_uv_basis_keeps_same_clipped_circle(){
+    let (plane,face,original,_) = scenario("full_circle");
+    let result=engine().intersect_faces(&plane,face,&original,FaceId(2)).unwrap();
+    let original_circle=&result.branches()[0];
+    let theta=0.37_f64;
+    let tol=GeometryTolerance::default();
+    // The cylinder's physical surface is unchanged by rotation of its
+    // parametric radial basis. Only the phase of the UV parameter changes.
+    let rotated=rustsolid::Frame3::from_axes(
+        p(0.0,0.0,0.0),p(theta.cos(),0.0,-theta.sin()),
+        p(-theta.sin(),0.0,-theta.cos()),tol).unwrap();
+    let body=CylindricalBrep::new(rotated,2.0,5.0,tol).unwrap();
+    let remapped=BrepModel::from_cylinder(&body).unwrap();
+    let answer=engine().intersect_faces(&plane,face,&remapped,FaceId(2)).unwrap();
+    assert_eq!(answer.kind(),"segments");
+    assert_eq!(answer.branches().len(),1);
+    let changed=&answer.branches()[0];
+    assert!(changed.closed);
+    approx(changed.parameter_end-changed.parameter_start,TAU);
+    for f in [0.05,0.21,0.5,0.72,0.93] {
+        let u=f*TAU;
+        let actual=changed.carrier.evaluate(u).unwrap();
+        let expected=original_circle.carrier.evaluate(u+theta).unwrap();
+        assert!(distance(actual,expected)<1e-8);
+        approx(actual.y,2.0);
+        approx(actual.x*actual.x+actual.z*actual.z,4.0);
+    }
+}
