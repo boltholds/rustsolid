@@ -27,6 +27,8 @@ fn position_eps(body:&BrepBody)->f64{
         BrepBody::Polyhedral(s)=>(s.tolerance,
             length(s.bbox.max.sub(s.bbox.min))),
         BrepBody::Cylinder(c)=>(c.tolerance,c.radius.max(c.height)),
+        BrepBody::ThroughHole(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
