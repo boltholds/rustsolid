@@ -52,6 +52,15 @@ jobs:
           printf '%s' '{"operation":"boolean_region_plan","mode":"difference","first":{"source":{"kind":"block","origin":[-3,2,-3],"width":6,"height":1,"depth":6},"face_id":0},"second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},"face_id":2}}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and "solid" not in r and d["state"]=="classified_preview" and d["can_apply"] is False and d["topology_committed"] is False and d["intersection_arcs"]==1 and len(d["region_samples"])==6, r'
+      - name: True analytic through-hole B-rep, genus and parametric edit contracts
+        run: cargo test --test through_hole
+      - name: Through-hole Boolean geometry.v1 CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"boolean","mode":"difference","left":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"right":{"kind":"analytic_cylinder","origin":[0,-1,0],"radius":1,"height":4}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys,math; r=json.load(sys.stdin); d=r["data"]; s=r["solid"]; assert r["ok"] and d["representation"]=="analytic_cylindrical_through_hole" and d["genus"]==1 and d["topology_committed"] and s["topology"]["euler_characteristic"]==0 and s["analytic_brep"]["inner_loops"]==2 and abs(s["mass"]["volume"]-(144-4*math.pi))<1e-9, r'
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test
