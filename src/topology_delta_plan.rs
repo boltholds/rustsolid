@@ -8,7 +8,7 @@
 use crate::{
     BrepModel, CoedgeId, Curve3, EdgeId, FaceId, GeometryError, GraphArcId,
     GraphBoundarySource, GraphFaceSource, GraphNode, GraphNodeId, GraphNodeKind,
-    GraphOperand, GraphState, IntersectionCurve, IntersectionGraph, ParameterRange,
+    GraphOperand, GraphState, GraphTolerance, IntersectionCurve, IntersectionGraph, ParameterRange,
     Point3, TrimAmbiguity, TrimContact, TrimPosition, VertexId,
 };
 use std::collections::BTreeSet;
@@ -101,6 +101,8 @@ pub struct TopologyDeltaPlan {
     pub state:PlanState,
     pub source_faces:[GraphFaceSource;2],
     pub original_graph_state:GraphState,
+    /// Frozen local geometric merge and numerical evaluation policy.
+    pub graph_tolerance:GraphTolerance,
     pub vertices:Vec<PlannedVertex>,
     pub arcs:Vec<PlannedArc>,
     pub face_changes:Vec<PlannedFaceChange>,
@@ -141,6 +143,7 @@ impl TopologyDeltaPlanner {
             state:PlanState::NoChange,
             source_faces:graph.source_faces,
             original_graph_state:graph.state,
+            graph_tolerance:graph.tolerance,
             vertices:vec![],arcs:vec![],face_changes:vec![],
             requirements:vec![],can_apply:false,
         };

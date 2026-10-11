@@ -747,6 +747,11 @@ fn evaluate_topology_delta_plan(first:FaceOperand,second:FaceOperand,
                 PlanState::Held=>"held",
             },
             "graph_state":graph.kind(),"sources":source_faces,
+            "local_tolerance":{
+                "length":plan.graph_tolerance.length,
+                "angular":plan.graph_tolerance.angular,
+                "evaluation_budget":plan.graph_tolerance.evaluation_budget
+            },
             "node_bindings":nodes,"intersection_arcs":arcs,
             "face_changes":faces,"requirements":requirements,
             "split_edge_requests":plan.split_edge_requests(),

@@ -101,6 +101,8 @@ fn twelve_pinned_topology_intent_cases_pass_independent_expectations(){
         let actual=plan.requirements.iter().copied().map(name).collect::<BTreeSet<_>>();
         assert_eq!(actual,c.requirements.iter().map(String::as_str).collect(),"{}",c.scenario);
         assert!(!plan.can_apply,"read-only plan must never be ready to commit");
+        assert!(plan.graph_tolerance.length>0.0);
+        assert!(plan.graph_tolerance.evaluation_budget>=plan.graph_tolerance.length);
         plan.validate_against(&graph,&a,fa,&b,fb).unwrap();
         for arc in &plan.arcs {
             assert_eq!(arc.source_faces[0].operand,GraphOperand::First);
@@ -153,6 +155,8 @@ fn plan_is_deterministic_immutable_and_catches_rewritten_vertex_or_provenance(){
     let mut tampered=p.clone();tampered.requirements.clear();
     assert!(tampered.validate_against(&graph,&a,fa,&b,fb).is_err());
     let mut tampered=p.clone();tampered.can_apply=true;
+    assert!(tampered.validate_against(&graph,&a,fa,&b,fb).is_err());
+    let mut tampered=p.clone();tampered.graph_tolerance.length*=2.0;
     assert!(tampered.validate_against(&graph,&a,fa,&b,fb).is_err());
     let mut stale=b.clone();
     let idx=stale.faces[fb.0 as usize].geometry.surface.0 as usize;

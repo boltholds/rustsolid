@@ -31,6 +31,11 @@ solid should be kept. No topology is modified and `can_apply` is **always false*
   parameter origin. It is not a physical cut, even on a cylinder seam.
 - `ContactOnly` signals isolated point contacts or unclassified tangencies.
 
+The plan carries the original, frozen `GraphTolerance` (local merge length,
+angular tolerance and separate floating-point evaluation budget), as well as
+each source face's individual `GeometryTolerance`. Changing any recorded
+value invalidates `TopologyDeltaPlan::validate_against`.
+
 Both operands are kept separate using `GraphOperand`; `FaceId(0)` or
 `EdgeId(0)` from unrelated bodies never silently refer to one entity.
 
