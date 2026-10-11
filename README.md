@@ -285,8 +285,8 @@ elements and failed geometry validations reject the whole batch. The kernel
 compiles dependencies from actual provisional Euler outputs into replayable
 semantic names; it does not guess future numeric B-rep IDs. Each successful
 batch remains a single revision and Memento, including mixed MEV/MEF/KEV/KEF
-operations. Six new pinned first-party regression cases bring the arena suite
-to 16 scenarios. Dependent preflight currently clones and validates a private
+operations. Nine new pinned first-party regression cases bring the arena suite
+to 19 scenarios. Dependent preflight currently clones and validates a private
 working body; it is not yet the optimized sparse mutable geometry store.
 
 The analytical cylinder remains read-only. This release does not implement
