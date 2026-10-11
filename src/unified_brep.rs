@@ -168,6 +168,7 @@ impl BrepBody {
             Self::Cylinder(body) => body,
             Self::ThroughHole(body) => body,
             Self::BlindHole(body) => body,
+            Self::Composite(body) => body,
         }
     }
 }
