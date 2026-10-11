@@ -438,9 +438,6 @@ fn periodic_trim_outside_its_uv_chart_is_not_a_valid_reparameterization(){
 #[test]
 fn committed_cylinder_uv_rebase_keeps_trimmed_intersection_graph_usable(){
     let other=Solid::block(p(-3.,2.,-3.),6.,1.,6.).unwrap();
-    let other_model=other.geometry_store(rustsolid::ModelUnits::default()).unwrap();
-    let _=other_model; // confirm source geometry adapters remain compatible
-    let first=block().shared().unwrap();
     let mut editor=editor(&cylinder());
     let cylindrical_side=face(&editor,2);
     let mut tx=editor.begin_transaction();
@@ -455,5 +452,4 @@ fn committed_cylinder_uv_rebase_keeps_trimmed_intersection_graph_usable(){
     assert_eq!(graph.arcs.len(),1);
     assert!(graph.arcs[0].closed);
     assert_eq!(editor.model().summary().genus,0);
-    let _=first;
 }
