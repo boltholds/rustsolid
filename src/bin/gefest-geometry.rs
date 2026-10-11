@@ -4,6 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
+    ThroughHoleBrep, HoleParameters,
     BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
@@ -232,6 +233,10 @@ enum BrepInput {
     AnalyticCylinder { origin:[f64;3], radius:f64, height:f64,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance> },
+    AnalyticThroughHole {origin:[f64;3],width:f64,height:f64,depth:f64,
+        center:[f64;2],radius:f64,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -249,6 +254,14 @@ impl BrepInput {
                     Point3{x:origin[0],y:origin[1],z:origin[2]},
                     radius,height,tolerance.unwrap_or_default())?;
                 Ok((BrepBody::from(cylinder),segments.unwrap_or(64)))
+            },
+            Self::AnalyticThroughHole{origin,width,height,depth,center,radius,segments,tolerance} => {
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let body=ThroughHoleBrep::from_box(&block,
+                    HoleParameters{center_x:center[0],center_z:center[1],radius})?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
     }
@@ -290,6 +303,7 @@ fn inspect_brep(input:BrepInput) -> Response {
             "representation":match graph.origin {
                 BrepOrigin::Polyhedral=>"polyhedral",
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
+                BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1086,6 +1100,41 @@ fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Respo
                     data:Some(json!({"kind":"boolean","mode":mode,"state":"empty",
                         "face_sources":lineage})),
                 },
+                BooleanOutcome::Analytic(body)=>{
+                    let model=body.model();
+                    let stats=model.summary();
+                    let mesh=match body.tessellate(64){
+                        Ok(mesh)=>mesh,
+                        Err(error)=>return Response{schema_version:"geometry.v1",
+                            ok:false,solid:None,data:None,error:Some(error.to_string())},
+                    };
+                    Response {
+                        schema_version:"geometry.v1",ok:true,error:None,
+                        data:Some(json!({"kind":"boolean","mode":mode,"state":"solid",
+                            "representation":"analytic_cylindrical_through_hole",
+                            "face_sources":lineage,"genus":stats.genus,
+                            "topology_committed":true})),
+                        solid:Some(SolidResponse{
+                            vertices:mesh.vertices.iter().map(|p|p.array()).collect(),
+                            faces:mesh.triangles,
+                            triangle_face_ids:mesh.triangle_faces.iter().map(|id|id.0).collect(),
+                            topology:Topology{vertices:stats.vertices,edges:stats.edges,
+                                coedges:stats.coedges,loops:stats.loops,faces:stats.faces,
+                                shells:stats.shells,euler_characteristic:stats.euler_characteristic},
+                            mass:Mass{volume:model.mass.volume,surface_area:model.mass.surface_area,
+                                centroid:model.mass.centroid.array()},
+                            bbox:[model.bbox.min.array(),model.bbox.max.array()],
+                            edit_report:None,history:None,
+                            analytic_brep:Some(json!({"cylindrical_faces":stats.cylindrical_faces,
+                                "circular_edges":stats.circular_edges,
+                                "inner_loops":model.loops.iter().filter(|l|
+                                    l.role==rustsolid::LoopRole::Inner).count(),
+                                "genus":stats.genus,
+                                "display_mesh_is_not_boundary_definition":true})),
+                            brep:None,
+                        }),
+                    }
+                }
                 BooleanOutcome::Solid(body)=>Response{
                     schema_version:"geometry.v1",ok:true,error:None,
                     data:Some(json!({"kind":"boolean","mode":mode,"state":"solid",
