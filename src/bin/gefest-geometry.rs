@@ -47,7 +47,8 @@ enum GeometryRequest {
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
-        #[serde(default)] undo:usize,#[serde(default)] redo:usize},
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
     BooleanRegionPlan { first:FaceOperand, second:FaceOperand, mode:BooleanOperation,
         #[serde(default)] tolerance:Option<GeometryTolerance> },
     GeometryQuery { source: BrepInput, query: String },
@@ -1195,9 +1196,9 @@ fn structural_binding_json(x:rustsolid::StructuralHoleBinding)->Value{
 }
 fn evaluate_structural_transaction(
     source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
-    undo:usize,redo:usize,
+    undo:usize,redo:usize,display_segments:Option<usize>,
 )->Response{
-    let result=(||->Result<Value,GeometryError>{
+    let result=(||->Result<(Value,Option<SolidResponse>),GeometryError>{
         if batches.len()>64 || undo>64 || redo>64 {
             return Err(GeometryError::InvalidEdit(
                 "structural transaction exceeds 64 batch/transition budget".into()));
@@ -1243,10 +1244,57 @@ fn evaluate_structural_transaction(
             transitions.push(json!({"kind":"redo","revision_after":value.revision_after}));
         }
         editor.validate()?;
+        let display=display_segments.map(|segments|editor.tessellate(segments))
+            .transpose()?;
         let model=editor.model();let topology=model.summary();
         let holes=editor.bindings().into_iter()
             .map(structural_binding_json).collect::<Vec<_>>();
-        Ok(json!({
+        let display_quality=display.as_ref().map(|m|json!({
+            "segments_per_hole":m.circle_segments,
+            "facet_triangles":m.mesh.triangles.len(),
+            "bottom_cap_region":{
+                "face_id":m.bottom_region.face.0,
+                "loop_count":m.bottom_region.loop_count,
+                "triangles":m.bottom_region.triangles,
+                "polygonal_area":m.bottom_region.polygonal_area
+            },
+            "top_cap_region":{
+                "face_id":m.top_region.face.0,
+                "loop_count":m.top_region.loop_count,
+                "triangles":m.top_region.triangles,
+                "polygonal_area":m.top_region.polygonal_area
+            },
+            "faceted_volume":m.faceted_volume,
+            "faceted_surface_area":m.faceted_surface_area,
+            "exact_analytic_volume":m.analytic_volume,
+            "volume_faceting_error":m.faceting_volume_error,
+            "closed_oriented_manifold_certified":true
+        }));
+        let solid=display.map(|m|SolidResponse {
+            vertices:m.mesh.vertices.iter().map(|v|v.array()).collect(),
+            faces:m.mesh.triangles,
+            triangle_face_ids:m.mesh.triangle_faces.iter().map(|f|f.0).collect(),
+            topology:Topology {
+                vertices:topology.vertices,edges:topology.edges,
+                coedges:topology.coedges,loops:topology.loops,
+                faces:topology.faces,shells:topology.shells,
+                euler_characteristic:topology.euler_characteristic,
+            },
+            mass:Mass {volume:model.mass.volume,surface_area:model.mass.surface_area,
+                centroid:model.mass.centroid.array()},
+            bbox:[model.bbox.min.array(),model.bbox.max.array()],
+            edit_report:None,history:None,
+            analytic_brep:Some(json!({
+                "representation":"analytic_multiple_through_holes",
+                "exact_analytic_surfaces":true,
+                "cylindrical_faces":topology.cylindrical_faces,
+                "circular_edges":topology.circular_edges,
+                "genus":topology.genus,
+                "mesh_is_display_only":true
+            })),
+            brep:None,
+        });
+        let data=json!({
             "kind":"structural_brep","state":"committed",
             "representation":match model.origin{
                 BrepOrigin::Polyhedral=>"polyhedral",
@@ -1275,14 +1323,17 @@ fn evaluate_structural_transaction(
             "undo_depth":editor.undo_depth(),"redo_depth":editor.redo_depth(),
             "commits":commits,"transitions":transitions,
             "topology_committed":true,
-            "display_mesh_available":false,
+            "display_mesh_available":true,
+            "display_mesh_included":solid.is_some(),
+            "display_quality":display_quality,
             "generalized_topology_delta_can_apply":false,
             "note":"Independent genus-N analytic B-rep. Dense topology IDs may change on hole removal; use process-local feature handles within one transaction session"
-        }))
+        });
+        Ok((data,solid))
     })();
     match result {
-        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
-            solid:None,error:None,data:Some(data)},
+        Ok((data,solid))=>Response{schema_version:"geometry.v1",ok:true,
+            solid,error:None,data:Some(data)},
         Err(error)=>Response{schema_version:"geometry.v1",ok:false,
             solid:None,error:Some(error.to_string()),data:None},
     }
@@ -1487,8 +1538,8 @@ fn process(input: &str) -> Response {
             return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
-        Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo}) =>
-            return evaluate_structural_transaction(source,batches,undo,redo),
+        Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
+            return evaluate_structural_transaction(source,batches,undo,redo,display_segments),
         Ok(GeometryRequest::BooleanRegionPlan{first,second,mode,tolerance}) =>
             return evaluate_boolean_region_plan(first,second,mode,
                 tolerance.unwrap_or_default()),
@@ -2127,6 +2178,49 @@ mod tests {
 
 
     #[test]
+    fn json_structural_opt_in_display_mesh_preserves_true_analytic_brep(){
+        let input=r#"{"operation":"structural_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add_through_hole","center":[-1.5,0],"radius":0.5},
+            {"kind":"add_through_hole","center":[1.5,0],"radius":0.7}
+          ]],"display_segments":48}"#;
+        let result=process(input);
+        assert!(result.ok,"{:?}",result.error);
+        let data=result.data.unwrap();
+        let solid=result.solid.unwrap();
+        assert_eq!(data["hole_count"],2);
+        assert_eq!(data["topology"]["genus"],2);
+        assert_eq!(data["display_mesh_available"],true);
+        assert_eq!(data["display_mesh_included"],true);
+        assert_eq!(data["display_quality"]["segments_per_hole"],48);
+        assert_eq!(data["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert!(data["display_quality"]["volume_faceting_error"].as_f64().unwrap()>0.0);
+        assert_eq!(data["display_quality"]["bottom_cap_region"]["loop_count"],3);
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        assert_eq!(solid.vertices.len(),8+2*48*2);
+        assert_eq!(solid.topology.faces,8);
+        assert_eq!(solid.topology.euler_characteristic,-2);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["mesh_is_display_only"],true);
+        assert!((solid.mass.volume-(144.0-4.0*std::f64::consts::PI*(0.25+0.49))).abs()<1e-9);
+    }
+    #[test]
+    fn json_structural_display_segmentation_error_does_not_return_partial_brep(){
+        for segments in [0,11,513]{
+            let request=format!(r#"{{"operation":"structural_transaction",
+              "source":{{"kind":"block","origin":[-3,-1,-3],
+                  "width":6,"height":4,"depth":6}},
+              "batches":[[{{"kind":"add_through_hole",
+                  "center":[0,0],"radius":1}}]],
+              "display_segments":{segments}}}"#);
+            let response=process(&request);
+            assert!(!response.ok);
+            assert!(response.solid.is_none());
+            assert!(response.data.is_none());
+            assert!(response.error.unwrap().contains("segments"));
+        }
+    }
+    #[test]
     fn json_structural_brep_adds_two_true_holes_and_recomputes_genus_mass(){
         let input=r#"{"operation":"structural_transaction",
           "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
@@ -2148,7 +2242,8 @@ mod tests {
         assert_eq!(d["topology"]["inner_loops"],4);
         assert_eq!(d["topology"]["cylindrical_faces"],2);
         assert_eq!(d["topology_committed"],true);
-        assert_eq!(d["display_mesh_available"],false);
+        assert_eq!(d["display_mesh_available"],true);
+        assert_eq!(d["display_mesh_included"],false);
         assert_eq!(d["commits"][0]["command_count"],4);
         assert!((d["mass"]["volume"].as_f64().unwrap()-
             (144.0-4.0*std::f64::consts::PI*(0.25+0.49))).abs()<1e-9);

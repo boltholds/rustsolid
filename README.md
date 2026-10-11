@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.23 experimental kernel: genus-changing structural B-rep transactions for multiple analytic through-holes, unified with shape-preserving curve/UV edits and generational feature handles.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.24 experimental kernel: certified multi-loop planar face tessellation and watertight genus-N display meshes, while maintaining exact analytical hole topology, mass and atomic structural/carrier history.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -15,7 +15,8 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Atomically edit radius and center of an analytic through-hole, with Undo/Redo and stable semantic handles via `BrepArena::update_hole`.
 - Edit the canonical shared B-rep's 3D curve carriers, per-coedge 2D UV trims, and support-surface charts through source-preserving transactions, copy-on-write catalogs, owner-bound generational handles and Undo/Redo.
 - Create, remove and resize up to 32 independent full-height analytic cylindrical holes in a box, including true inner UV loops/coedges and genus/analytic mass changes; combine structural work and carrier reparameterization in one atomic transaction.
-- Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
+- Derive watertight, oriented display triangle meshes for those analytic multi-hole bodies, triangulating planar cap regions with multiple inner loops and validating independent polygonal volume, surface area, and B-rep face ownership.
+- Validate closed manifold incidence, vertex fans and planar non-self-intersecting loops; the restricted polyhedral editor has Euler characteristic 2, while the multi-hole analytic B-rep has Euler characteristic 2−2N.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
 - Compute prism volume, surface area, centroid and axis-aligned bounds; translate bodies.
@@ -26,7 +27,7 @@ This implementation is **original code** based on common computational geometry 
 
 ## Build and test
 
-Requires a stable Rust toolchain (Rust 1.70+):
+Requires a stable Rust toolchain; the minimum supported Rust version has not been revalidated for the v0.24 triangulation dependency:
 
 ```sh
 cargo test --all-targets
@@ -105,7 +106,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles axis-aligned box CSG and a single fully penetrating cylinder; additional holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary structural cuts/inner-loop insertion, multiple components, NURBS, general cavities, display meshes for multiple holes, persistent topological naming across arbitrary regeneration, STEP/X_T, fillets and production-grade robust numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles axis-aligned box CSG and a single fully penetrating cylinder; additional holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary structural cuts/inner-loop insertion, multiple components, NURBS, general cavities, generalized polygon-with-holes meshes outside certified box-and-cylinder source families, persistent topological naming across arbitrary regeneration, STEP/X_T, fillets and production-grade robust numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
 The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
@@ -265,6 +266,30 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.24: certified multi-loop analytic display meshing
+
+The new [FaceRegionMesher](docs/face-region-meshing.md) samples the *current*
+analytic circular B-rep edges to triangulate both planar box caps with zero
+or more circular inner UV loops. It builds inward-facing cylindrical wall
+facets and reuses the original box wall triangles, sharing mesh vertex IDs
+at all contours. Every displayed result is checked for correct per-face
+ownership, outward winding, opposite directed edge uses, full manifold
+closure, face-region area, and independent signed-volume/area formulas.
+
+The resulting `CertifiedDisplayMesh` reports faceted volume and area,
+exact analytical mass and volume faceting error separately. Tessellation
+resolution never changes the source B-rep, its genus or editing revision.
+The existing `structural_transaction` JSON API accepts an **optional**
+`display_segments:12..=512` and then returns the display `solid`
+payload and detailed quality certificate. Without this option, its previous
+no-mesh response remains compatible. First-party
+[`multi_loop_mesh` tests](tests/multi_loop_mesh.rs) and mandatory CLI CI
+witnesses cover two/three holes, convergence, remote coordinates and
+component orientation.
+
+Generalized non-box Boolean operations, editable intersecting curved
+trim arrangements, and arbitrary NURBS remain unsupported.
 
 ## v0.23: unified genus-changing structural and carrier transactions
 

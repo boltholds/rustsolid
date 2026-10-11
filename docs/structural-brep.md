@@ -180,10 +180,11 @@ bindings, revision and history transitions. All operations in each inner
 within the current request/session.
 
 The multi-hole result is a fully validated, queryable canonical analytic
-`BrepModel` through the Rust API. **General multi-hole display
-tessellation is not available in this milestone**, and the JSON operation
-sets `display_mesh_available:false` without inventing a partial mesh or
-discarding true circular boundaries. Direct `inspect_brep` of a multi-hole
+`BrepModel` through the Rust API. **At the v0.23 milestone, multi-hole
+display tessellation was not yet available.** The subsequent
+[v0.24 face-region mesher](face-region-meshing.md) now supports verified,
+opt-in display meshes via `display_segments` while preserving the exact
+canonical analytic geometry. Direct `inspect_brep` of a multi-hole
 body is not yet a supported standalone `BrepInput` representation.
 
 The existing `boolean` endpoint continues to execute v0.19 planar box
@@ -200,8 +201,9 @@ is the explicit path to more than one hole, not a general Boolean kernel.
    surfaces and complete determination of inside/outside/touching regions.
 3. Multi-shell and multi-component B-rep topology, cavity ownership,
    arbitrary genus and rigorous oriented-face/inner-loop validation.
-4. Closed display tessellation of arbitrary multi-hole planar caps and
-   curved side walls as a derived cache, followed by STEP-level exchange.
+4. Generalized face-region and display tessellation for arbitrary non-box
+   planar and curved faces beyond the certified v0.24 box-with-circles
+   family, followed by STEP-level exchange.
 5. Independent mass integrals for arbitrary trimmed analytic surfaces,
    failure-injected generalized Boolean commit and genuine persistent
    feature lineage across regeneration.

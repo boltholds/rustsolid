@@ -1,6 +1,6 @@
 [package]
 name = "rustsolid"
-version = "0.23.0"
+version = "0.24.0"
 edition = "2021"
 license = "MPL-2.0"
 description = "An independent Rust geometric modeling kernel for Gefest CAD"
@@ -12,6 +12,7 @@ keywords = ["cad", "geometry", "brep", "solid-modeling"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 robust = "1.2.0"
+earcutr = "0.5.0"
 
 [[bin]]
 name = "gefest-geometry"
