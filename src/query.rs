@@ -295,7 +295,7 @@ impl Execution<'_> {
         let bad=||qerr("query.internal",s.at,"field resolver and schema disagree");
         let result=match (node,s.name.as_str()) {
             (Node::Root,"body")=>self.get(Node::Body,&s.fields)?,
-            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole"}),
+            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes"}),
             (Node::Body,"topology")=>self.get(Node::Topology,&s.fields)?,
             (Node::Body,"mass")=>self.get(Node::Mass,&s.fields)?,
             (Node::Body,"bounds")=>self.get(Node::Bounds,&s.fields)?,
