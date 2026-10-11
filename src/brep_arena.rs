@@ -13,6 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
+    BrepCarrierEditor,
     ThroughHoleBrep, HoleParameters, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
@@ -266,6 +267,13 @@ impl BrepArena {
     pub fn revision(&self)->u64{self.storage.revision()}
     pub fn is_editable(&self)->bool{matches!(&self.storage,ArenaKernel::Editable(_))}
     pub fn model(&self)->Result<BrepModel,GeometryError>{self.storage.brep_model()}
+    /// Create a detached, independently revisioned canonical geometry editor
+    /// from the current validated arena state. The source arena and its Euler
+    /// or parametric feature history are unchanged; importing physical-shape
+    /// changes back into an existing arena is intentionally not implemented.
+    pub fn detached_carrier_editor(&self)->Result<BrepCarrierEditor,GeometryError>{
+        BrepCarrierEditor::new(self.model()?)
+    }
     pub fn snapshot(&self)->Result<ArenaSnapshot,GeometryError>{
         let model=self.model()?;
         Ok(ArenaSnapshot{arena_token:self.arena_token(),revision:self.revision(),model,
