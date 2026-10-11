@@ -406,3 +406,33 @@ fn carrier_uv_edits_preserve_material_face_sense_on_blind_floor(){
     assert_eq!(editor.model().face_sense(FaceId(7)),
         Some(rustsolid::FaceSense::Reversed));
 }
+
+#[test]
+fn geometrically_tilted_cutters_are_not_snapped_to_specialized_vertical_boolean(){
+    let tolerance=rustsolid::GeometryTolerance{
+        angular:1e-5,..rustsolid::GeometryTolerance::default()
+    };
+    let start=p(0.,1.,0.);
+    let frame=rustsolid::Frame3::from_axes(start,
+        p(1.,1e-9,0.),p(0.,0.,-1.),tolerance).unwrap();
+    let cut=rustsolid::CylindricalBrep::new(frame,1.,2.,tolerance).unwrap();
+    let left=BrepBody::from(box_());
+    assert!(BooleanKernel::apply(&left,&BrepBody::from(cut),
+        BooleanOperation::Difference).is_err());
+    let lower=rustsolid::Frame3::from_axes(p(0.,-1.,0.),
+        p(1.,1e-9,0.),p(0.,0.,-1.),tolerance).unwrap();
+    let through=rustsolid::CylindricalBrep::new(lower,1.,4.,tolerance).unwrap();
+    assert!(BooleanKernel::apply(&left,&BrepBody::from(through),
+        BooleanOperation::Difference).is_err());
+}
+#[test]
+fn slightly_unequal_cutting_cap_plane_fails_closed_without_tolerance_snap(){
+    let tol=GeometryTolerance::default();
+    let cutter=CylindricalBrep::upright(p(0.,1.,0.),1.,2.-1e-10,tol).unwrap();
+    assert!(BooleanKernel::apply(&BrepBody::from(box_()),
+        &BrepBody::from(cutter),BooleanOperation::Difference).is_err());
+    let near_through=CylindricalBrep::upright(
+        p(0.,-1.+1e-10,0.),1.,4.-1e-10,tol).unwrap();
+    assert!(BooleanKernel::apply(&BrepBody::from(box_()),
+        &BrepBody::from(near_through),BooleanOperation::Difference).is_err());
+}
