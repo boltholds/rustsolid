@@ -142,6 +142,7 @@ impl BrepBody {
             Self::Polyhedral(body) => body.validate(),
             Self::Cylinder(body) => body.validate(),
             Self::ThroughHole(body) => body.validate(),
+            Self::BlindHole(body) => body.validate(),
         }
     }
     pub fn shared(&self) -> Result<BrepModel, GeometryError> {
