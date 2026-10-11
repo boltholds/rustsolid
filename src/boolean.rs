@@ -162,7 +162,8 @@ impl BooleanKernel {
             (BrepBody::Polyhedral(a),BrepBody::Cylinder(c),BooleanOperation::Difference) => {
                 AxisBox::certify(a,"left must be an axis-aligned box")?;
                 let analytic=crate::ThroughHoleBrep::from_operands(a,c)
-                    .map_err(|e|BooleanError::UnsupportedResultTopology(e.to_string()))?;
+                    .map_err(|_|BooleanError::UnsupportedOperand(
+                        "through-hole cylinder must span the full box height and remain strictly inside its sides"))?;
                 let face_sources=a.faces.iter().map(|f|BooleanFaceSource {
                     result_face:f.id,operand:BooleanOperand::Left,source_face:f.id,reversed:false,
                 }).chain(std::iter::once(BooleanFaceSource {
