@@ -78,7 +78,7 @@ impl EulerCommand {
 
     /// Called on a disposable candidate body when the batch requires
     /// compacting/renumbering Euler kills. Make commands still use local edits.
-    fn apply_to_candidate(&self,solid:&mut Solid)
+    pub(crate) fn apply_to_candidate(&self,solid:&mut Solid)
         ->Result<(Vec<EditDelta>,Vec<NameChange>),GeometryError>
     {
         match self {
