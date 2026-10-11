@@ -5,6 +5,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
     ThroughHoleBrep, HoleParameters,
+    BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
@@ -41,6 +42,8 @@ enum GeometryRequest {
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
+    CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
+        #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     BooleanRegionPlan { first:FaceOperand, second:FaceOperand, mode:BooleanOperation,
         #[serde(default)] tolerance:Option<GeometryTolerance> },
     GeometryQuery { source: BrepInput, query: String },
@@ -1074,6 +1077,134 @@ fn evaluate_boolean_region_plan(
     }
 }
 
+
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum CarrierCommandInput {
+    ReparameterizeEdge {edge_id:u32,scale:f64,offset:f64},
+    ReparameterizeTrim {coedge_id:u32,scale:f64,offset:f64},
+    RebaseFaceUv {face_id:u32,du:f64,dv:f64},
+}
+enum CarrierResolvedCommand {
+    ReparameterizeEdge {handle:CarrierHandle,scale:f64,offset:f64},
+    ReparameterizeTrim {handle:CarrierHandle,scale:f64,offset:f64},
+    RebaseFaceUv {handle:CarrierHandle,du:f64,dv:f64},
+}
+impl CarrierCommandInput {
+    fn resolve(self,editor:&BrepCarrierEditor)->Result<CarrierResolvedCommand,GeometryError>{
+        let resolve=|owner|editor.handle(owner).ok_or_else(||
+            GeometryError::InvalidEdit(format!("unknown carrier owner: {owner:?}")));
+        Ok(match self {
+            Self::ReparameterizeEdge{edge_id,scale,offset}=>
+                CarrierResolvedCommand::ReparameterizeEdge{
+                    handle:resolve(CarrierOwner::Edge(EdgeId(edge_id)))?,scale,offset},
+            Self::ReparameterizeTrim{coedge_id,scale,offset}=>
+                CarrierResolvedCommand::ReparameterizeTrim{
+                    handle:resolve(CarrierOwner::Coedge(rustsolid::CoedgeId(coedge_id)))?,scale,offset},
+            Self::RebaseFaceUv{face_id,du,dv}=>
+                CarrierResolvedCommand::RebaseFaceUv{
+                    handle:resolve(CarrierOwner::Face(FaceId(face_id)))?,du,dv},
+        })
+    }
+}
+impl CarrierResolvedCommand {
+    fn stage(self,tx:&mut BrepCarrierTransaction<'_>)->Result<(),GeometryError>{
+        match self {
+            Self::ReparameterizeEdge{handle,scale,offset}=>tx.reparameterize_edge(handle,scale,offset),
+            Self::ReparameterizeTrim{handle,scale,offset}=>tx.reparameterize_trim(handle,scale,offset),
+            Self::RebaseFaceUv{handle,du,dv}=>tx.rebase_face_uv(handle,du,dv),
+        }
+    }
+}
+fn evaluate_carrier_transaction(
+    source:BrepInput,batches:Vec<Vec<CarrierCommandInput>>,undo:usize,redo:usize,
+)->Response{
+    let response=(||->Result<Value,GeometryError>{
+        if batches.len()>64 || undo>64 || redo>64{
+            return Err(GeometryError::InvalidEdit(
+                "carrier session exceeds 64 batches/transitions".into()));
+        }
+        let (source,_)=source.prepare()?;
+        let mut editor=BrepCarrierEditor::from_body(&source)?;
+        let mut commits=Vec::new();
+        for batch in batches {
+            if batch.is_empty() || batch.len()>256{
+                return Err(GeometryError::InvalidEdit(
+                    "carrier batch needs between 1 and 256 edits".into()));
+            }
+            let commands=batch.into_iter()
+                .map(|input|input.resolve(&editor))
+                .collect::<Result<Vec<_>,_>>()?;
+            let mut tx=editor.begin_transaction();
+            for command in commands {command.stage(&mut tx)?;}
+            let committed=tx.commit()?;
+            let changed=committed.changed.iter().map(|binding|{
+                let (kind,id)=match binding.handle.owner {
+                    CarrierOwner::Edge(e)=>("edge",e.0),
+                    CarrierOwner::Coedge(c)=>("coedge",c.0),
+                    CarrierOwner::Face(f)=>("face",f.0),
+                };
+                let (carrier_kind,carrier_id)=match binding.id{
+                    CarrierId::Curve3(c)=>("curve3",c.0),
+                    CarrierId::Curve2(c)=>("curve2",c.0),
+                    CarrierId::Surface(c)=>("surface",c.0),
+                };
+                json!({"owner_kind":kind,"owner_id":id,
+                    "carrier_kind":carrier_kind,"carrier_id":carrier_id,
+                    "generation":binding.handle.generation})
+            }).collect::<Vec<_>>();
+            commits.push(json!({"revision_before":committed.revision_before,
+                "revision_after":committed.revision_after,"changed":changed}));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            let t=editor.undo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "carrier undo exceeds history".into()))?;
+            transitions.push(json!({"kind":"undo","revision_after":t.revision_after}));
+        }
+        for _ in 0..redo {
+            let t=editor.redo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "carrier redo exceeds history".into()))?;
+            transitions.push(json!({"kind":"redo","revision_after":t.revision_after}));
+        }
+        editor.validate()?;
+        let graph=editor.model();
+        let summary=graph.summary();
+        Ok(json!({
+            "kind":"carrier_transaction","revision":editor.revision(),
+            "editor_token":editor.editor_token(),
+            "undo_depth":editor.undo_depth(),"redo_depth":editor.redo_depth(),
+            "carrier_counts":{"curves3":graph.geometry.curves3.len(),
+                "curves2":graph.geometry.curves2.len(),
+                "surfaces":graph.geometry.surfaces.len()},
+            "topology":{"vertices":summary.vertices,"edges":summary.edges,
+                "coedges":summary.coedges,"faces":summary.faces,
+                "loops":summary.loops,"shells":summary.shells,
+                "euler_characteristic":summary.euler_characteristic,
+                "genus":summary.genus},
+            "mass":{"volume":graph.mass.volume,"surface_area":graph.mass.surface_area,
+                "centroid":graph.mass.centroid.array()},
+            "edge_domains":graph.geometry.edges.iter().map(|g|match g.domain {
+                ParameterRange::Bounded{start,end}=>json!([start,end]),
+                ParameterRange::Unbounded=>json!(null)
+            }).collect::<Vec<_>>(),
+            "trim_domains":graph.geometry.coedges.iter().map(|g|match g.domain {
+                ParameterRange::Bounded{start,end}=>json!([start,end]),
+                ParameterRange::Unbounded=>json!(null)
+            }).collect::<Vec<_>>(),
+            "commits":commits,"transitions":transitions,
+            "shape_preserving":true,"topology_mutated":false,
+            "note":"Carrier handles and editor_token are process-local; request does not mutate the source B-rep"
+        }))
+    })();
+    match response {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Response{
     let result=(||->Result<rustsolid::BooleanResult,GeometryError>{
         let (left,_)=left.prepare()?;
@@ -1182,6 +1313,8 @@ fn process(input: &str) -> Response {
             return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
+        Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
+            return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::BooleanRegionPlan{first,second,mode,tolerance}) =>
             return evaluate_boolean_region_plan(first,second,mode,
                 tolerance.unwrap_or_default()),
@@ -1816,6 +1949,53 @@ mod tests {
             assert!(response.solid.is_none());
             assert!(response.data.is_none());
         }
+    }
+
+    #[test]
+    fn json_canonical_carrier_batches_reparameterize_without_changing_mass(){
+        let result=process(r#"{"operation":"carrier_transaction",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[[
+                {"kind":"reparameterize_edge","edge_id":0,"scale":2,"offset":0.25},
+                {"kind":"reparameterize_trim","coedge_id":0,"scale":1.5,"offset":0.125},
+                {"kind":"rebase_face_uv","face_id":0,"du":0.5,"dv":-0.25}
+            ]],"undo":1,"redo":1}"#);
+        assert!(result.ok,"{:?}",result.error);
+        assert!(result.solid.is_none());
+        let data=result.data.unwrap();
+        assert_eq!(data["revision"],3);
+        assert_eq!(data["shape_preserving"],true);
+        assert_eq!(data["topology_mutated"],false);
+        assert_eq!(data["mass"]["volume"],24.0);
+        assert_eq!(data["topology"]["euler_characteristic"],2);
+        assert_eq!(data["commits"][0]["changed"].as_array().unwrap()
+            .iter().filter(|x|x["owner_kind"]=="face").count(),1);
+    }
+    #[test]
+    fn json_carrier_transaction_preserves_curved_hole_and_refuses_bad_uv(){
+        let source=r#"{"kind":"analytic_through_hole",
+            "origin":[-3,-1,-3],"width":6,"height":4,"depth":6,
+            "center":[0,0],"radius":1}"#;
+        let request=format!(r#"{{"operation":"carrier_transaction",
+            "source":{source},"batches":[[
+                {{"kind":"reparameterize_edge","edge_id":12,"scale":1,"offset":0.5}},
+                {{"kind":"rebase_face_uv","face_id":6,"du":0,"dv":0.75}}
+            ]]}}"#);
+        let result=process(&request);
+        assert!(result.ok,"{:?}",result.error);
+        let d=result.data.unwrap();
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["topology"]["euler_characteristic"],0);
+        assert_eq!(d["shape_preserving"],true);
+        let invalid=format!(r#"{{"operation":"carrier_transaction",
+            "source":{source},"batches":[[
+                {{"kind":"reparameterize_edge","edge_id":12,"scale":1,"offset":0.5}},
+                {{"kind":"rebase_face_uv","face_id":6,"du":0.125,"dv":0}}
+            ]]}}"#);
+        let result=process(&invalid);
+        assert!(!result.ok);
+        assert!(result.solid.is_none());
+        assert!(result.data.is_none());
     }
     #[test]
     fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){
