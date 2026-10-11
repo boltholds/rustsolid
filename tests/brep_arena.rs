@@ -140,21 +140,30 @@ fn same_slot_reused_after_undo_is_never_aba(){
     let mut arena=cube();
     let e=h(&arena,TopologyEntity::Edge(EdgeId(0)));
     let slots=arena.allocated_slots();
-    let mut prior:Option<ArenaHandle>=None;
+    let mut previous:Vec<ArenaHandle>=Vec::new();
+    let mut observed_reuse=false;
     for _ in 0..7 {
         let mut tx=arena.begin_transaction().unwrap();
         tx.split_edge(e,0.5).unwrap();
         let result=tx.commit().unwrap();
         let created=result.created.iter().find(|b|b.entity==TopologyEntity::Vertex(VertexId(8))).unwrap().handle;
-        if let Some(old)=prior {
-            assert_eq!(created.slot,old.slot);
-            assert_ne!(created.generation,old.generation);
-            assert_eq!(arena.resolve(old),Err(ArenaHandleError::StaleHandle));
+        for old in &previous {
+            assert_eq!(arena.resolve(*old),Err(ArenaHandleError::StaleHandle));
         }
-        prior=Some(created);
+        for newly_allocated in &result.created {
+            for old in &previous {
+                if newly_allocated.handle.slot==old.slot {
+                    observed_reuse=true;
+                    assert_ne!(newly_allocated.handle.generation,old.generation);
+                }
+            }
+        }
+        previous=result.created.iter().map(|b|b.handle).collect();
         arena.undo().unwrap().unwrap();
         assert_eq!(arena.resolve(created),Err(ArenaHandleError::StaleHandle));
+        for old in &previous {assert_eq!(arena.resolve(*old),Err(ArenaHandleError::StaleHandle));}
     }
+    assert!(observed_reuse,"allocator should recycle free slots over repeated edit/undo");
     assert_eq!(arena.allocated_slots(),slots+4);
     assert_eq!(arena.live_slots(),slots);
     mass(&arena);
