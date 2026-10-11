@@ -203,6 +203,15 @@ impl BlindHoleBrep {
         // distinct in the periodic chart.
         m.faces[6].geometry.bounds.v=ParameterRange::Bounded{
             start:0.0,end:p.depth};
+        let side_id=m.faces[6].geometry.surface.0 as usize;
+        let Surface3::Cylinder(mut side_carrier)=m.geometry.surfaces[side_id]else {
+            return Err(invalid("canonical bore side lost its cylindrical support"));
+        };
+        // Reanchor cylindrical v=0 to the new floor plane. Merely shortening
+        // the v interval without moving the support would leave the lower
+        // circle geometrically disconnected from its 3D/UV side coedges.
+        side_carrier.frame.origin.y=floor_y;
+        m.geometry.surfaces[side_id]=Surface3::Cylinder(side_carrier);
         for (coedge_id,from,to) in [
             (27usize,Point2Param{u:TAU,v:p.depth},Point2Param{u:0.0,v:p.depth}),
             (28usize,Point2Param{u:TAU,v:0.0},Point2Param{u:TAU,v:p.depth}),
