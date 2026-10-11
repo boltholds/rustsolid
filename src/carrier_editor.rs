@@ -224,7 +224,7 @@ impl BrepCarrierEditor {
     pub fn begin_transaction(&mut self)->BrepCarrierTransaction<'_>{
         let candidate=self.current.clone();
         BrepCarrierTransaction{editor:self,staged:candidate,failed:false,
-            changed:BTreeSet::new()}
+            staged_count:0,changed:BTreeSet::new()}
     }
     pub fn undo(&mut self)->Result<Option<CarrierTransition>,GeometryError>{
         self.transition(false)
@@ -254,6 +254,7 @@ pub struct BrepCarrierTransaction<'a>{
     editor:&'a mut BrepCarrierEditor,
     staged:BrepModel,
     failed:bool,
+    staged_count:usize,
     changed:BTreeSet<CarrierOwner>,
 }
 impl BrepCarrierTransaction<'_> {
@@ -278,11 +279,14 @@ impl BrepCarrierTransaction<'_> {
     fn stage<F>(&mut self,owner:CarrierOwner,change:F)->Result<(),GeometryError>
     where F:FnOnce(&mut BrepModel)->Result<(),GeometryError> {
         if self.failed{return Err(invalid("carrier transaction already failed"));}
-        if self.changed.len()>=MAX_EDITS && !self.changed.contains(&owner) {
+        if self.staged_count>=MAX_EDITS {
             self.failed=true;return Err(invalid("carrier batch exceeds edit budget"));
         }
         let result=change(&mut self.staged);
-        if result.is_err(){self.failed=true;}else{self.changed.insert(owner);}
+        if result.is_err(){self.failed=true;}else{
+            self.staged_count+=1;
+            self.changed.insert(owner);
+        }
         result
     }
 
@@ -489,7 +493,7 @@ impl BrepCarrierTransaction<'_> {
         }
         Ok(())
     }
-    pub fn staged_len(&self)->usize{self.changed.len()}
+    pub fn staged_len(&self)->usize{self.staged_count}
     pub fn commit(mut self)->Result<CarrierCommit,GeometryError>{
         if self.failed {return Err(invalid("cannot commit poisoned carrier transaction"));}
         if self.changed.is_empty(){return Err(invalid("empty carrier transaction"));}
