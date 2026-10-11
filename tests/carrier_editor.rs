@@ -384,3 +384,32 @@ fn arena_can_export_an_independent_canonical_editor_without_mutation(){
     assert_eq!(arena.model().unwrap().geometry.curves3,
         frozen.model.geometry.curves3);
 }
+
+#[test]
+fn nonorthonormal_circle_frame_is_rejected_even_when_all_points_match(){
+    let mut e=editor(&cylinder());
+    let snap=e.snapshot();
+    let handle=edge(&e,0);
+    let Curve3::Circle(circle)=e.model().edge_curve(EdgeId(0)).unwrap()
+        else {panic!("expected circular carrier")};
+    // A dishonest parameterization scales the frame basis by 2 and divides
+    // the radius by 2: every sampled point on the curve is still identical.
+    // The underlying Frame3 must nevertheless remain orthonormal.
+    let invalid=Curve3::Circle(rustsolid::Circle3{
+        frame:rustsolid::Frame3{
+            x:p(circle.frame.x.x*2.0,circle.frame.x.y*2.0,
+                circle.frame.x.z*2.0),
+            y:p(circle.frame.y.x*2.0,circle.frame.y.y*2.0,
+                circle.frame.y.z*2.0),
+            ..circle.frame
+        },
+        radius:circle.radius*0.5,
+    });
+    let old_domain=e.model().geometry.edges[0].domain;
+    let mut tx=e.begin_transaction();
+    tx.replace_edge(handle,invalid,old_domain).unwrap();
+    assert!(tx.commit().is_err());
+    assert_eq!(e.revision(),0);
+    e.check_snapshot(&snap).unwrap();
+    e.validate().unwrap();
+}
