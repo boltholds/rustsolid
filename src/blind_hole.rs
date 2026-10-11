@@ -317,7 +317,7 @@ impl BlindHoleBrep {
         m.geometry.curves2[floor_uv]=Curve2::Circle(Circle2::new(
             floor_frame.project(floor_origin)?,circle_uv.radius,block.tolerance)?);
         m.faces.push(BrepFace{id:FaceId(7),loops:vec![crate::LoopId(6)],
-            geometry:floor_geometry});
+            sense:crate::FaceSense::Reversed,geometry:floor_geometry});
         m.shells[0].faces.push(FaceId(7));
         let removed=PI*p.radius*p.radius*p.depth;
         let volume=block.mass.volume-removed;
