@@ -28,6 +28,7 @@ mod intersection_graph;
 mod topology_delta_plan;
 mod brep_arena;
 mod boolean;
+mod boolean_region;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
