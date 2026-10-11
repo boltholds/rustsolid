@@ -355,6 +355,71 @@ fn wrong_output_role_rejects_and_poisons_staging() {
     mass(&arena);
 }
 
+
+fn dependent_reference_survives_compaction_between_steps() {
+    let mut arena = cube();
+    let edge0 = h(&arena, TopologyEntity::Edge(EdgeId(0)));
+    let edge5 = h(&arena, TopologyEntity::Edge(EdgeId(5)));
+    let mut tx = arena.begin_transaction().unwrap();
+    let first = tx.split_edge_ref(edge0, 0.5).unwrap();
+    let second = tx.split_edge_ref(edge5, 0.5).unwrap();
+    tx.kill_edge_vertex_ref(first.output(ArenaOutput::InsertedVertex)).unwrap();
+    tx.split_edge_ref(second.output(ArenaOutput::RemainderEdge), 0.5).unwrap();
+    let committed = tx.commit().unwrap();
+    assert_eq!(committed.report.changes.len(), 4);
+    assert_eq!(arena.revision(), 1);
+    assert_eq!(arena.model().unwrap().vertices.len(), 10);
+    mass(&arena);
+    arena.undo().unwrap().unwrap();
+    assert_eq!(arena.model().unwrap().vertices.len(), 8);
+    arena.redo().unwrap().unwrap();
+    assert_eq!(arena.model().unwrap().vertices.len(), 10);
+    mass(&arena);
+}
+
+fn dependent_removed_output_fails_entire_transaction() {
+    let mut arena = cube();
+    let original = arena.snapshot().unwrap();
+    let bindings = arena.bindings();
+    let edge = h(&arena, TopologyEntity::Edge(EdgeId(0)));
+    let mut tx = arena.begin_transaction().unwrap();
+    let mev = tx.split_edge_ref(edge, 0.5).unwrap();
+    let inserted = mev.output(ArenaOutput::InsertedVertex);
+    tx.kill_edge_vertex_ref(inserted).unwrap();
+    tx.kill_edge_vertex_ref(inserted).unwrap();
+    assert!(tx.commit().is_err());
+    assert_eq!(arena.revision(), 0);
+    assert_eq!(arena.bindings(), bindings);
+    assert_eq!(arena.undo_depth(), 0);
+    arena.check_snapshot(&original).unwrap();
+    mass(&arena);
+}
+
+fn dependent_created_face_and_diagonal_support_inverse() {
+    let mut arena = cube();
+    let model = arena.model().unwrap();
+    let face = FaceId(0);
+    let vertices = model.coedges.iter().filter(|c| c.face == face)
+        .map(|c| c.start_vertex(&model.edges[c.edge.0 as usize]))
+        .collect::<Vec<_>>();
+    let old_face = h(&arena, TopologyEntity::Face(face));
+    let from = h(&arena, TopologyEntity::Vertex(vertices[0]));
+    let to = h(&arena, TopologyEntity::Vertex(vertices[2]));
+    let mut tx = arena.begin_transaction().unwrap();
+    let mef = tx.split_face_ref(old_face, from, to).unwrap();
+    tx.kill_edge_face_ref(
+        mef.output(ArenaOutput::DiagonalEdge),
+        mef.output(ArenaOutput::CreatedFace),
+    ).unwrap();
+    let committed = tx.commit().unwrap();
+    assert_eq!(committed.report.changes.len(), 2);
+    assert_eq!(arena.model().unwrap().faces.len(), 6);
+    assert_eq!(arena.revision(), 1);
+    mass(&arena);
+    arena.undo().unwrap().unwrap();
+    arena.redo().unwrap().unwrap();
+    mass(&arena);
+}
 fn dependent_late_geometry_failure_rolls_back_preflight() {
     let mut arena = cube();
     let initial = arena.snapshot().unwrap();
@@ -383,7 +448,7 @@ fn pinned_arena_atomicity_identity_and_geometry_witnesses(){
     let m:Manifest=serde_json::from_str(CASES).unwrap();
     assert_eq!(m.schema,"rustsolid.brep_arena.v1");
     assert!(!m.title.is_empty());
-    assert_eq!(m.cases.len(),16);
+    assert_eq!(m.cases.len(),19);
     let mut ids=BTreeSet::new();
     for c in m.cases {
         assert!(ids.insert(c.id.clone()),"duplicate scenario id");
@@ -404,6 +469,9 @@ fn pinned_arena_atomicity_identity_and_geometry_witnesses(){
             "foreign_transaction_output"=>foreign_transaction_output_rejects_and_poisons_staging(),
             "invalid_output_role"=>wrong_output_role_rejects_and_poisons_staging(),
             "dependent_late_rollback"=>dependent_late_geometry_failure_rolls_back_preflight(),
+            "dependent_compaction_remap"=>dependent_reference_survives_compaction_between_steps(),
+            "dead_output_rollback"=>dependent_removed_output_fails_entire_transaction(),
+            "dependent_created_face_inverse"=>dependent_created_face_and_diagonal_support_inverse(),
             other=>panic!("unimplemented executable arena contract {other}"),
         }
     }
@@ -414,7 +482,8 @@ fn permanent_manifest_cannot_accidentally_drop_quality_families(){
     for required in ["atomic_split_batch","late_failure_rollback","kill_compaction",
         "generation_aba","foreign_body","curved_read_only","plan_rejected","kill_face_compaction",
         "dependent_edge_chain","dependent_mev_mef","dependent_same_batch_inverse",
-        "foreign_transaction_output","invalid_output_role","dependent_late_rollback"]{
+        "foreign_transaction_output","invalid_output_role","dependent_late_rollback",
+        "dependent_compaction_remap","dead_output_rollback","dependent_created_face_inverse"]{
         assert!(m.cases.iter().any(|c|c.kind==required));
     }
 }
