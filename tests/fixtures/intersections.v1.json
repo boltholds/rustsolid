@@ -1,0 +1,589 @@
+{
+  "schema": "rustsolid.intersections.v1",
+  "title": "Independent analytic and metamorphic intersection contracts (untrimmed)",
+  "fixtures": [
+    {
+      "id": "plane_plane/orthogonal",
+      "operator": "plane_plane",
+      "category": "analytic",
+      "plane_a": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "plane_b": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          1,
+          0
+        ]
+      },
+      "expected": "crossing",
+      "branches": 1
+    },
+    {
+      "id": "plane_plane/swap_translate",
+      "operator": "plane_plane",
+      "category": "metamorphic",
+      "plane_a": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "plane_b": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          1,
+          0
+        ]
+      },
+      "expected": "crossing",
+      "branches": 1
+    },
+    {
+      "id": "plane_plane/parallel_disjoint",
+      "operator": "plane_plane",
+      "category": "boundary",
+      "plane_a": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "plane_b": {
+        "origin": [
+          3,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "expected": "empty",
+      "branches": 0
+    },
+    {
+      "id": "plane_plane/coincident",
+      "operator": "plane_plane",
+      "category": "boundary",
+      "plane_a": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "plane_b": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "expected": "coincident",
+      "branches": 0
+    },
+    {
+      "id": "plane_plane/near_parallel",
+      "operator": "plane_plane",
+      "category": "boundary",
+      "plane_a": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "plane_b": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          1e-10,
+          0,
+          1
+        ]
+      },
+      "expected": "ambiguous",
+      "branches": 0
+    },
+    {
+      "id": "plane_cylinder/perpendicular_circle",
+      "operator": "plane_cylinder",
+      "category": "analytic",
+      "plane": {
+        "origin": [
+          0,
+          3,
+          0
+        ],
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "crossing",
+      "branches": 1
+    },
+    {
+      "id": "plane_cylinder/oblique_section",
+      "operator": "plane_cylinder",
+      "category": "analytic",
+      "plane": {
+        "origin": [
+          0,
+          1,
+          0
+        ],
+        "x": [
+          0,
+          0,
+          1
+        ],
+        "y": [
+          2,
+          -1,
+          0
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "crossing",
+      "branches": 1
+    },
+    {
+      "id": "plane_cylinder/two_lines",
+      "operator": "plane_cylinder",
+      "category": "analytic",
+      "plane": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "crossing",
+      "branches": 2
+    },
+    {
+      "id": "plane_cylinder/swap_translate_reparameterize",
+      "operator": "plane_cylinder",
+      "category": "metamorphic",
+      "plane": {
+        "origin": [
+          0,
+          1,
+          0
+        ],
+        "x": [
+          0,
+          0,
+          1
+        ],
+        "y": [
+          2,
+          -1,
+          0
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "crossing",
+      "branches": 1
+    },
+    {
+      "id": "plane_cylinder/exact_tangent",
+      "operator": "plane_cylinder",
+      "category": "boundary",
+      "plane": {
+        "origin": [
+          2,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "tangent",
+      "branches": 1
+    },
+    {
+      "id": "plane_cylinder/near_tangent_inside",
+      "operator": "plane_cylinder",
+      "category": "boundary",
+      "plane": {
+        "origin": [
+          1.9999999996,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "ambiguous",
+      "branches": 0
+    },
+    {
+      "id": "plane_cylinder/near_tangent_outside",
+      "operator": "plane_cylinder",
+      "category": "boundary",
+      "plane": {
+        "origin": [
+          2.0000000004,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "ambiguous",
+      "branches": 0
+    },
+    {
+      "id": "plane_cylinder/disjoint",
+      "operator": "plane_cylinder",
+      "category": "boundary",
+      "plane": {
+        "origin": [
+          2.000001,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          1,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "empty",
+      "branches": 0
+    },
+    {
+      "id": "plane_cylinder/near_parallel",
+      "operator": "plane_cylinder",
+      "category": "boundary",
+      "plane": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "x": [
+          0,
+          0,
+          1
+        ],
+        "y": [
+          1e-10,
+          1,
+          0
+        ]
+      },
+      "cylinder": {
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "radius": 2.0,
+        "x": [
+          1,
+          0,
+          0
+        ],
+        "y": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "expected": "ambiguous",
+      "branches": 0
+    }
+  ]
+}

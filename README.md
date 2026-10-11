@@ -238,3 +238,7 @@ No external CAD engine is treated as a correctness oracle. See [self-contained r
 ## v0.12: mandatory operator quality contracts
 
 The [modeling operator contract gate](docs/operator-contracts.md) covers each registered primitive constructor and every `EulerCommand` variant with an independent analytic oracle, a metamorphic property and at least two invalid-boundary scenarios. The executable, pinned inventory lives in [tests/fixtures/operator_contracts.v1.json](tests/fixtures/operator_contracts.v1.json), while [tests/operator_contracts.rs](tests/operator_contracts.rs) exercises real modeling operations and intentionally malformed manifests. Adding an Euler command without updating its exhaustive operation-kind match cannot compile; omitting its quality contract fails CI. No external CAD backend serves as a truth oracle.
+
+## v0.13: analytical support-surface intersections
+
+[The intersection engine](docs/intersections.md) constructs untrimmed analytic curves for plane/plane and plane/cylinder pairs, without deriving geometry from tessellation. Results distinguish transverse crossings, tangency, disjoint/coincident supports, and **numerically ambiguous** near-tangent/near-parallel cases. Sample residual certificates compare every constructed branch with both source surface equations. The pinned [intersection fixtures](tests/fixtures/intersections.v1.json) have their own compulsory analytic/metamorphic/boundary test gate in CI. Neither OpenCascade nor Parasolid serves as a truth oracle. This is not a trimmed face Boolean operation.
