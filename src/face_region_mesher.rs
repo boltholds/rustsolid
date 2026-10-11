@@ -10,7 +10,7 @@ use crate::{
     Mesh, Point3, Solid,
 };
 use std::collections::BTreeMap;
-use std::f64::consts::{PI,TAU};
+use std::f64::consts::TAU;
 
 const MIN_SEGMENTS:usize=12;
 const MAX_SEGMENTS:usize=512;
