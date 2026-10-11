@@ -13,6 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
+    ThroughHoleBrep, HoleParameters, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
@@ -175,13 +176,16 @@ impl Registry {
 enum ArenaKernel {
     Editable(CommandHistory),
     CurvedReadOnly(CylindricalBrep),
+    AnalyticHole(ThroughHoleBrep),
 }
 impl ArenaKernel {
-    fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0}}
+    fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0,
+        Self::AnalyticHole(h)=>h.revision()}}
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         match self {
             Self::Editable(h)=>BrepModel::from_polyhedral(h.solid(),ModelUnits::default()),
             Self::CurvedReadOnly(body)=>BrepModel::from_cylinder(body),
+            Self::AnalyticHole(body)=>Ok(body.model().clone()),
         }
     }
     fn named(&self)->Result<Vec<(TopologyEntity,TopologyName)>,GeometryError>{
@@ -199,7 +203,7 @@ impl ArenaKernel {
             let name=match self {
                 Self::Editable(h)=>h.solid().topology_name(e)
                     .ok_or_else(||invalid(format!("missing semantic name for {e:?}")))?.clone(),
-                Self::CurvedReadOnly(_)=>{
+                Self::CurvedReadOnly(_) | Self::AnalyticHole(_)=>{
                     let (ty,idx)=match e {
                         TopologyEntity::Body=>("body",0),
                         TopologyEntity::Vertex(x)=>("vertex",x.0),
@@ -209,7 +213,9 @@ impl ArenaKernel {
                         TopologyEntity::Face(x)=>("face",x.0),
                         TopologyEntity::Shell(x)=>("shell",x.0),
                     };
-                    TopologyName(format!("analytic_cylinder/{ty}/{idx}"))
+                    let prefix=match self {Self::AnalyticHole(_)=>"analytic_through_hole",
+                        _=>"analytic_cylinder"};
+                    TopologyName(format!("{prefix}/{ty}/{idx}"))
                 },
             };
             out.push((e,name));
@@ -244,6 +250,9 @@ impl BrepArena {
             BrepBody::Polyhedral(solid)=>ArenaKernel::Editable(CommandHistory::new(solid)?),
             BrepBody::Cylinder(cylinder)=>{
                 cylinder.validate()?;ArenaKernel::CurvedReadOnly(cylinder)
+            },
+            BrepBody::ThroughHole(body)=>{
+                body.validate()?;ArenaKernel::AnalyticHole(body)
             }
         };
         let mut registry=Registry::empty();
@@ -252,6 +261,7 @@ impl BrepArena {
     }
     pub fn from_solid(body:Solid)->Result<Self,GeometryError>{Self::new(BrepBody::Polyhedral(body))}
     pub fn from_cylinder(body:CylindricalBrep)->Result<Self,GeometryError>{Self::new(BrepBody::Cylinder(body))}
+    pub fn from_through_hole(body:ThroughHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::ThroughHole(body))}
     pub fn arena_token(&self)->u64{self.registry.token}
     pub fn revision(&self)->u64{self.storage.revision()}
     pub fn is_editable(&self)->bool{matches!(&self.storage,ArenaKernel::Editable(_))}
@@ -272,8 +282,10 @@ impl BrepArena {
     pub fn bindings(&self)->Vec<ArenaBinding>{self.registry.live()}
     pub fn live_slots(&self)->usize{self.registry.by_entity.len()}
     pub fn allocated_slots(&self)->usize{self.registry.slots.len()}
-    pub fn undo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.undo_depth(),_=>0}}
-    pub fn redo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.redo_depth(),_=>0}}
+    pub fn undo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.undo_depth(),
+        ArenaKernel::AnalyticHole(h)=>h.undo_depth(),_=>0}}
+    pub fn redo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.redo_depth(),
+        ArenaKernel::AnalyticHole(h)=>h.redo_depth(),_=>0}}
     pub fn validate(&self)->Result<(),GeometryError>{
         let named=self.storage.named()?;
         if named.len()!=self.live_slots(){return Err(invalid("arena live count mismatches B-rep"));}
@@ -296,9 +308,30 @@ impl BrepArena {
         match (&self.storage,&other.storage) {
             (ArenaKernel::Editable(a),ArenaKernel::Editable(b)) =>
                 BooleanKernel::apply_solids(a.solid(),b.solid(),op),
+            (ArenaKernel::Editable(a),ArenaKernel::CurvedReadOnly(b)) =>
+                BooleanKernel::apply(&BrepBody::Polyhedral(a.solid().clone()),
+                    &BrepBody::Cylinder(b.clone()),op),
             _ => Err(BooleanError::UnsupportedOperand(
                 "analytical curved B-rep Boolean requires mutable curved topology")),
         }
+    }
+    /// Strong-atomic parametric curved edit. A fresh validated B-rep and a
+    /// reconciled generational registry publish together on success.
+    pub fn update_hole(&mut self,parameters:HoleParameters)->Result<u64,GeometryError>{
+        let ArenaKernel::AnalyticHole(current)=&self.storage else {
+            return Err(invalid("arena does not own a parametrically editable hole"));
+        };
+        let mut candidate=current.clone();
+        let mut tx=candidate.begin_edit();
+        tx.set_center(parameters.center_x,parameters.center_z)?;
+        tx.set_radius(parameters.radius)?;
+        let revision=tx.commit()?;
+        let mut registry=self.registry.clone();
+        registry.reconcile(&ArenaKernel::AnalyticHole(candidate.clone()).named()?)?;
+        self.storage=ArenaKernel::AnalyticHole(candidate);
+        self.registry=registry;
+        debug_assert!(self.validate().is_ok());
+        Ok(revision)
     }
     pub fn begin_transaction(&mut self)->Result<ArenaTransaction<'_>,GeometryError>{
         if !self.is_editable(){return Err(invalid("analytical curved B-rep is read-only in v0.17"));}
@@ -380,6 +413,21 @@ impl BrepArena {
     pub fn undo(&mut self)->Result<Option<HistoryTransition>,GeometryError>{self.transition(false)}
     pub fn redo(&mut self)->Result<Option<HistoryTransition>,GeometryError>{self.transition(true)}
     fn transition(&mut self,redo:bool)->Result<Option<HistoryTransition>,GeometryError>{
+        if let ArenaKernel::AnalyticHole(current)=&self.storage {
+            let mut candidate=current.clone();
+            let before=candidate.revision();
+            let changed=if redo {candidate.redo()?}else{candidate.undo()?};
+            if !changed {return Ok(None)};
+            let after=candidate.revision();
+            let mut registry=self.registry.clone();
+            registry.reconcile(&ArenaKernel::AnalyticHole(candidate.clone()).named()?)?;
+            self.storage=ArenaKernel::AnalyticHole(candidate);
+            self.registry=registry;
+            debug_assert!(self.validate().is_ok());
+            return Ok(Some(HistoryTransition {direction:if redo{HistoryDirection::Redo}
+                else{HistoryDirection::Undo},revision_before:before,revision_after:after,
+                command_count:1}));
+        }
         let ArenaKernel::Editable(current)=&self.storage else {return Ok(None);};
         let mut candidate=current.clone();
         let transition=if redo{candidate.redo()?}else{candidate.undo()?};

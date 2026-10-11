@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.20 experimental kernel: read-only Boolean region classification across analytic intersection arcs, exact box Boolean execution, dependency-aware Euler transactions, and read-only analytic cylinders.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.21 experimental kernel: committed analytic cylindrical through-hole Booleans (genus-one B-rep), scoped curved parameter transactions, region-classification previews and exact planar box CSG.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -10,8 +10,9 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Maintain explicit oriented B-rep: shells, faces, loops, coedges (twin/next/prev), edges and vertices.
 - Edit the polyhedral B-rep atomically: split edges and faces, maintain twin/loop links, preserve unaffected local handles, validate and rollback on failure.
 - Chain Euler operations using typed outputs created earlier in the same transaction, with one Undo/Redo step for the batch.
-- Compute exact planar B-rep Boolean union/intersection/difference for two validated axis-aligned boxes; reject unsupported topology, cavities, and curved operands explicitly.
-- Classify full-volume membership for general validated polyhedral solids and analytic cylinders, and construct source-bound keep/discard witness samples across curved B-rep intersection arcs; generalized Boolean cuts remain preview-only.
+- Compute exact planar B-rep Boolean union/intersection/difference for two validated axis-aligned boxes, plus a constrained real analytic box-minus-through-cylinder Boolean with circular inner trim loops, genus one and independent display mesh.
+- Classify full-volume membership for validated polyhedral solids, analytic cylinders and an analytic through-hole, and construct source-bound keep/discard witnesses across analytic intersections. General Boolean cuts remain preview-only.
+- Atomically edit radius and center of an analytic through-hole, with Undo/Redo and stable semantic handles via `BrepArena::update_hole`.
 - Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -102,7 +103,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The polyhedral editor still represents **one connected genus-zero shell with a single outer loop per face**. The first Boolean executor only supports two exact axis-aligned boxes; it deliberately rejects general polyhedral and curved-surface Boolean operands, disconnected outputs, cavities and genus-changing cuts. Analytic cylinders are queryable, but not editable or Boolean-operable. Generalized Boolean classification, NURBS, mutable trim loops, permanent topological naming across regeneration, STEP/X_T export, fillets and production-grade robust tolerance/quality guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports a constrained genus-one through-hole with two inner loops. The Boolean executor supports two exact axis-aligned boxes and box subtraction by a vertical, strictly interior cylinder spanning the full block height; it rejects unsupported polyhedral/curved combinations, disconnected outputs and general cavities. Standalone cylinders remain read-only; through-hole radius and center can be edited through a specialized parameter transaction. Generalized Boolean classification, NURBS, mutable trim loops, permanent topological naming across regeneration, STEP/X_T export, fillets and production-grade robust tolerance/quality guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
 The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
@@ -262,6 +263,27 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.21: executable genus-one analytic through-hole
+
+[The first real curved Boolean](docs/analytic-through-hole.md) supports subtracting a
+vertical, fully penetrating analytic cylinder from a certified axis-aligned
+block. The resulting `ThroughHoleBrep` contains 7 analytic faces, 9 UV loops
+(including 2 inner circular loops), 2 circular edges, a periodic cylindrical
+seam and one genus-one shell with Euler characteristic 0. Exact mass and
+boundary geometry are independent from the separate display tessellation.
+
+`BooleanKernel::apply` and `BrepArena::boolean` return
+`BooleanOutcome::Analytic` for the supported subtraction. A
+`ThroughHoleTransaction` stages radius/center modifications on a private
+candidate, validates before publication, and supports Undo/Redo.
+`BrepArena::update_hole` additionally reconciles the generational topology
+registry before publishing the changed geometry.
+
+The `geometry.v1` `boolean` CLI accepts box minus a full analytic cylinder,
+returning genus, trims and source-face lineage metadata. A direct
+`analytic_through_hole` source can also be inspected and queried.
+General curved Boolean application of `TopologyDeltaPlan` is still refused.
 
 ## v0.20: analytic cut region classification
 

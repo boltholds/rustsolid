@@ -8,6 +8,7 @@
 //! non-manifold models are deliberately not claimed yet.
 use crate::{
     BoundingBox, Coedge, CoedgeGeometry, CoedgeId, Curve2, Curve3,
+    ThroughHoleBrep,
     CylindricalBrep, Edge, EdgeGeometry, EdgeId, FaceGeometry, FaceId,
     GeometryError, GeometryTolerance, Loop, LoopId, MassProperties,
     Mesh, ModelUnits, ParameterRange, Point3, Shell, Solid, Surface3, Vertex,
@@ -31,7 +32,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -120,6 +121,7 @@ impl BrepSource for CylindricalBrep {
 pub enum BrepBody {
     Polyhedral(Solid),
     Cylinder(CylindricalBrep),
+    ThroughHole(ThroughHoleBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
@@ -127,11 +129,15 @@ impl From<Solid> for BrepBody {
 impl From<CylindricalBrep> for BrepBody {
     fn from(body: CylindricalBrep) -> Self { Self::Cylinder(body) }
 }
+impl From<ThroughHoleBrep> for BrepBody {
+    fn from(body: ThroughHoleBrep) -> Self { Self::ThroughHole(body) }
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
             Self::Polyhedral(body) => body.validate(),
             Self::Cylinder(body) => body.validate(),
+            Self::ThroughHole(body) => body.validate(),
         }
     }
     pub fn shared(&self) -> Result<BrepModel, GeometryError> {
@@ -144,6 +150,7 @@ impl BrepBody {
         match self {
             Self::Polyhedral(body) => body,
             Self::Cylinder(body) => body,
+            Self::ThroughHole(body) => body,
         }
     }
 }
@@ -230,7 +237,10 @@ impl BrepModel {
         self.faces.get(id.0 as usize).filter(|f| f.id == id).map(|f| f.loops.as_slice())
     }
     pub fn euler_characteristic(&self) -> isize {
-        self.vertices.len() as isize - self.edges.len() as isize + self.faces.len() as isize
+        // Face domains with holes are not disks: every inner trim loop
+        // subtracts one from the cellular Euler characteristic.
+        let holes=self.loops.iter().filter(|lp|lp.role==crate::LoopRole::Inner).count();
+        self.vertices.len() as isize - self.edges.len() as isize + self.faces.len() as isize - holes as isize
     }
     pub fn summary(&self) -> BrepSummary {
         let mut out = BrepSummary {
@@ -317,6 +327,13 @@ impl BrepModel {
             }
         }
         if loop_owners.iter().any(|&n| n != 1) { return Err(invalid("loop has zero or repeated owners")); }
+        for face in &self.faces {
+            for (index,&id) in face.loops.iter().enumerate() {
+                let lp=&self.loops[id.0 as usize];
+                let desired=if index==0 {crate::LoopRole::Outer} else {crate::LoopRole::Inner};
+                if lp.role!=desired {return Err(invalid("B-rep face outer/inner loop role disagrees with trim order"));}
+            }
+        }
         let mut counts = vec![0usize; self.coedges.len()];
         let mut face_adjacency = vec![BTreeSet::<FaceId>::new(); self.faces.len()];
         for (i,lp) in self.loops.iter().enumerate() {
