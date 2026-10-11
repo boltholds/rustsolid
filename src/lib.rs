@@ -31,6 +31,8 @@ mod boolean;
 mod boolean_region;
 mod through_hole;
 mod carrier_editor;
+mod multi_through_hole;
+mod structural_editor;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -71,6 +73,11 @@ pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
     CarrierHandle, CarrierHandleError, CarrierId, CarrierBinding, CarrierSnapshot,
     CarrierCommit, CarrierTransition};
+pub use structural_editor::{BrepStructuralEditor, BrepStructuralTransaction,
+    StructuralHoleHandle, StructuralHoleTopology, StructuralHoleBinding,
+    StructuralRemap, StructuralCommit, StructuralTransition, StructuralSnapshot,
+    StructuralHandleError, HoleEdgeRole, HoleTrimRole, StructuralEdgeRef,
+    StructuralTrimRef, StructuralFaceRef};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,

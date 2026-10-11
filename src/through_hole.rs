@@ -73,6 +73,8 @@ impl ThroughHoleBrep {
             undo:Vec::new(),redo:Vec::new()})
     }
     pub fn parameters(&self)->HoleParameters{self.parameters}
+    /// Certified input block retained by this analytic feature. Read-only.
+    pub fn template_solid(&self)->&Solid{&self.template}
     pub fn revision(&self)->u64{self.revision}
     pub fn undo_depth(&self)->usize{self.undo.len()}
     pub fn redo_depth(&self)->usize{self.redo.len()}

@@ -13,7 +13,7 @@
 //! native persistent sparse editable curved geometry is a later milestone.
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
-    BrepCarrierEditor,
+    BrepCarrierEditor, BrepStructuralEditor,
     ThroughHoleBrep, HoleParameters, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
@@ -273,6 +273,20 @@ impl BrepArena {
     /// changes back into an existing arena is intentionally not implemented.
     pub fn detached_carrier_editor(&self)->Result<BrepCarrierEditor,GeometryError>{
         BrepCarrierEditor::new(self.model()?)
+    }
+    /// Start a separate structural + carrier editor from a validated arena.
+    /// Its hole features can change genus and analytic mass, unlike the
+    /// shape-preserving detached carrier editor. Source arena history and
+    /// existing feature handles remain untouched.
+    pub fn detached_structural_editor(&self)->Result<BrepStructuralEditor,GeometryError>{
+        match &self.storage {
+            ArenaKernel::Editable(history)=>
+                BrepStructuralEditor::new(history.solid().clone()),
+            ArenaKernel::AnalyticHole(hole)=>
+                BrepStructuralEditor::from_through_hole(hole),
+            ArenaKernel::CurvedReadOnly(_)=>
+                Err(invalid("standalone cylinder is not a structural box source")),
+        }
     }
     pub fn snapshot(&self)->Result<ArenaSnapshot,GeometryError>{
         let model=self.model()?;
