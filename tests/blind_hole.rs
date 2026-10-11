@@ -300,3 +300,23 @@ fn direct_cylinder_with_partial_depth_reversed_axis_does_not_silently_flip(){
     assert!(BooleanKernel::apply(&box_,&BrepBody::from(cutter),
         BooleanOperation::Difference).is_err());
 }
+
+#[test]
+fn source_intersection_graph_retains_closed_circular_opening_trace(){
+    let block=BrepBody::from(box_());
+    let cutter=BrepBody::from(CylindricalBrep::upright(
+        p(0.,1.,0.),1.,2.,GeometryTolerance::default()).unwrap());
+    let b=block.shared().unwrap();
+    let c=cutter.shared().unwrap();
+    let graph=rustsolid::IntersectionGraphBuilder::new(GeometryTolerance::default())
+        .unwrap().intersect_faces(&b,FaceId(1),&c,FaceId(2)).unwrap();
+    assert_eq!(graph.kind(),"ready","expected circular source-bound cut trace");
+    assert_eq!(graph.arcs.len(),1);
+    assert!(graph.arcs[0].closed);
+    graph.validate_against(&b,FaceId(1),&c,FaceId(2)).unwrap();
+    for fraction in [0.0,0.125,0.3,0.5,0.875,1.0] {
+        let q=graph.arcs[0].evaluate(fraction).unwrap();
+        close(q.y,3.);
+        close(q.x.hypot(q.z),1.);
+    }
+}
