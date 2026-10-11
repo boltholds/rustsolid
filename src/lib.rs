@@ -72,6 +72,7 @@ pub use boolean::{BooleanKernel, BooleanOperation, BooleanOperand, BooleanFaceSo
 pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionState,
     RegionHold, ArcRegionSample, GraphRegionPlan};
 pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
+pub use blind_hole::{BlindHoleBrep,BlindHoleParameters,BlindHoleTransaction,BlindHoleDisplay};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
     CarrierHandle, CarrierHandleError, CarrierId, CarrierBinding, CarrierSnapshot,
     CarrierCommit, CarrierTransition};
