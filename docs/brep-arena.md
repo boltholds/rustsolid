@@ -93,10 +93,11 @@ supported planar B-rep**, not arbitrary Boolean construction.
 ## First-party acceptance and integration
 
 [tests/fixtures/arena_transactions.v1.json](../tests/fixtures/arena_transactions.v1.json)
-pins sixteen deterministic scenarios, including compound MEV+MEF, late failure
+pins nineteen deterministic scenarios, including compound MEV+MEF, late failure
 rollback, transaction drop, ABA protection, compacting KEV/KEF, foreign handles,
 read-only analytic geometry, forged handles, plan refusal, dependent edge/face
-chains, same-batch inverse, cross-transaction outputs and wrong output roles.
+chains, same-batch inverse, cross-transaction outputs, wrong output roles, references across compaction,
+retired outputs and same-batch MEF/KEF inverse.
 [tests/brep_arena.rs](../tests/brep_arena.rs) executes them with analytically
 known cuboid volume/area/centroid, Euler invariants, Undo/Redo, and immutable
 snapshot checks. No other CAD kernel acts as an oracle.
