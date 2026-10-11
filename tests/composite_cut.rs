@@ -58,7 +58,7 @@ fn prove(e:&BrepCompositeEditor,through:usize,blind:usize){
         surface+=2.0*PI*c.radius()*d;
         if c.is_through(){surface-=2.0*PI*c.radius().powi(2);}
         let y=if c.is_through(){1.0}else{3.-d/2.};
-        moment=moment.add(p(-volume*x,volume*(1.-y),-volume*z));
+        moment=p(moment.x-volume*x,moment.y+volume*(1.-y),moment.z-volume*z);
     }
     let v=144.-removed;
     approx(m.mass.volume,v,1e-9);
@@ -95,7 +95,12 @@ fn prove_mesh(e:&BrepCompositeEditor,segments:usize){
             uses.entry((x.min(y),x.max(y))).or_default().push(x<y);
         }
         let [v0,v1,v2]=tri.map(|u|result.mesh.vertices[u as usize]);
-        six_volume+=v0.sub(a).dot(v1.sub(a).cross(v2.sub(a)));
+        let u=p(v0.x-a.x,v0.y-a.y,v0.z-a.z);
+        let v=p(v1.x-a.x,v1.y-a.y,v1.z-a.z);
+        let w=p(v2.x-a.x,v2.y-a.y,v2.z-a.z);
+        six_volume+=u.x*(v.y*w.z-v.z*w.y)+
+            u.y*(v.z*w.x-v.x*w.z)+
+            u.z*(v.x*w.y-v.y*w.x);
     }
     assert!(uses.values().all(|v|v.len()==2&&v[0]!=v[1]));
     assert_eq!(owners[&0],bottom);
