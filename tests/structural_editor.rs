@@ -307,3 +307,40 @@ fn subsequent_commit_after_undo_invalidates_redo_branch(){
     assert!(e.redo().unwrap().is_none());
     prove(&e,&[h(0.,0.,0.9)]);
 }
+
+#[test]
+fn detach_from_source_arena_preserves_original_handles_history_and_mass(){
+    let source=BrepArena::from_solid(block()).unwrap();
+    let original=source.snapshot().unwrap();
+    let original_face=source.handle(rustsolid::TopologyEntity::Face(FaceId(0))).unwrap();
+    let mut detached=source.detached_structural_editor().unwrap();
+    let mut tx=detached.begin_transaction();
+    tx.add_through_hole(h(0.,0.,1.)).unwrap();
+    tx.commit().unwrap();
+    detached.validate().unwrap();
+    prove(&detached,&[h(0.,0.,1.)]);
+    source.check_snapshot(&original).unwrap();
+    assert_eq!(source.handle(rustsolid::TopologyEntity::Face(FaceId(0))),Some(original_face));
+    assert_eq!(source.undo_depth(),0);
+    eq(source.model().unwrap().mass.volume,144.);
+}
+#[test]
+fn overlap_in_resize_rejects_without_losing_previous_history(){
+    let mut e=editor();
+    let (first,second)={
+        let mut tx=e.begin_transaction();
+        let a=tx.add_through_hole(h(-1.5,0.,0.5)).unwrap();
+        let b=tx.add_through_hole(h(1.5,0.,0.5)).unwrap();
+        tx.commit().unwrap();(a,b)
+    };
+    let snapshot=e.snapshot();
+    let original_undo=e.undo_depth();
+    let mut tx=e.begin_transaction();
+    assert!(tx.resize_through_hole(first,h(1.0,0.,0.6)).is_err());
+    assert!(tx.resize_through_hole(second,h(1.2,0.,0.4)).is_err());
+    assert!(tx.commit().is_err());
+    assert_eq!(e.undo_depth(),original_undo);
+    assert_eq!(e.revision(),1);
+    e.check_snapshot(&snapshot).unwrap();
+    prove(&e,&[h(-1.5,0.,0.5),h(1.5,0.,0.5)]);
+}
