@@ -362,13 +362,12 @@ impl BlindHoleBrep {
             [v.x.abs(),v.y.abs(),v.z.abs()]).fold(1.0f64,f64::max);
         let eps=self.template.tolerance.length_at(scale)
             .max(32.0*f64::EPSILON*coord);
-        let mut mesh=Mesh {
-            vertices:self.template.mesh.vertices.clone(),
-            triangles:Vec::new(),triangle_faces:Vec::new(),
-        };
         // Retain the source box vertices in their original canonical order,
         // not the per-triangle display mesh's arbitrary arrangement.
-        mesh.vertices=self.template.vertices.iter().map(|v|v.position).collect();
+        let mut mesh=Mesh {
+            vertices:self.template.vertices.iter().map(|v|v.position).collect(),
+            triangles:Vec::new(),triangle_faces:Vec::new(),
+        };
         if mesh.vertices.len()!=8 {
             return Err(invalid("blind-hole display requires eight box vertices"));
         }
