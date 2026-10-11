@@ -138,6 +138,36 @@ fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
             }
         }
     }
+
+    // The UV representation must remain inside its declared face chart.
+    // Evaluating the same 3D point by adding a periodic 2*pi turn is NOT
+    // permission to move a trim outside its physical chart without also
+    // updating the face bounds and the seam convention.
+    let scale=length(model.bbox.max.sub(model.bbox.min));
+    let model_slack=model.tolerance.length_at(scale);
+    for coedge in &model.coedges {
+        let trim=model.geometry.coedges.get(coedge.id.0 as usize)
+            .ok_or_else(||invalid("trim owner has no geometric carrier"))?;
+        let curve=model.geometry.curves2.get(trim.pcurve.0 as usize)
+            .ok_or_else(||invalid("UV trim references missing curve"))?;
+        let face=model.faces.get(coedge.face.0 as usize)
+            .ok_or_else(||invalid("UV trim refers to an unknown face"))?;
+        for fraction in SAMPLES {
+            let uv=curve.evaluate(lerp(trim.domain,fraction)?)?;
+            for (axis,value,range) in [
+                ("u",uv.u,face.geometry.bounds.u),
+                ("v",uv.v,face.geometry.bounds.v),
+            ] {
+                if !value.is_finite(){return Err(invalid("nonfinite face UV trim position"));}
+                let slack=model_slack.max(64.0*f64::EPSILON*value.abs().max(1.0));
+                if !range.includes(value,slack) {
+                    return Err(invalid(format!(
+                        "coedge {:?} trim escaped declared face {axis}-domain",
+                        coedge.id)));
+                }
+            }
+        }
+    }
     Ok(())
 }
 
