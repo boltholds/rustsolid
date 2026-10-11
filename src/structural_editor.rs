@@ -400,7 +400,13 @@ impl BrepStructuralEditor {
         for (i,slot) in candidate.slots.iter_mut().enumerate(){
             let current=self.state.slots.get(i);
             if slot.current.is_some(){
-                slot.generation=if current.is_some_and(|s|s.current.is_some()){
+                // Occupying the same sparse slot does not imply semantic
+                // survival. Remove+reinsert can replace hole A with B in
+                // one commit. Preserve generation only for identical live
+                // incarnations; otherwise mint a new generation on Undo/Redo.
+                slot.generation=if current.is_some_and(|s|
+                    s.current.is_some() && s.generation==slot.generation
+                ){
                     current.unwrap().generation
                 }else{fresh_generation()?};
             }else if let Some(existing)=current{
