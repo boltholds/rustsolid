@@ -54,6 +54,9 @@ pub struct CompositeDisplay {
     pub faceting_volume_error:f64,
     pub segments:usize,
 }
+fn id(len:usize)->Result<u32,GeometryError>{
+    u32::try_from(len).map_err(|_|invalid("composite display vertex budget exhausted"))
+}
 struct CircleRing{
     binding:CompositeCutBinding,
     coords:Vec<[f64;2]>,
