@@ -69,6 +69,10 @@ impl fmt::Display for BooleanError {
 }
 impl std::error::Error for BooleanError {}
 
+pub(crate) fn certify_box(s:&Solid)->Result<(),BooleanError>{
+    AxisBox::certify(s,"through-hole needs a canonical axis-aligned box")?;
+    Ok(())
+}
 fn geometry(error: GeometryError) -> BooleanError {
     match error {
         GeometryError::InvalidTopology(detail) =>
