@@ -182,7 +182,7 @@ fn shape(kind:Kind, field:&str) -> Option<Shape> {
         Mass => match field {"volume"|"surfaceArea"=>Some(Scalar),"centroid"=>Some(Object(Point)),_=>None},
         Bounds => match field {"min"|"max"=>Some(Object(Point)),_=>None},
         Point => match field {"x"|"y"|"z"=>Some(Scalar),_=>None},
-        Face => match field {"id"=>Some(Scalar),"surface"=>Some(Object(Surface)),"loops"=>Some(List(Loop)),_=>None},
+        Face => match field {"id"|"sense"=>Some(Scalar),"surface"=>Some(Object(Surface)),"loops"=>Some(List(Loop)),_=>None},
         Edge => match field {"id"|"startId"|"endId"|"closed"|"seam"=>Some(Scalar),
             "curve"=>Some(Object(Curve)),"coedges"=>Some(List(Coedge)),_=>None},
         Vertex => match field {"id"=>Some(Scalar),"position"=>Some(Object(Point)),_=>None},
