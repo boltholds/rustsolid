@@ -88,7 +88,10 @@ Successful candidate publication requires:
    retain its oriented supporting plane.
 4. Re-evaluation of **nine independent fractions** of every 3D edge and
    corresponding source-surface UV trim, comparing the existing and proposed
-   world-space paths within bounded model-space numerical resolution.
+   world-space paths within bounded model-space numerical resolution. All
+   trims must also remain inside their owning face's declared UV chart.
+   Invalid analytic frame axes, nonorthogonal bases and degenerate carriers
+   are refused even when sampled 3D points happen to agree.
 5. Unchanged topology counts, vertex locations, bounding box, model units,
    tolerance, and analytic mass properties — compared both against the
    prior revision and the original canonical source.
@@ -160,10 +163,13 @@ library's typed API and full commit validation.
 
 ## Acceptance and next gates
 
-`tests/carrier_editor.rs` pins nine original regressions plus shared trim
-copy-on-write, explicit replacement, repeated-owner budget exhaustion and
-detached arena integration. CI runs both this integration test and an
-independent JSON smoke/failure gate, in addition to the entire prior suite.
+`tests/carrier_editor.rs` pins sixteen regression scenarios covering
+reparameterization, direct carrier replacement, shared-trim copy-on-write,
+periodic seam and genus-one preservation, nonorthonormal-frame rejection,
+UV-chart escapes, downstream intersection-graph compatibility, failure
+poisoning, repeated-owner stage limits and detached arena integration.
+CI runs both this integration test and a separate JSON smoke/failure gate,
+in addition to the entire prior suite.
 
 Next, a fully **structural** heterogeneous B-rep editor must support:
 new and retired 3D curves, 2D trims, topological vertices/edges/coedges,
