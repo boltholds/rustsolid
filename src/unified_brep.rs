@@ -338,6 +338,25 @@ impl BrepModel {
                 return Err(invalid("invalid B-rep face identity or outer-loop owner"));
             }
         }
+        // These origins are explicit canonical producer families, not a
+        // general writable oriented-shell class. Certify the material sense
+        // promised by each producer rather than accepting a false cylinder
+        // exterior or an inverted blind floor as a valid closed body.
+        // A future generalized B-rep origin must prove orientation from
+        // local face/edge incidence rather than reusing this producer table.
+        for face in &self.faces {
+            let reversed=match self.origin {
+                BrepOrigin::Polyhedral | BrepOrigin::AnalyticCylinder=>false,
+                BrepOrigin::AnalyticThroughHole |
+                    BrepOrigin::AnalyticMultipleThroughHoles=>face.id.0>=6,
+                BrepOrigin::AnalyticBlindHole=>
+                    face.id==FaceId(6) || face.id==FaceId(7),
+            };
+            let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
+            if face.sense!=expected {
+                return Err(invalid("canonical source face has inconsistent material orientation"));
+            }
+        }
         let shell = &self.shells[0];
         if shell.id.0 != 0 || !shell.closed || shell.faces.len() != self.faces.len() {
             return Err(invalid("expected one closed shell owning every face"));
