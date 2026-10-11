@@ -44,7 +44,7 @@ pub use history::{EulerCommand, CommandBatch, CommandHistory, HistoryDirection, 
 pub use euler::{KillEdgeVertex, KillEdgeFace};
 pub use predicates::{Orientation, PredicateClassification, PredicateKernel, orient2d, orient3d, Plane3, PlaneIntersection, SegmentPlaneIntersection, intersect_segment_plane, face_support_plane};
 pub use curved_brep::{CylindricalBrep, CurvedFace, CurvedFaceKind};
-pub use unified_brep::{BrepBody, BrepSource, BrepModel, BrepGeometry, BrepFace, BrepOrigin, BrepSummary};
+pub use unified_brep::{BrepBody, BrepSource, BrepModel, BrepGeometry, BrepFace, BrepOrigin, BrepSummary, FaceSense};
 pub use query::{geometry_query, QueryLimits, QueryError};
 pub use accuracy::{generate_boundary_cases, run_boundary_probes, evaluate_probe_case,
     ProbeExpectation, ProbeModel, ProbeCase, ProbeMetrics, ProbeOutcome, ProbeReport};
