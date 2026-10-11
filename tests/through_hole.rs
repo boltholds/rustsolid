@@ -209,3 +209,50 @@ fn display_tessellation_is_watertight_and_converges_without_defining_brep(){
     assert!(errors[2]<errors[0],"tessellation converges to analytic mass");
     assert!(errors[2]<0.005,"high-resolution display mass is near analytic value");
 }
+
+#[test]
+fn off_center_hole_centroid_is_analytic_mass_difference() {
+    let result=ThroughHoleBrep::from_box(&block(),HoleParameters{
+        center_x:1.0,center_z:-0.75,radius:0.75}).unwrap();
+    topology(&result);
+    let removed=PI*0.75*0.75*4.0;
+    let mass=144.0-removed;
+    close(result.model().mass.volume,mass);
+    close(result.model().mass.centroid.x,-removed/mass);
+    close(result.model().mass.centroid.z,0.75*removed/mass);
+}
+#[test]
+fn arena_boolean_can_return_editable_analytic_hole_without_changing_sources(){
+    let first=BrepArena::from_solid(block()).unwrap();
+    let second=BrepArena::from_cylinder(cutter()).unwrap();
+    let before_a=first.snapshot().unwrap();
+    let before_b=second.snapshot().unwrap();
+    let result=first.boolean(&second,BooleanOperation::Difference).unwrap();
+    let BooleanOutcome::Analytic(result)=result.outcome else {
+        panic!("arena Boolean must return a real analytic through-hole")
+    };
+    let mut owned=BrepArena::from_through_hole(result).unwrap();
+    topology(&hole());
+    owned.update_hole(HoleParameters{center_x:0.2,center_z:0.0,radius:1.1}).unwrap();
+    owned.validate().unwrap();
+    first.check_snapshot(&before_a).unwrap();
+    second.check_snapshot(&before_b).unwrap();
+    assert_eq!(first.undo_depth(),0);
+    assert_eq!(second.undo_depth(),0);
+}
+#[test]
+fn invalid_parametric_arena_update_leaves_handles_and_history_intact(){
+    let mut a=BrepArena::from_through_hole(hole()).unwrap();
+    let prior=a.snapshot().unwrap();
+    let ids=a.bindings();
+    let slots=a.allocated_slots();
+    assert!(a.update_hole(HoleParameters{
+        center_x:2.9,center_z:0.,radius:0.4}).is_err());
+    assert_eq!(a.revision(),0);
+    assert_eq!(a.undo_depth(),0);
+    assert_eq!(a.redo_depth(),0);
+    assert_eq!(a.allocated_slots(),slots);
+    assert_eq!(a.bindings(),ids);
+    a.check_snapshot(&prior).unwrap();
+    a.validate().unwrap();
+}
