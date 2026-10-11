@@ -327,6 +327,13 @@ impl BrepModel {
             }
         }
         if loop_owners.iter().any(|&n| n != 1) { return Err(invalid("loop has zero or repeated owners")); }
+        for face in &self.faces {
+            for (index,&id) in face.loops.iter().enumerate() {
+                let lp=&self.loops[id.0 as usize];
+                let desired=if index==0 {crate::LoopRole::Outer} else {crate::LoopRole::Inner};
+                if lp.role!=desired {return Err(invalid("B-rep face outer/inner loop role disagrees with trim order"));}
+            }
+        }
         let mut counts = vec![0usize; self.coedges.len()];
         let mut face_adjacency = vec![BTreeSet::<FaceId>::new(); self.faces.len()];
         for (i,lp) in self.loops.iter().enumerate() {
