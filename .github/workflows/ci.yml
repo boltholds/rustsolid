@@ -27,6 +27,8 @@ jobs:
         run: python3 tests/validate_parasolid_capabilities.py
       - name: First-party intersection graph/provenance contracts
         run: cargo test --test intersection_graph
+      - name: Pinned symbolic topology delta planning contracts
+        run: cargo test --test topology_delta_plan
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

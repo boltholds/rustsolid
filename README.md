@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.4 experimental transactional topology slice — planar, genus-zero polyhedral solids only.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.16 experimental kernel: analytic cylinder, read-only B-rep intersections and polyhedral-only editing.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -254,3 +254,7 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 ## v0.15: typed IntersectionGraph candidate topology
 
 [IntersectionGraph](docs/intersection-graph.md) consumes the verified v0.14 UV-clipped intersection branches and builds an **immutable** graph with typed operand-namespaced face provenance, local face tolerance records, physical boundary edge/coedge witnesses, analytic intervals, contact classification, and read-only validation against both input B-reps. Full periodic circles are graph self-loops with a synthetic non-cut seam anchor; partial arcs crossing u=0/2π are coalesced into one unwrapped physical branch. The pinned [12-scenario graph regression corpus](tests/fixtures/intersection_graph.v1.json) is checked by CI along with invariance/tampering tests. The `geometry.v1` API gains read-only `intersection_graph` queries; no Boolean cut or B-rep mutation occurs.
+
+## v0.16 — immutable TopologyDeltaPlan
+
+The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.

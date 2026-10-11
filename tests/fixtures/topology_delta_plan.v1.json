@@ -1,0 +1,18 @@
+{
+  "schema": "rustsolid.topology_delta_plan.v1",
+  "title": "Independent topological-intent regressions over analytic B-rep intersections",
+  "cases": [
+    {"scenario":"transverse_segment","state":"preview_only","nodes":4,"arcs":1,"face_changes":2,"requirements":["generalized_brep_editor","region_classification","open_trace_completion"]},
+    {"scenario":"disjoint_trims","state":"no_change","nodes":0,"arcs":0,"face_changes":0,"requirements":[]},
+    {"scenario":"corner_contact","state":"no_change","nodes":2,"arcs":0,"face_changes":0,"requirements":[]},
+    {"scenario":"boundary_line","state":"held","nodes":4,"arcs":1,"face_changes":2,"requirements":["boundary_reconciliation"]},
+    {"scenario":"coincident_support","state":"held","nodes":0,"arcs":0,"face_changes":0,"requirements":["numerical_refinement"]},
+    {"scenario":"full_circle","state":"preview_only","nodes":2,"arcs":1,"face_changes":2,"requirements":["generalized_brep_editor","region_classification","inner_loop_construction"]},
+    {"scenario":"half_circle","state":"preview_only","nodes":4,"arcs":1,"face_changes":2,"requirements":["generalized_brep_editor","region_classification","open_trace_completion","multiple_splits_same_edge"]},
+    {"scenario":"two_generators","state":"preview_only","nodes":8,"arcs":2,"face_changes":4,"requirements":["generalized_brep_editor","region_classification","open_trace_completion"]},
+    {"scenario":"tangent_generator","state":"held","nodes":4,"arcs":1,"face_changes":2,"requirements":["tangency_classification"]},
+    {"scenario":"near_tangent_uncertain","state":"held","nodes":0,"arcs":0,"face_changes":0,"requirements":["numerical_refinement"]},
+    {"scenario":"cap_seam_boundary","state":"held","nodes":2,"arcs":1,"face_changes":2,"requirements":["boundary_reconciliation"]},
+    {"scenario":"plane_outside_height","state":"no_change","nodes":0,"arcs":0,"face_changes":0,"requirements":[]}
+  ]
+}

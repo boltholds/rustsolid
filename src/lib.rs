@@ -25,6 +25,7 @@ mod operator_contract;
 mod intersections;
 mod trimmed_intersections;
 mod intersection_graph;
+mod topology_delta_plan;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -51,6 +52,9 @@ pub use trimmed_intersections::{TrimmedIntersectionEngine, TrimmedIntersection,
 pub use intersection_graph::{IntersectionGraphBuilder, IntersectionGraph,
     GraphOperand, GraphNodeId, GraphArcId, GraphFaceSource, GraphBoundarySource,
     GraphTolerance, GraphNodeKind, GraphNode, GraphArc, GraphState};
+pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
+    PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
+    PlannedArc, PlannedFaceChange};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
