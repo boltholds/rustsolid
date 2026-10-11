@@ -35,6 +35,8 @@ mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
 mod face_region_mesher;
+mod composite_cut;
+mod composite_region_mesher;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
