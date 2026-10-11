@@ -525,6 +525,9 @@ fn certify_blind_display(box_:&Solid,model:&BrepModel,mesh:&Mesh,
                 }
             },
             FaceId(7)=>{
+                if model.face_sense(*owner)!=Some(crate::FaceSense::Reversed){
+                    return Err(invalid("blind floor requires reversed support-to-shell face orientation"));
+                }
                 if normal.y<=0.0 ||
                     [v0,v1,v2].iter().any(|v|
                         (v.y-(box_.bbox.max.y-p.depth)).abs()>eps){
