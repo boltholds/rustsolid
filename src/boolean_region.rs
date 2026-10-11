@@ -259,7 +259,7 @@ fn classify_polyhedron(s:&Solid,p:Point3,eps:f64)
         }
         let signed_distance=-a.dot(cross)/twice_area;
         if signed_distance.abs()<=eps {
-            let projected=a.scale(-1.0).add(cross.scale(signed_distance/twice_area));
+            let projected=a.scale(-1.0).sub(cross.scale(signed_distance/twice_area));
             let aa=edge0.dot(edge0);
             let ab=edge0.dot(edge1);
             let bb=edge1.dot(edge1);
