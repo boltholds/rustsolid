@@ -148,7 +148,7 @@ but their dense indices are not durable CAD feature identifiers.
 
 ## Independent regression and remaining scope
 
-`tests/multi_loop_mesh.rs` pins **10 independent cases**:
+`tests/multi_loop_mesh.rs` pins **12 independent cases**:
 
 - Zero-hole box, two/three asymmetric multi-hole combinations.
 - Exact loop count, owner-face/triangle association and watertight
@@ -159,6 +159,7 @@ but their dense indices are not durable CAD feature identifiers.
 - Insertion-order metamorphism and detached Arena invariance.
 - Segmentation errors and near/far coordinate translations.
 - Several radii, offsets and tessellation resolutions.
+- The 32-hole bound with 33 planar cap loops and deterministic repeated output.
 
 GitHub Actions runs this entire integration module and an explicit
 geometry.v1 smoke/negative case in addition to all previous suites.
