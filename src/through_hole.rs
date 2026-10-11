@@ -89,6 +89,8 @@ impl ThroughHoleBrep {
     pub fn validate(&self)->Result<(),GeometryError>{
         let expected=Self::build(&self.template,self.parameters)?;
         if self.model.summary()!=expected.summary() ||
+            self.model.faces.iter().zip(&expected.faces)
+                .any(|(a,b)|a.sense!=b.sense) ||
             self.model.geometry.curves3!=expected.geometry.curves3 ||
             self.model.geometry.curves2!=expected.geometry.curves2 ||
             self.model.geometry.surfaces!=expected.geometry.surfaces ||
