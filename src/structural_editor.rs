@@ -156,6 +156,12 @@ impl CarrierIntent {
         }
     }
 }
+#[derive(Debug,Clone,Copy)]
+enum CompiledCarrierIntent {
+    Edge{handle:crate::CarrierHandle,scale:f64,offset:f64},
+    Trim{handle:crate::CarrierHandle,scale:f64,offset:f64},
+    Face{handle:crate::CarrierHandle,du:f64,dv:f64},
+}
 #[derive(Clone)]
 struct State {
     slots:Vec<HoleSlot>,
@@ -226,29 +232,41 @@ fn prepare(block:&Solid,slots:&[HoleSlot],intents:&[CarrierIntent])
         return Err(invalid("structural carrier replay history exceeds 2048 intents"));
     }
     let mut carrier=BrepCarrierEditor::new(model)?;
-    {
+    // Compile each intent against the current dense graph *before* taking
+    // the exclusive carrier transaction borrow. Handles refer to owners,
+    // so catalog compaction between bounded chunks does not change meaning.
+    for chunk in intents.chunks(MAX_EDITS) {
+        let compiled=chunk.iter().map(|intent|match *intent {
+            CarrierIntent::Edge{target,scale,offset}=>{
+                let id=edge_owner(slots,target)?;
+                let handle=carrier.handle(CarrierOwner::Edge(id))
+                    .ok_or_else(||invalid("missing compiled edge owner"))?;
+                Ok(CompiledCarrierIntent::Edge{handle,scale,offset})
+            }
+            CarrierIntent::Trim{target,scale,offset}=>{
+                let id=trim_owner(slots,target)?;
+                let handle=carrier.handle(CarrierOwner::Coedge(id))
+                    .ok_or_else(||invalid("missing compiled UV trim owner"))?;
+                Ok(CompiledCarrierIntent::Trim{handle,scale,offset})
+            }
+            CarrierIntent::Face{target,du,dv}=>{
+                let id=face_owner(slots,target)?;
+                let handle=carrier.handle(CarrierOwner::Face(id))
+                    .ok_or_else(||invalid("missing compiled face owner"))?;
+                Ok(CompiledCarrierIntent::Face{handle,du,dv})
+            }
+        }).collect::<Result<Vec<_>,GeometryError>>()?;
         let mut tx=carrier.begin_transaction();
-        // Owner generation is private to this temporary candidate. The
-        // real public structural handle is resolved before compilation.
-        for intent in intents {
-            match *intent {
-                CarrierIntent::Edge{target,scale,offset}=>{
-                    let id=edge_owner(slots,target)?;
-                    let h=carrier.handle(CarrierOwner::Edge(id))
-                        .ok_or_else(||invalid("missing compiled edge owner"))?;
-                    tx.reparameterize_edge(h,scale,offset)?;
+        for cmd in compiled {
+            match cmd {
+                CompiledCarrierIntent::Edge{handle,scale,offset}=>{
+                    tx.reparameterize_edge(handle,scale,offset)?;
                 }
-                CarrierIntent::Trim{target,scale,offset}=>{
-                    let id=trim_owner(slots,target)?;
-                    let h=carrier.handle(CarrierOwner::Coedge(id))
-                        .ok_or_else(||invalid("missing compiled UV trim owner"))?;
-                    tx.reparameterize_trim(h,scale,offset)?;
+                CompiledCarrierIntent::Trim{handle,scale,offset}=>{
+                    tx.reparameterize_trim(handle,scale,offset)?;
                 }
-                CarrierIntent::Face{target,du,dv}=>{
-                    let id=face_owner(slots,target)?;
-                    let h=carrier.handle(CarrierOwner::Face(id))
-                        .ok_or_else(||invalid("missing compiled face owner"))?;
-                    tx.rebase_face_uv(h,du,dv)?;
+                CompiledCarrierIntent::Face{handle,du,dv}=>{
+                    tx.rebase_face_uv(handle,du,dv)?;
                 }
             }
         }
