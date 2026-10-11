@@ -122,6 +122,7 @@ pub enum BrepBody {
     Polyhedral(Solid),
     Cylinder(CylindricalBrep),
     ThroughHole(ThroughHoleBrep),
+    BlindHole(BlindHoleBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
