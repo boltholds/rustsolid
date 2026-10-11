@@ -66,3 +66,10 @@ jobs:
           printf '%s' '{"operation":"intersection_graph","first":{"source":{"kind":"block","origin":[-3,2,-3],"width":6,"height":1,"depth":6},"face_id":0},"second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},"face_id":2}}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["ok"] and r["data"]["kind"]=="ready" and len(r["data"]["arcs"])==1 and r["data"]["arcs"][0]["closed"] and r["data"]["topology_committed"] is False, r'
+      - name: Topology delta plan CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"topology_delta_plan","first":{"source":{"kind":"block","origin":[-3,2,-3],"width":6,"height":1,"depth":6},"face_id":0},"second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],"radius":2,"height":5},"face_id":2}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and d["state"]=="preview_only" and d["can_apply"] is False and len(d["intersection_arcs"])==1 and "inner_loop_construction" in d["requirements"], r'

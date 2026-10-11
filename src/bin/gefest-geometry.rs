@@ -4,7 +4,9 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
     TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity,
-    IntersectionGraphBuilder, GraphState, GraphNodeKind, GraphOperand, TrimPosition, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+    IntersectionGraphBuilder, GraphState, GraphNodeKind, GraphOperand, TrimPosition,
+    TopologyDeltaPlanner, PlanState, PlanArcRole, PlanFaceEffect,
+    PlanRequirement, PlanVertexPlacement, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -25,6 +27,9 @@ enum GeometryRequest {
         #[serde(default)] tolerance:Option<GeometryTolerance>,
         #[serde(default)] samples:Option<usize> },
     IntersectionGraph { first: FaceOperand, second: FaceOperand,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] samples:Option<usize> },
+    TopologyDeltaPlan { first: FaceOperand, second: FaceOperand,
         #[serde(default)] tolerance:Option<GeometryTolerance>,
         #[serde(default)] samples:Option<usize> },
     GeometryQuery { source: BrepInput, query: String },
@@ -633,6 +638,127 @@ fn evaluate_intersection_graph(
     }
 }
 
+
+/// Symbolic, source-bound modeling intent: NO mutation or Boolean commit.
+fn evaluate_topology_delta_plan(first:FaceOperand,second:FaceOperand,
+    tolerance:GeometryTolerance,samples:usize)->Response
+{
+    let result=(||->Result<Value,GeometryError>{
+        if !(3..=64).contains(&samples) {
+            return Err(GeometryError::InvalidEdit("plan sampling budget must be 3..=64".into()));
+        }
+        let (first_body,_) = first.source.prepare()?;
+        let (second_body,_) = second.source.prepare()?;
+        let a=first_body.shared()?;
+        let b=second_body.shared()?;
+        let fa=FaceId(first.face_id);
+        let fb=FaceId(second.face_id);
+        let graph=IntersectionGraphBuilder::new(tolerance)?.intersect_faces(&a,fa,&b,fb)?;
+        let plan=TopologyDeltaPlanner::new().plan(&graph,&a,fa,&b,fb)?;
+        plan.validate_against(&graph,&a,fa,&b,fb)?;
+        let source_label=|x:GraphOperand| match x {
+            GraphOperand::First=>"first",GraphOperand::Second=>"second",
+        };
+        let placement=|v:PlanVertexPlacement|match v {
+            PlanVertexPlacement::VirtualPeriodicAnchor=>json!({"kind":"virtual_periodic_anchor"}),
+            PlanVertexPlacement::ContactOnly=>json!({"kind":"contact_only"}),
+            PlanVertexPlacement::ReuseVertex{vertex}=>json!({"kind":"reuse_vertex","vertex_id":vertex.0}),
+            PlanVertexPlacement::SplitEdge{edge,coedge,parameter,fraction}=>json!({
+                "kind":"split_edge","edge_id":edge.0,"coedge_id":coedge.0,
+                "parameter":parameter,"fraction":fraction
+            }),
+            PlanVertexPlacement::CreateFaceVertex{face}=>json!({
+                "kind":"create_face_vertex","face_id":face.0
+            }),
+        };
+        let effect=|e:PlanFaceEffect|match e {
+            PlanFaceEffect::CandidateBoundarySplit=>"candidate_boundary_split",
+            PlanFaceEffect::PendingOpenTrace=>"pending_open_trace",
+            PlanFaceEffect::CandidateInnerLoop=>"candidate_inner_loop",
+            PlanFaceEffect::ReconcileExistingBoundary=>"reconcile_existing_boundary",
+            PlanFaceEffect::RecordTangency=>"record_tangency",
+        };
+        let requirement=|r:PlanRequirement|match r {
+            PlanRequirement::NumericalRefinement=>"numerical_refinement",
+            PlanRequirement::GeneralizedBrepEditor=>"generalized_brep_editor",
+            PlanRequirement::RegionClassification=>"region_classification",
+            PlanRequirement::InnerLoopConstruction=>"inner_loop_construction",
+            PlanRequirement::OpenTraceCompletion=>"open_trace_completion",
+            PlanRequirement::CurvedEdgeSubdivision=>"curved_edge_subdivision",
+            PlanRequirement::MultipleSplitsSameEdge=>"multiple_splits_same_edge",
+            PlanRequirement::TangencyClassification=>"tangency_classification",
+            PlanRequirement::BoundaryReconciliation=>"boundary_reconciliation",
+        };
+        let source_faces=plan.source_faces.iter().map(|source|json!({
+            "operand":source_label(source.operand),"face_id":source.face.0,
+            "surface_id":source.surface.0,
+            "tolerance":{"absolute_length":source.tolerance.absolute_length,
+                "relative_length":source.tolerance.relative_length,
+                "angular":source.tolerance.angular}
+        })).collect::<Vec<_>>();
+        let nodes=plan.vertices.iter().map(|node|json!({
+            "graph_node_id":node.node.0,
+            "operand":source_label(node.operand),"face_id":node.face.0,
+            "point":node.point.array(),"placement":placement(node.placement),
+            "physical_boundary_sources":node.physical_boundary_sources.iter().map(|w|json!({
+                "edge_id":w.edge.0,"coedge_id":w.coedge.0,
+                "operand":source_label(w.operand),"face_id":w.face.0
+            })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>();
+        let arcs=plan.arcs.iter().map(|arc|{
+            let samples_json=(0..samples).map(|i|{
+                let fraction=i as f64/(samples-1) as f64;
+                arc.analytic_curve.evaluate(arc.parameter_start+
+                    fraction*(arc.parameter_end-arc.parameter_start))
+                .map(|point|json!({"fraction":fraction,"point":point.array()}))
+            }).collect::<Result<Vec<Value>,GeometryError>>()?;
+            Ok(json!({
+                "graph_arc_id":arc.arc.0,"from":arc.from.0,"to":arc.to.0,
+                "closed":arc.closed,
+                "contact":match arc.contact {
+                    TrimContact::Crossing=>"crossing",TrimContact::Tangent=>"tangent",
+                    TrimContact::BoundaryOverlap=>"boundary_overlap",
+                },
+                "carrier_intent":match arc.role {
+                    PlanArcRole::ProposeNewCarrier=>"propose_new_carrier",
+                    PlanArcRole::ReconcileBoundary=>"reconcile_boundary",
+                    PlanArcRole::ContactOnly=>"contact_only",
+                },
+                "carrier_type":match arc.analytic_curve {
+                    IntersectionCurve::Line(_)=>"line",
+                    IntersectionCurve::PlaneCylinderSection(_)=>"periodic_section",
+                },
+                "interval":[arc.parameter_start,arc.parameter_end],
+                "samples":samples_json
+            }))
+        }).collect::<Result<Vec<Value>,GeometryError>>()?;
+        let faces=plan.face_changes.iter().map(|face|json!({
+            "graph_arc_id":face.arc.0,
+            "operand":source_label(face.operand),
+            "face_id":face.face.0,
+            "effect":effect(face.effect)
+        })).collect::<Vec<_>>();
+        let requirements=plan.requirements.iter().copied().map(requirement).collect::<Vec<_>>();
+        Ok(json!({
+            "kind":"topology_delta_plan",
+            "state":match plan.state{
+                PlanState::NoChange=>"no_change",
+                PlanState::PreviewOnly=>"preview_only",
+                PlanState::Held=>"held",
+            },
+            "graph_state":graph.kind(),"sources":source_faces,
+            "node_bindings":nodes,"intersection_arcs":arcs,
+            "face_changes":faces,"requirements":requirements,
+            "split_edge_requests":plan.split_edge_requests(),
+            "can_apply":plan.can_apply,"topology_committed":false
+        }))
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn process(input: &str) -> Response {
     let parsed: Result<GeometryRequest, _> = serde_json::from_str(input);
     let result: Result<(Solid, Option<EditReport>, Option<Value>), GeometryError> = match parsed {
@@ -647,6 +773,8 @@ fn process(input: &str) -> Response {
             return evaluate_face_intersection(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::IntersectionGraph{first,second,tolerance,samples}) =>
             return evaluate_intersection_graph(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
+        Ok(GeometryRequest::TopologyDeltaPlan{first,second,tolerance,samples}) =>
+            return evaluate_topology_delta_plan(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -1151,6 +1279,55 @@ mod tests {
         let oversized=request.replace("\"operation\":\"intersection_graph\"",
             "\"operation\":\"intersection_graph\",\"samples\":1000");
         assert!(!process(&oversized).ok);
+    }
+
+    #[test]
+    fn json_plan_reports_symbolic_brep_intent_without_mutation(){
+        let response=process(r#"{
+            "operation":"topology_delta_plan",
+            "first":{"source":{"kind":"block","origin":[-3,2,-3],
+                "width":6,"height":1,"depth":6},"face_id":0},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2},
+            "samples":7
+        }"#);
+        assert!(response.ok,"{:?}",response.error);
+        assert!(response.solid.is_none());
+        let d=response.data.unwrap();
+        assert_eq!(d["state"],"preview_only");
+        assert_eq!(d["can_apply"],false);
+        assert_eq!(d["topology_committed"],false);
+        assert_eq!(d["intersection_arcs"].as_array().unwrap().len(),1);
+        assert_eq!(d["intersection_arcs"][0]["closed"],true);
+        assert_eq!(d["node_bindings"][0]["placement"]["kind"],"virtual_periodic_anchor");
+        assert_eq!(d["face_changes"].as_array().unwrap().len(),2);
+        assert_eq!(d["face_changes"][0]["effect"],"candidate_inner_loop");
+        assert!(d["requirements"].as_array().unwrap().contains(&json!("inner_loop_construction")));
+        assert_eq!(d["intersection_arcs"][0]["samples"].as_array().unwrap().len(),7);
+    }
+    #[test]
+    fn json_plan_keeps_ambiguous_intersections_on_hold(){
+        let input=r#"{
+            "operation":"topology_delta_plan",
+            "first":{"source":{"kind":"block","origin":[2.0000000004,1,-3],
+                "width":2,"height":2,"depth":6},"face_id":5},
+            "second":{"source":{"kind":"analytic_cylinder",
+                "origin":[0,0,0],"radius":2,"height":5},"face_id":2}
+        }"#;
+        let result=process(input);
+        assert!(result.ok,"{:?}",result.error);
+        let data=result.data.unwrap();
+        assert_eq!(data["state"],"held");
+        assert_eq!(data["graph_state"],"ambiguous");
+        assert_eq!(data["can_apply"],false);
+        assert_eq!(data["topology_committed"],false);
+        assert_eq!(data["intersection_arcs"],json!([]));
+        assert!(data["requirements"].as_array().unwrap().contains(&json!("numerical_refinement")));
+        let invalid=input.replace("\"face_id\":5","\"face_id\":999");
+        assert!(!process(&invalid).ok);
+        let too_many=input.replace("\"operation\":\"topology_delta_plan\"",
+            "\"operation\":\"topology_delta_plan\",\"samples\":1000");
+        assert!(!process(&too_many).ok);
     }
 
 }
