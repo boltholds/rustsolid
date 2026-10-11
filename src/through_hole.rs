@@ -48,8 +48,15 @@ impl ThroughHoleBrep {
         let n=cylinder.frame.normal;
         let tol=box_.tolerance;
         let h=box_.bbox.max.y-box_.bbox.min.y;
-        let eps=tol.length_at(h.max(cylinder.radius*2.0))
-            .max(cylinder.tolerance.length_at(h.max(cylinder.radius*2.0)));
+        // A cutter plane displaced by a *physical modeling tolerance*
+        // must not be silently reinterpreted as the exact box end plane.
+        // Permit only machine representability error, not geometric
+        // snapping that changes the topology from blind to through.
+        let coordinate_scale=[
+            cylinder.frame.origin.y,box_.bbox.min.y,box_.bbox.max.y,
+            cylinder.height,h
+        ].into_iter().map(f64::abs).fold(1.0_f64,f64::max);
+        let eps=16.0*f64::EPSILON*coordinate_scale;
         if n.x.abs()>tol.angular || (n.y-1.0).abs()>tol.angular ||
             n.z.abs()>tol.angular {
             return Err(invalid("through-hole requires a +Y cylinder axis"));
