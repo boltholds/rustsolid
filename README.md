@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.19 experimental kernel: exact Boolean union/intersection/difference for certified axis-aligned boxes, dependency-aware Euler batches, sparse generational identity arena, and read-only analytic cylinder B-reps.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.20 experimental kernel: read-only Boolean region classification across analytic intersection arcs, exact box Boolean execution, dependency-aware Euler transactions, and read-only analytic cylinders.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -11,6 +11,7 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Edit the polyhedral B-rep atomically: split edges and faces, maintain twin/loop links, preserve unaffected local handles, validate and rollback on failure.
 - Chain Euler operations using typed outputs created earlier in the same transaction, with one Undo/Redo step for the batch.
 - Compute exact planar B-rep Boolean union/intersection/difference for two validated axis-aligned boxes; reject unsupported topology, cavities, and curved operands explicitly.
+- Classify full-volume membership for general validated polyhedral solids and analytic cylinders, and construct source-bound keep/discard witness samples across curved B-rep intersection arcs; generalized Boolean cuts remain preview-only.
 - Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -261,6 +262,29 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.20: analytic cut region classification
+
+[BooleanRegionClassifier](docs/boolean-regions.md) determines whether a
+spatial point lies strictly inside, outside or on a validated polyhedral B-rep
+or analytic right circular cylinder. Polyhedral membership uses oriented
+solid-angle winding of the actual triangle boundary; curved cylinders use
+their exact local-frame radial and axial equations.
+
+For a validated two-face `IntersectionGraph`, the classifier samples both
+sides of each analytic crossing arc on **each** source face, evaluates
+the opposite body's volume membership, and records the retained and discarded
+regions for Union, Intersection and ordered Difference. It handles periodic
+circles and open plane-cylinder traces, preserves original face provenance,
+and refuses unsupported tangencies or ambiguous near-boundary probes.
+The witness plan can be revalidated against both current source bodies.
+This is *read-only local region evidence*: face-region reconstruction,
+inner UV loops, multiple shells, and general curved Boolean commits
+remain future gates. `TopologyDeltaPlan` cannot yet be applied.
+
+The `geometry.v1` CLI exposes `boolean_region_plan`, with `first` and
+`second` face operands, a `mode`, and explicit `can_apply:false`.
+First-party tests and the dedicated CI gate verify these classifications.
 
 ## v0.19: exact planar box Boolean B-rep
 
