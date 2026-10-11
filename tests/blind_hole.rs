@@ -320,3 +320,18 @@ fn source_intersection_graph_retains_closed_circular_opening_trace(){
         close(q.x.hypot(q.z),1.);
     }
 }
+
+#[test]
+fn constructed_blind_result_exposes_source_bound_analytic_opening_graph(){
+    let shape=blind();
+    let graph=shape.opening_trace().unwrap();
+    assert_eq!(graph.state,rustsolid::GraphState::Ready);
+    assert_eq!(graph.arcs.len(),1);
+    assert!(graph.arcs[0].closed);
+    assert_ne!(graph.arcs[0].contact,rustsolid::TrimContact::Tangent);
+    for fraction in [0.0,0.125,0.5,0.875]{
+        let point=graph.arcs[0].evaluate(fraction).unwrap();
+        close(point.y,3.);
+        close(point.x.hypot(point.z),1.);
+    }
+}
