@@ -45,6 +45,8 @@ enum GeometryRequest {
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
+    BooleanSequence {left:BrepInput,right:Vec<BrepInput>,mode:BooleanOperation,
+        #[serde(default)] segments:Option<usize>},
     CompositeTransaction {source:SolidSource,batches:Vec<Vec<CompositeCommandInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
         #[serde(default)] display_segments:Option<usize>},
@@ -1665,6 +1667,111 @@ fn evaluate_carrier_transaction(
     }
 }
 
+
+fn render_composite_boolean(body:BrepCompositeEditor,lineage:Vec<Value>,
+    mode:BooleanOperation,segments:usize)->Response
+{
+    let display=match body.tessellate(segments){
+        Ok(mesh)=>mesh,
+        Err(error)=>return Response{schema_version:"geometry.v1",ok:false,
+            solid:None,data:None,error:Some(error.to_string())},
+    };
+    let model=body.model();
+    let stats=model.summary();
+    let cut_bindings=body.bindings();
+    let through=cut_bindings.iter().filter(|b|b.cut.is_through()).count();
+    let blind=cut_bindings.len()-through;
+    let cut_lineage=cut_bindings.iter().enumerate().map(|(index,b)|json!({
+        "cutter_index":index,"cut_slot":b.handle.slot,
+        "cut_kind":b.cut.kind(),
+        "result_cylindrical_face":b.topology.side_face.0,
+        "source_cylindrical_face":2,
+        "result_floor_face":b.topology.floor_face.map(|id|id.0),
+        "source_floor_face":b.topology.floor_face.map(|_|0),
+        "reversed":true,
+    })).collect::<Vec<_>>();
+    Response {
+        schema_version:"geometry.v1",ok:true,error:None,
+        data:Some(json!({
+            "kind":"boolean","mode":mode,"state":"solid",
+            "representation":"analytic_composite_cuts",
+            "face_sources":lineage,
+            "per_cutter_lineage":cut_lineage,
+            "cut_count":cut_bindings.len(),
+            "through_cuts":through,"blind_cuts":blind,
+            "genus":stats.genus,
+            "top_cap_loops":display.top.loops,
+            "bottom_cap_loops":display.bottom.loops,
+            "faceted_volume":display.faceted_volume,
+            "faceted_surface_area":display.faceted_surface_area,
+            "volume_faceting_error":display.faceting_volume_error,
+            "closed_oriented_display_mesh_certified":true,
+            "topology_committed":true,
+        })),
+        solid:Some(SolidResponse{
+            vertices:display.mesh.vertices.iter().map(|v|v.array()).collect(),
+            faces:display.mesh.triangles,
+            triangle_face_ids:display.mesh.triangle_faces.iter().map(|f|f.0).collect(),
+            topology:Topology{
+                vertices:stats.vertices,edges:stats.edges,
+                coedges:stats.coedges,loops:stats.loops,
+                faces:stats.faces,shells:stats.shells,
+                euler_characteristic:stats.euler_characteristic,
+            },
+            mass:Mass{
+                volume:model.mass.volume,surface_area:model.mass.surface_area,
+                centroid:model.mass.centroid.array(),
+            },
+            bbox:[model.bbox.min.array(),model.bbox.max.array()],
+            edit_report:None,history:None,
+            analytic_brep:Some(json!({
+                "kind":"analytic_composite_cuts",
+                "exact_analytic_mass":true,
+                "cut_count":cut_bindings.len(),
+                "through_cuts":through,"blind_cuts":blind,
+                "inner_loops":model.loops.iter().filter(|lp|
+                    lp.role==rustsolid::LoopRole::Inner).count(),
+                "genus":stats.genus,
+                "display_mesh_is_not_boundary_definition":true,
+            })),
+            brep:None,
+        }),
+    }
+}
+fn evaluate_boolean_sequence(left:BrepInput,right:Vec<BrepInput>,
+    mode:BooleanOperation,segments:usize)->Response
+{
+    let result=(||->Result<rustsolid::BooleanResult,GeometryError>{
+        let (left,_)=left.prepare()?;
+        let cutters=right.into_iter().map(|operand|operand.prepare()
+            .map(|(body,_)|body)).collect::<Result<Vec<_>,_>>()?;
+        BooleanKernel::apply_sequence(&left,&cutters,mode)
+            .map_err(|error|GeometryError::InvalidEdit(error.to_string()))
+    })();
+    match result {
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,data:None,error:Some(error.to_string())},
+        Ok(result)=>{
+            let lineage=result.face_sources.iter().map(|f|json!({
+                "result_face_id":f.result_face.0,
+                "operand":match f.operand{
+                    BooleanOperand::Left=>"left",
+                    BooleanOperand::Right=>"right",
+                },
+                "source_face_id":f.source_face.0,
+                "reversed":f.reversed,
+            })).collect::<Vec<_>>();
+            match result.outcome {
+                BooleanOutcome::Composite(body)=>
+                    render_composite_boolean(body,lineage,mode,segments),
+                _=>Response{schema_version:"geometry.v1",ok:false,
+                    solid:None,data:None,error:Some(
+                        "unexpected noncomposite result from analytic Boolean sequence".into())}
+            }
+        }
+    }
+}
+
 fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Response{
     let result=(||->Result<rustsolid::BooleanResult,GeometryError>{
         let (left,_)=left.prepare()?;
@@ -1686,6 +1793,8 @@ fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Respo
                 "reversed":f.reversed,
             })).collect::<Vec<_>>();
             match result.outcome {
+                BooleanOutcome::Composite(body)=>
+                    render_composite_boolean(body,lineage,mode,64),
                 BooleanOutcome::Empty=>Response{
                     schema_version:"geometry.v1",ok:true,solid:None,error:None,
                     data:Some(json!({"kind":"boolean","mode":mode,"state":"empty",
@@ -1842,6 +1951,8 @@ fn process(input: &str) -> Response {
             return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
+        Ok(GeometryRequest::BooleanSequence{left,right,mode,segments}) =>
+            return evaluate_boolean_sequence(left,right,mode,segments.unwrap_or(64)),
         Ok(GeometryRequest::CompositeTransaction{source,batches,undo,redo,display_segments}) =>
             return evaluate_composite_transaction(source,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
