@@ -118,7 +118,7 @@ fn invalid_stage_or_late_commit_failure_preserves_geometry_and_history(){
     close(h.model().mass.volume,snapshot.volume);
     {
         let mut tx=h.begin_edit();
-        tx.set_radius(2.99).unwrap();
+        tx.set_radius(3.01).unwrap();
         assert!(tx.commit().is_err());
     }
     assert_eq!(h.revision(),0);
