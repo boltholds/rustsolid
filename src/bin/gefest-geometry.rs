@@ -307,6 +307,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::Polyhedral=>"polyhedral",
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
+                BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
