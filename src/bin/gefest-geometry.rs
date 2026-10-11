@@ -1766,6 +1766,57 @@ mod tests {
             .any(|v|v["operand"]=="second" && v["reverse_orientation"]==true));
     }
 
+
+    #[test]
+    fn json_curved_boolean_true_genus_one_and_analytic_mass(){
+        let request=r#"{"operation":"boolean","mode":"difference",
+          "left":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
+          "right":{"kind":"analytic_cylinder","origin":[0,-1,0],"radius":1,"height":4}}"#;
+        let response=process(request);
+        assert!(response.ok,"{:?}",response.error);
+        let info=response.data.unwrap();
+        let solid=response.solid.unwrap();
+        assert_eq!(info["representation"],"analytic_cylindrical_through_hole");
+        assert_eq!(info["genus"],1);
+        assert_eq!(info["topology_committed"],true);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["inner_loops"],2);
+        assert_eq!(solid.topology.euler_characteristic,0);
+        assert_eq!(solid.topology.faces,7);
+        assert!((solid.mass.volume-(144.0-4.0*std::f64::consts::PI)).abs()<1e-9);
+        assert_eq!(info["face_sources"].as_array().unwrap().len(),7);
+    }
+    #[test]
+    fn json_analytic_hole_is_queryable_without_facet_driven_carriers(){
+        let request=r#"{"operation":"inspect_brep","source":{
+            "kind":"analytic_through_hole","origin":[-3,-1,-3],
+            "width":6,"height":4,"depth":6,"center":[0,0],"radius":1,
+            "segments":32}}"#;
+        let response=process(request);
+        assert!(response.ok,"{:?}",response.error);
+        let s=response.solid.unwrap();
+        let graph=s.brep.unwrap();
+        assert_eq!(graph["representation"],"analytic_through_hole");
+        assert_eq!(graph["topology"]["genus"],1);
+        assert_eq!(graph["geometry"]["cylindrical_faces"],1);
+        assert_eq!(graph["geometry"]["circular_edges"],2);
+        assert_eq!(s.topology.euler_characteristic,0);
+        assert!(s.vertices.len()>64);
+    }
+    #[test]
+    fn json_boolean_rejects_blind_or_tangent_cylinders_not_fake_boolean(){
+        for right in [
+            r#"{"kind":"analytic_cylinder","origin":[0,-1,0],"radius":1,"height":3}"#,
+            r#"{"kind":"analytic_cylinder","origin":[2.5,-1,0],"radius":0.5,"height":4}"#,
+        ] {
+            let request=format!(r#"{{"operation":"boolean","mode":"difference",
+                "left":{{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6}},
+                "right":{right}}}"#);
+            let response=process(&request);
+            assert!(!response.ok);
+            assert!(response.solid.is_none());
+            assert!(response.data.is_none());
+        }
+    }
     #[test]
     fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){
         for (mode,expected) in [("intersection",6.0),("union",42.0),("difference",18.0)] {
