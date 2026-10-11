@@ -91,7 +91,8 @@ impl ThroughHoleBrep {
         Ok(())
     }
     pub fn begin_edit(&mut self)->ThroughHoleTransaction<'_>{
-        ThroughHoleTransaction{owner:self,staged:self.parameters,failed:false}
+        let staged=self.parameters;
+        ThroughHoleTransaction{owner:self,staged,failed:false}
     }
     pub fn undo(&mut self)->Result<bool,GeometryError>{
         let Some(params)=self.undo.last().copied() else{return Ok(false)};
