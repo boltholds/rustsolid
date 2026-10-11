@@ -1,6 +1,6 @@
 {
   "schema": "rustsolid.brep_arena.v1",
-  "title": "Independent first-party generational arena and atomic modeling contracts",
+  "title": "Independent first-party generational arena, dependent Euler and atomic modeling contracts",
   "cases": [
     {
       "id": "arena/atomic_split_batch",
@@ -41,6 +41,30 @@
     {
       "id": "arena/kill_face_compaction",
       "kind": "kill_face_compaction"
+    },
+    {
+      "id": "arena/dependent_edge_chain",
+      "kind": "dependent_edge_chain"
+    },
+    {
+      "id": "arena/dependent_mev_mef",
+      "kind": "dependent_mev_mef"
+    },
+    {
+      "id": "arena/dependent_same_batch_inverse",
+      "kind": "dependent_same_batch_inverse"
+    },
+    {
+      "id": "arena/foreign_transaction_output",
+      "kind": "foreign_transaction_output"
+    },
+    {
+      "id": "arena/invalid_output_role",
+      "kind": "invalid_output_role"
+    },
+    {
+      "id": "arena/dependent_late_rollback",
+      "kind": "dependent_late_rollback"
     }
   ]
 }
