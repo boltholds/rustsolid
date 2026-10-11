@@ -278,7 +278,14 @@ fn construct(source:&Solid,cuts:&[AnalyticCut])
     for &cut in cuts {
         let fragment=match cut {
             AnalyticCut::Through(p)=>ThroughHoleBrep::from_box(source,p)?.model().clone(),
-            AnalyticCut::Blind(p)=>BlindHoleBrep::from_box(source,p)?.model().clone(),
+            AnalyticCut::Blind(p)=>{
+                let blind=BlindHoleBrep::from_box(source,p)?;
+                // A direct parametric blind feature must pass the same
+                // source-face closed IntersectionGraph certificate as a
+                // cutter promoted through BooleanKernel::apply_sequence.
+                blind.opening_trace()?;
+                blind.model().clone()
+            },
         };
         let t=attach(&mut result,&baseline,&fragment)?;
         topology.push(t);
@@ -348,7 +355,7 @@ fn bindings(token:u64,slots:&[Slot])->Vec<CompositeCutBinding>{
 }
 /// Independent source-owned editor. Real surfaces and loops are rebuilt
 /// off to the side; neither stale handles nor partial candidates are exposed.
-#[derive(Debug,Clone)]
+#[derive(Debug)]
 pub struct BrepCompositeEditor{
     token:u64,
     revision:u64,
@@ -356,6 +363,23 @@ pub struct BrepCompositeEditor{
     state:State,
     undo:Vec<State>,
     redo:Vec<State>,
+}
+/// Cloning an editor creates a **new** feature-handle namespace. Two
+/// independently editable branches must never accept each other's
+/// process-local handles, even if their dense topology is initially equal.
+impl Clone for BrepCompositeEditor {
+    fn clone(&self)->Self{
+        let token=fresh(&NEXT_COMPOSITE_EDITOR,"cloned composite editor")
+            .expect("composite editor token capacity exhausted");
+        let mut state=self.state.clone();
+        for slot in &mut state.slots {
+            slot.generation=fresh(&NEXT_COMPOSITE_GENERATION,
+                "cloned composite feature generation")
+                .expect("composite handle generation exhausted");
+        }
+        Self{token,revision:self.revision,source:self.source.clone(),
+            state,undo:self.undo.clone(),redo:self.redo.clone()}
+    }
 }
 impl BrepCompositeEditor{
     pub fn new(source:Solid)->Result<Self,GeometryError>{
