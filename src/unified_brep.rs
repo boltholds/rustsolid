@@ -182,7 +182,7 @@ impl BrepModel {
         let faces = body.faces.iter().map(|f| {
             let geometry = store.faces.get(&f.id).cloned()
                 .ok_or_else(|| invalid(format!("missing surface binding for face {:?}", f.id)))?;
-            Ok(BrepFace { id: f.id, loops: f.loops.clone(), geometry })
+            Ok(BrepFace { id: f.id, loops: f.loops.clone(), geometry, sense:FaceSense::Forward })
         }).collect::<Result<Vec<_>,GeometryError>>()?;
         let result = Self {
             origin: BrepOrigin::Polyhedral,
