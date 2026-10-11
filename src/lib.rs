@@ -57,7 +57,8 @@ pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};
 pub use brep_arena::{BrepArena, ArenaHandle, ArenaHandleError, ArenaBinding,
-    ArenaRemap, ArenaSnapshot, ArenaCommit, ArenaTransaction};
+    ArenaRemap, ArenaSnapshot, ArenaCommit, ArenaTransaction, ArenaStep,
+    ArenaOutput, ArenaEntityRef};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,

@@ -1,7 +1,8 @@
 //! Stateless one-request JSON stdio adapter. The "edit_solid" request runs an
 //! entire batch atomically; source solids cannot be externally mutated halfway.
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
-    ArenaHandle, BrepArena, TopologyEntity,
+    ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
+    BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
     TrimmedIntersection, TrimmedIntersectionEngine, TrimContact, TrimAmbiguity,
@@ -11,6 +12,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case")]
@@ -769,42 +771,102 @@ fn evaluate_topology_delta_plan(first:FaceOperand,second:FaceOperand,
 
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ArenaOutputInput {
+    /// Zero-based index of a previous command in the current JSON batch.
+    step: usize,
+    output: ArenaOutput,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
 enum ArenaCommandInput {
-    SplitEdge {edge_id:u32,fraction:f64},
-    SplitFace {face_id:u32,start_vertex_id:u32,end_vertex_id:u32},
-    KillEdgeVertex {vertex_id:u32},
-    KillEdgeFace {edge_id:u32,removed_face_id:u32},
+    SplitEdge {
+        #[serde(default)] edge_id: Option<u32>,
+        #[serde(default)] edge_ref: Option<ArenaOutputInput>,
+        fraction: f64,
+    },
+    SplitFace {
+        #[serde(default)] face_id: Option<u32>,
+        #[serde(default)] face_ref: Option<ArenaOutputInput>,
+        #[serde(default)] start_vertex_id: Option<u32>,
+        #[serde(default)] start_vertex_ref: Option<ArenaOutputInput>,
+        #[serde(default)] end_vertex_id: Option<u32>,
+        #[serde(default)] end_vertex_ref: Option<ArenaOutputInput>,
+    },
+    KillEdgeVertex {
+        #[serde(default)] vertex_id: Option<u32>,
+        #[serde(default)] vertex_ref: Option<ArenaOutputInput>,
+    },
+    KillEdgeFace {
+        #[serde(default)] edge_id: Option<u32>,
+        #[serde(default)] edge_ref: Option<ArenaOutputInput>,
+        #[serde(default)] removed_face_id: Option<u32>,
+        #[serde(default)] removed_face_ref: Option<ArenaOutputInput>,
+    },
 }
-#[derive(Debug, Clone, Copy)]
-enum ArenaResolvedCommand {
-    SplitEdge {edge:ArenaHandle,fraction:f64},
-    SplitFace {face:ArenaHandle,start:ArenaHandle,end:ArenaHandle},
-    KillEdgeVertex {vertex:ArenaHandle},
-    KillEdgeFace {edge:ArenaHandle,removed_face:ArenaHandle},
+
+// All integer ID selectors refer to entities from the pre-batch snapshot.
+// A produced reference may point only to a previously staged step, not an
+// arbitrary dense ID that happened to become available during this batch.
+fn arena_cli_ref(
+    handles: &BTreeMap<TopologyEntity, ArenaHandle>,
+    steps: &[ArenaStep],
+    original: Option<u32>,
+    produced: Option<ArenaOutputInput>,
+    kind: &str,
+) -> Result<ArenaEntityRef, GeometryError> {
+    match (original, produced) {
+        (Some(id), None) => {
+            let entity = match kind {
+                "edge" => TopologyEntity::Edge(EdgeId(id)),
+                "face" => TopologyEntity::Face(FaceId(id)),
+                "vertex" => TopologyEntity::Vertex(VertexId(id)),
+                _ => return Err(GeometryError::InvalidEdit("invalid arena selector kind".into())),
+            };
+            handles.get(&entity).copied().map(ArenaEntityRef::Existing)
+                .ok_or_else(||GeometryError::InvalidEdit(format!(
+                    "arena transaction references unknown {entity:?}")))
+        }
+        (None, Some(output)) => {
+            let step = steps.get(output.step).copied()
+                .ok_or_else(||GeometryError::InvalidEdit(
+                    "arena output step must precede its use in the same batch".into()))?;
+            Ok(step.output(output.output))
+        }
+        _ => Err(GeometryError::InvalidEdit(format!(
+            "arena {kind} operand needs exactly one original ID or output ref"))),
+    }
 }
-fn arena_entity_handle(arena:&BrepArena,entity:TopologyEntity)->Result<ArenaHandle,GeometryError>{
-    arena.handle(entity).ok_or_else(||GeometryError::InvalidEdit(format!(
-        "arena transaction references unknown {entity:?}")))
-}
+
 impl ArenaCommandInput {
-    fn resolve(self,arena:&BrepArena)->Result<ArenaResolvedCommand,GeometryError>{
-        let h=|entity|arena_entity_handle(arena,entity);
-        Ok(match self {
-            Self::SplitEdge{edge_id,fraction}=>ArenaResolvedCommand::SplitEdge{
-                edge:h(TopologyEntity::Edge(EdgeId(edge_id)))?,fraction},
-            Self::SplitFace{face_id,start_vertex_id,end_vertex_id}=>ArenaResolvedCommand::SplitFace{
-                face:h(TopologyEntity::Face(FaceId(face_id)))?,
-                start:h(TopologyEntity::Vertex(VertexId(start_vertex_id)))?,
-                end:h(TopologyEntity::Vertex(VertexId(end_vertex_id)))?,
-            },
-            Self::KillEdgeVertex{vertex_id}=>ArenaResolvedCommand::KillEdgeVertex{
-                vertex:h(TopologyEntity::Vertex(VertexId(vertex_id)))?},
-            Self::KillEdgeFace{edge_id,removed_face_id}=>ArenaResolvedCommand::KillEdgeFace{
-                edge:h(TopologyEntity::Edge(EdgeId(edge_id)))?,
-                removed_face:h(TopologyEntity::Face(FaceId(removed_face_id)))?,
+    fn stage(
+        self,
+        tx: &mut ArenaTransaction<'_>,
+        handles: &BTreeMap<TopologyEntity, ArenaHandle>,
+        steps: &[ArenaStep],
+    ) -> Result<ArenaStep, GeometryError> {
+        let r = |id, output, kind| arena_cli_ref(handles, steps, id, output, kind);
+        match self {
+            Self::SplitEdge { edge_id, edge_ref, fraction } => {
+                tx.split_edge_ref(r(edge_id, edge_ref, "edge")?, fraction)
             }
-        })
+            Self::SplitFace { face_id, face_ref,
+                start_vertex_id, start_vertex_ref, end_vertex_id, end_vertex_ref } => {
+                let face = r(face_id, face_ref, "face")?;
+                let start = r(start_vertex_id, start_vertex_ref, "vertex")?;
+                let end = r(end_vertex_id, end_vertex_ref, "vertex")?;
+                tx.split_face_ref(face, start, end)
+            }
+            Self::KillEdgeVertex { vertex_id, vertex_ref } => {
+                tx.kill_edge_vertex_ref(r(vertex_id, vertex_ref, "vertex")?)
+            }
+            Self::KillEdgeFace { edge_id, edge_ref, removed_face_id, removed_face_ref } => {
+                let edge = r(edge_id, edge_ref, "edge")?;
+                let face = r(removed_face_id, removed_face_ref, "face")?;
+                tx.kill_edge_face_ref(edge, face)
+            }
+        }
     }
 }
 fn arena_binding_json(binding:&rustsolid::ArenaBinding)->Value{
@@ -831,18 +893,14 @@ fn evaluate_arena_transaction(
             if batch.is_empty() || batch.len()>256 {
                 return Err(GeometryError::InvalidEdit("arena batch needs 1..=256 commands".into()));
             }
-            // Resolve all selectors against the SAME pre-batch incarnation;
-            // no guessed handles for not-yet-created entities.
-            let ops=batch.into_iter().map(|c|c.resolve(&arena))
-                .collect::<Result<Vec<_>,_>>()?;
-            let mut tx=arena.begin_transaction()?;
-            for cmd in ops {
-                match cmd {
-                    ArenaResolvedCommand::SplitEdge{edge,fraction}=>tx.split_edge(edge,fraction)?,
-                    ArenaResolvedCommand::SplitFace{face,start,end}=>tx.split_face(face,start,end)?,
-                    ArenaResolvedCommand::KillEdgeVertex{vertex}=>tx.kill_edge_vertex(vertex)?,
-                    ArenaResolvedCommand::KillEdgeFace{edge,removed_face}=>tx.kill_edge_face(edge,removed_face)?,
-                }
+            // Numeric IDs are bound to pre-batch handles; output references
+            // resolve strictly against previous stages of this batch.
+            let handles = arena.snapshot()?.handles;
+            let mut tx = arena.begin_transaction()?;
+            let mut steps = Vec::with_capacity(batch.len());
+            for command in batch {
+                let step = command.stage(&mut tx, &handles, &steps)?;
+                steps.push(step);
             }
             let commit=tx.commit()?;
             let created=commit.created.iter().map(arena_binding_json).collect::<Vec<_>>();
@@ -1496,6 +1554,40 @@ mod tests {
         assert_eq!(value["commits"][0]["journal_frames"],2);
         assert_eq!(value["undo_depth"],1);
         assert!(value["commits"][0]["created"].as_array().unwrap().len()>=4);
+    }
+    #[test]
+    fn json_arena_supports_intra_batch_created_edge_refs() {
+        let request=r#"{"operation":"arena_transaction",
+            "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+            "batches":[[
+                {"kind":"split_edge","edge_id":0,"fraction":0.25},
+                {"kind":"split_edge","edge_ref":{"step":0,"output":"remainder_edge"},"fraction":0.5}
+            ]],"undo":1,"redo":1}"#;
+        let result=process(request);
+        assert!(result.ok,"{:?}",result.error);
+        let d=result.data.unwrap();
+        assert_eq!(d["revision"],3);
+        assert_eq!(d["topology"]["vertices"],10);
+        assert_eq!(d["topology"]["faces"],6);
+        assert_eq!(d["commits"][0]["commands"],2);
+        assert_eq!(d["mass"]["volume"],24.0);
+    }
+    #[test]
+    fn json_arena_rejects_forward_and_wrong_kind_outputs_atomically() {
+        for ref_body in [
+            r#"{"step":2,"output":"remainder_edge"}"#,
+            r#"{"step":0,"output":"inserted_vertex"}"#,
+        ] {
+            let input=format!(r#"{{"operation":"arena_transaction",
+                "source":{{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4}},
+                "batches":[[
+                    {{"kind":"split_edge","edge_id":0,"fraction":0.25}},
+                    {{"kind":"split_edge","edge_ref":{},"fraction":0.5}}
+                ]]}}"#,ref_body);
+            let result=process(&input);
+            assert!(!result.ok,"invalid output dependency must reject batch");
+            assert!(result.data.is_none(),"failure cannot disclose partial geometry");
+        }
     }
     #[test]
     fn json_arena_failure_does_not_expose_partial_output(){

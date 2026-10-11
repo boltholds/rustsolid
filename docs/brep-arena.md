@@ -1,4 +1,4 @@
-# RustSolid v0.17 — sparse generational B-rep identity arena
+# RustSolid v0.18 — dependency-aware generational B-rep arena
 
 This is the **first editable arena boundary**, not a claim that the curved
 analytic B-rep is already a fully writable or generalized Boolean kernel.
@@ -47,9 +47,39 @@ handles according to semantic survival, and recreated elements get different
 generations. Immutable snapshots remain readable as records of their original
 revision but `check_snapshot` rejects them against newer arena revisions.
 
-A batch can reference pre-existing handles. Referencing a vertex created
-**earlier in the same batch** by an output placeholder is not yet available;
-such workflows require a later dependency-aware command representation.
+## Dependency-aware batches (v0.18)
+
+The existing handle-only API is source compatible. New `*_ref` methods return
+`ArenaStep`; `step.output(ArenaOutput::...)` produces a typed
+`ArenaEntityRef` usable by strictly later commands of **the same**
+transaction. Currently exposed outputs are `InsertedVertex` and
+`RemainderEdge` from MEV, and `CreatedFace` and `DiagonalEdge` from
+MEF. A produced reference is never a process-level `ArenaHandle`.
+
+```rust
+use rustsolid::{ArenaOutput, BrepArena, EdgeId, TopologyEntity};
+// arena: &mut BrepArena, with a validated polyhedral body
+let old_edge = arena.handle(TopologyEntity::Edge(EdgeId(0))).unwrap();
+let mut tx = arena.begin_transaction()?;
+let first = tx.split_edge_ref(old_edge, 0.25)?;
+tx.split_edge_ref(first.output(ArenaOutput::RemainderEdge), 0.5)?;
+let committed = tx.commit()?; // exactly one revision / Undo step
+```
+
+References are checked for transaction identity, operation order and output
+role during staging. Any rejected stage permanently aborts that transaction,
+even if the caller ignores the error. At commit, dependent batches execute
+a private sequential Euler preflight and resolve created elements by the
+**actual emitted `EditDelta` and `TopologyName`**, including after index
+compaction. A retired output, invalid geometry, missing name, or divergent
+preflight cancels the entire batch without changing the arena, revision,
+handles or history. The compiled semantic-name commands execute as **one**
+replayable `CommandHistory` batch, so Undo and Redo retain correct dependencies.
+
+Dependent preflight presently performs extra work: one private Solid for
+sequential dependency discovery, then the atomic history candidate. Pure
+handle-only batches avoid that extra preflight. No claiming O(changed-elements)
+geometry editing yet.
 
 ## Boundary with v0.16 TopologyDeltaPlan
 
@@ -57,37 +87,53 @@ such workflows require a later dependency-aware command representation.
 topology-general curve/subsurface editing exist. `BrepArena` explicitly denies
 `require_executable_plan` even if clients tamper with `can_apply`. It cannot
 silently turn the proposed analytic curves/periodic anchors into polygonal
-edge splits. This v0.17 commit supports actual Euler subdivisions of **already
+edge splits. This v0.18 slice supports actual Euler subdivisions of **already
 supported planar B-rep**, not arbitrary Boolean construction.
 
 ## First-party acceptance and integration
 
 [tests/fixtures/arena_transactions.v1.json](../tests/fixtures/arena_transactions.v1.json)
-pins ten deterministic scenarios for compound MEV+MEF, atomic rollback,
-transaction drop, generational ABA prevention, compacting KEV/KEF identities,
-foreign handles, read-only analytic geometry, forged handles and plan refusal.
+pins nineteen deterministic scenarios, including compound MEV+MEF, late failure
+rollback, transaction drop, ABA protection, compacting KEV/KEF, foreign handles,
+read-only analytic geometry, forged handles, plan refusal, dependent edge/face
+chains, same-batch inverse, cross-transaction outputs, wrong output roles, references across compaction,
+retired outputs and same-batch MEF/KEF inverse.
 [tests/brep_arena.rs](../tests/brep_arena.rs) executes them with analytically
 known cuboid volume/area/centroid, Euler invariants, Undo/Redo, and immutable
 snapshot checks. No other CAD kernel acts as an oracle.
 
 `geometry.v1` exposes a stateless `arena_transaction` workflow using entity
 selectors local to the request (not external serializations of process-local
-handles). Each `batches` item is one atomic command and Undo step. The result
+handles). A batch is one atomic command group and Undo step. Integer `*_id`
+selectors refer only to the pre-batch model. To target a created output in
+the same batch, supply `*_ref` with `{"step":0,"output":"remainder_edge"}`
+instead of the corresponding `*_id` selector. The step is zero-based, must
+precede its use, and output roles are type-checked. For example:
+
+```json
+{"operation":"arena_transaction",
+ "source":{"kind":"block","origin":[0,0,0],"width":2,"height":3,"depth":4},
+ "batches":[[
+   {"kind":"split_edge","edge_id":0,"fraction":0.25},
+   {"kind":"split_edge","edge_ref":{"step":0,"output":"remainder_edge"},"fraction":0.5}
+ ]],"undo":1,"redo":1}
+```
+
+The result
 includes the updated shared B-rep summary, committed source identifiers,
 created/retired handles, and revision information. A failure returns an error
 without a partial solid. The existing API operations remain unchanged.
 
 ## Next gates
 
-1. Introduce a dependency-aware edit batch using newly created vertex/edge
-   placeholders without surrendering atomicity or immutable command replay.
-2. Move canonical curved and planar geometry into a mutable shared sparse
+1. Move canonical curved and planar geometry into a mutable shared sparse
    B-rep store with explicit curve/trim ownership, local tolerance propagation
    and persistent source-to-created lineage.
-3. Implement formal Boolean region classification before authorizing v0.16
+2. Implement formal Boolean region classification before authorizing v0.16
    `TopologyDeltaPlan` as an executable topology delta.
-4. Optimize history duplication into an arena-level transaction journal once
-   the first-party semantic and failure-injection regressions remain green.
+3. Optimize history duplication and dependent preflight into an arena-level
+   transaction journal once stronger semantic/failure-injection regressions
+   remain green.
 
 ### Rejected staging is an abort, not a partial batch
 
