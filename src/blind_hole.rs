@@ -142,7 +142,9 @@ impl BlindHoleBrep {
         crate::boolean::certify_box(block).map_err(|e|invalid(e.to_string()))?;
         cutter.validate()?;
         let axis=cutter.frame.normal;
-        let angular=block.tolerance.angular.max(cutter.tolerance.angular);
+        // This executor is mathematically upright, not an angular
+        // tolerance-based approximation of an oblique bore.
+        let angular=16.0*f64::EPSILON;
         if axis.x.abs()>angular || (axis.y-1.0).abs()>angular ||
             axis.z.abs()>angular {
             return Err(invalid("blind bore requires an upright +Y cylinder"));
