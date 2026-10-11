@@ -21,6 +21,8 @@ jobs:
         run: cargo test --test operator_contracts
       - name: Independent surface intersection mathematical contracts
         run: cargo test --test surface_intersection_contracts
+      - name: Independent B-rep face trimming contracts
+        run: cargo test --test trimmed_intersections
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

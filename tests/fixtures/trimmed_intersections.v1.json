@@ -1,0 +1,90 @@
+{
+  "schema": "rustsolid.trimmed_intersections.v1",
+  "title": "Independent real B-rep trim-boundary intersection classifications",
+  "cases": [
+    {
+      "id": "plane_plane/transverse_segment",
+      "scenario": "transverse_segment",
+      "expected": "segments",
+      "branches": 1,
+      "points": 0
+    },
+    {
+      "id": "plane_plane/disjoint_trims",
+      "scenario": "disjoint_trims",
+      "expected": "empty",
+      "branches": 0,
+      "points": 0
+    },
+    {
+      "id": "plane_plane/corner_contact",
+      "scenario": "corner_contact",
+      "expected": "points",
+      "branches": 0,
+      "points": 1
+    },
+    {
+      "id": "plane_plane/boundary_line",
+      "scenario": "boundary_line",
+      "expected": "segments",
+      "branches": 1,
+      "points": 0
+    },
+    {
+      "id": "plane_plane/coincident_support",
+      "scenario": "coincident_support",
+      "expected": "ambiguous",
+      "branches": 0,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/full_circle",
+      "scenario": "full_circle",
+      "expected": "segments",
+      "branches": 1,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/half_circle",
+      "scenario": "half_circle",
+      "expected": "segments",
+      "branches": 2,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/two_generators",
+      "scenario": "two_generators",
+      "expected": "segments",
+      "branches": 2,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/tangent_generator",
+      "scenario": "tangent_generator",
+      "expected": "segments",
+      "branches": 1,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/near_tangent_uncertain",
+      "scenario": "near_tangent_uncertain",
+      "expected": "ambiguous",
+      "branches": 0,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/cap_seam_boundary",
+      "scenario": "cap_seam_boundary",
+      "expected": "segments",
+      "branches": 1,
+      "points": 0
+    },
+    {
+      "id": "plane_cylinder/plane_outside_height",
+      "scenario": "plane_outside_height",
+      "expected": "empty",
+      "branches": 0,
+      "points": 0
+    }
+  ]
+}

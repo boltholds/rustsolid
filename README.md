@@ -242,3 +242,7 @@ The [modeling operator contract gate](docs/operator-contracts.md) covers each re
 ## v0.13: analytical support-surface intersections
 
 [The intersection engine](docs/intersections.md) constructs untrimmed analytic curves for plane/plane and plane/cylinder pairs, without deriving geometry from tessellation. Results distinguish transverse crossings, tangency, disjoint/coincident supports, and **numerically ambiguous** near-tangent/near-parallel cases. Sample residual certificates compare every constructed branch with both source surface equations. The pinned [intersection fixtures](tests/fixtures/intersections.v1.json) have their own compulsory analytic/metamorphic/boundary test gate in CI. Neither OpenCascade nor Parasolid serves as a truth oracle. This is not a trimmed face Boolean operation.
+
+## v0.14 — bounded B-rep face intersections
+
+The [trimmed intersection engine](docs/trimmed-intersections.md) clips analytic plane/plane and plane/cylinder support curves to **actual UV contours of two selected B-rep faces**. It supports simple planar polygons, circular disks and full periodic cylindrical sides. Result branches carry analytic curves and finite parameter ranges; isolated point contacts, boundary overlaps and near-degenerate ambiguity remain distinct. It has [12 pinned, independent fixtures](tests/fixtures/trimmed_intersections.v1.json) in CI. This is not yet a Boolean operation or complete arbitrary NURBS/UV-trim support.
