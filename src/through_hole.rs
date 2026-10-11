@@ -57,8 +57,9 @@ impl ThroughHoleBrep {
             cylinder.height,h
         ].into_iter().map(f64::abs).fold(1.0_f64,f64::max);
         let eps=16.0*f64::EPSILON*coordinate_scale;
-        if n.x.abs()>tol.angular || (n.y-1.0).abs()>tol.angular ||
-            n.z.abs()>tol.angular {
+        let exact_axis_budget=16.0*f64::EPSILON;
+        if n.x.abs()>exact_axis_budget || (n.y-1.0).abs()>exact_axis_budget ||
+            n.z.abs()>exact_axis_budget {
             return Err(invalid("through-hole requires a +Y cylinder axis"));
         }
         if (cylinder.frame.origin.y-box_.bbox.min.y).abs()>eps ||
