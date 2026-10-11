@@ -180,10 +180,11 @@ bindings, revision and history transitions. All operations in each inner
 within the current request/session.
 
 The multi-hole result is a fully validated, queryable canonical analytic
-`BrepModel` through the Rust API. **General multi-hole display
-tessellation is not available in this milestone**, and the JSON operation
-sets `display_mesh_available:false` without inventing a partial mesh or
-discarding true circular boundaries. Direct `inspect_brep` of a multi-hole
+`BrepModel` through the Rust API. **At the v0.23 milestone, multi-hole
+display tessellation was not yet available.** The subsequent
+[v0.24 face-region mesher](face-region-meshing.md) now supports verified,
+opt-in display meshes via `display_segments` while preserving the exact
+canonical analytic geometry. Direct `inspect_brep` of a multi-hole
 body is not yet a supported standalone `BrepInput` representation.
 
 The existing `boolean` endpoint continues to execute v0.19 planar box
