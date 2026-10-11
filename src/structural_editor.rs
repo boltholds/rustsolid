@@ -36,9 +36,11 @@ pub struct StructuralHoleHandle {
     pub slot:u32,
     pub generation:u64,
 }
-#[derive(Debug,Clone,Copy,PartialEq,Eq,Hash)]
+#[derive(Debug,Clone,Copy,PartialEq,Eq,Hash,serde::Deserialize)]
+#[serde(rename_all="snake_case")]
 pub enum HoleEdgeRole {BottomCircle,TopCircle,Seam}
-#[derive(Debug,Clone,Copy,PartialEq,Eq,Hash)]
+#[derive(Debug,Clone,Copy,PartialEq,Eq,Hash,serde::Deserialize)]
+#[serde(rename_all="snake_case")]
 pub enum HoleTrimRole {
     BottomCap,TopCap,BottomSide,TopSide,SeamPositive,SeamNegative,
 }
