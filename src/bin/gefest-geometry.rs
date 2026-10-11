@@ -6,6 +6,8 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
     ThroughHoleBrep, HoleParameters,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
+    BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
+    HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
     BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
@@ -44,6 +46,8 @@ enum GeometryRequest {
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
+    StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize},
     BooleanRegionPlan { first:FaceOperand, second:FaceOperand, mode:BooleanOperation,
         #[serde(default)] tolerance:Option<GeometryTolerance> },
     GeometryQuery { source: BrepInput, query: String },
@@ -1117,6 +1121,173 @@ impl CarrierResolvedCommand {
         }
     }
 }
+
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum StructuralCommandInput {
+    AddThroughHole {center:[f64;2],radius:f64},
+    RemoveThroughHole {slot:u32},
+    ResizeThroughHole {slot:u32,center:[f64;2],radius:f64},
+    ReparameterizeHoleEdge {slot:u32,role:HoleEdgeRole,scale:f64,offset:f64},
+    ReparameterizeHoleTrim {slot:u32,role:HoleTrimRole,scale:f64,offset:f64},
+    RebaseHoleFaceUv {slot:u32,du:f64,dv:f64},
+    RebaseBaseFaceUv {face_id:u32,du:f64,dv:f64},
+    ReparameterizeBaseEdge {edge_id:u32,scale:f64,offset:f64},
+    ReparameterizeBaseTrim {coedge_id:u32,scale:f64,offset:f64},
+}
+impl StructuralCommandInput {
+    fn stage(self,tx:&mut BrepStructuralTransaction<'_>)
+        ->Result<(),GeometryError>
+    {
+        let named=|tx:&BrepStructuralTransaction<'_>,slot|tx.handle(slot)
+            .ok_or_else(||GeometryError::InvalidEdit(format!(
+                "unknown staged/current hole slot {slot}")));
+        match self {
+            Self::AddThroughHole{center,radius}=>{
+                tx.add_through_hole(HoleParameters{
+                    center_x:center[0],center_z:center[1],radius})?;
+            }
+            Self::RemoveThroughHole{slot}=>{
+                let h=named(tx,slot)?;tx.remove_through_hole(h)?;
+            }
+            Self::ResizeThroughHole{slot,center,radius}=>{
+                let h=named(tx,slot)?;
+                tx.resize_through_hole(h,HoleParameters{
+                    center_x:center[0],center_z:center[1],radius})?;
+            }
+            Self::ReparameterizeHoleEdge{slot,role,scale,offset}=>{
+                let hole=named(tx,slot)?;
+                tx.reparameterize_edge(StructuralEdgeRef::Hole{hole,role},scale,offset)?;
+            }
+            Self::ReparameterizeHoleTrim{slot,role,scale,offset}=>{
+                let hole=named(tx,slot)?;
+                tx.reparameterize_trim(StructuralTrimRef::Hole{hole,role},scale,offset)?;
+            }
+            Self::RebaseHoleFaceUv{slot,du,dv}=>{
+                let hole=named(tx,slot)?;
+                tx.rebase_face_uv(StructuralFaceRef::HoleSide(hole),du,dv)?;
+            }
+            Self::RebaseBaseFaceUv{face_id,du,dv}=>{
+                tx.rebase_face_uv(StructuralFaceRef::Base(FaceId(face_id)),du,dv)?;
+            }
+            Self::ReparameterizeBaseEdge{edge_id,scale,offset}=>{
+                tx.reparameterize_edge(StructuralEdgeRef::Base(EdgeId(edge_id)),scale,offset)?;
+            }
+            Self::ReparameterizeBaseTrim{coedge_id,scale,offset}=>{
+                tx.reparameterize_trim(StructuralTrimRef::Base(
+                    rustsolid::CoedgeId(coedge_id)),scale,offset)?;
+            }
+        }
+        Ok(())
+    }
+}
+fn structural_binding_json(x:rustsolid::StructuralHoleBinding)->Value{
+    json!({
+        "slot":x.handle.slot,"generation":x.handle.generation,
+        "editor_token":x.handle.editor_token,
+        "center":[x.params.center_x,x.params.center_z],"radius":x.params.radius,
+        "side_face_id":x.topology.side_face.0,
+        "edge_ids":[x.topology.bottom_edge.0,x.topology.top_edge.0,
+            x.topology.seam_edge.0],
+        "loop_ids":[x.topology.bottom_loop.0,x.topology.top_loop.0,
+            x.topology.side_loop.0],
+    })
+}
+fn evaluate_structural_transaction(
+    source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
+    undo:usize,redo:usize,
+)->Response{
+    let result=(||->Result<Value,GeometryError>{
+        if batches.len()>64 || undo>64 || redo>64 {
+            return Err(GeometryError::InvalidEdit(
+                "structural transaction exceeds 64 batch/transition budget".into()));
+        }
+        let body=source.build()?;
+        let mut editor=BrepStructuralEditor::new(body)?;
+        let mut commits=Vec::new();
+        for batch in batches {
+            if batch.is_empty() || batch.len()>256 {
+                return Err(GeometryError::InvalidEdit(
+                    "structural batch requires between 1 and 256 commands".into()));
+            }
+            let mut tx=editor.begin_transaction();
+            for cmd in batch {cmd.stage(&mut tx)?;}
+            let report=tx.commit()?;
+            commits.push(json!({
+                "revision_before":report.revision_before,
+                "revision_after":report.revision_after,
+                "command_count":report.command_count,
+                "created":report.created.into_iter()
+                    .map(structural_binding_json).collect::<Vec<_>>(),
+                "retired":report.retired.into_iter()
+                    .map(structural_binding_json).collect::<Vec<_>>(),
+                "remapped":report.remapped.into_iter()
+                    .map(|m|json!({
+                        "slot":m.handle.slot,"generation":m.handle.generation,
+                        "side_face_before":m.before.side_face.0,
+                        "side_face_after":m.after.side_face.0,
+                        "bottom_edge_before":m.before.bottom_edge.0,
+                        "bottom_edge_after":m.after.bottom_edge.0,
+                    })).collect::<Vec<_>>(),
+            }));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            let value=editor.undo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "structural undo exceeds committed history".into()))?;
+            transitions.push(json!({"kind":"undo","revision_after":value.revision_after}));
+        }
+        for _ in 0..redo {
+            let value=editor.redo()?.ok_or_else(||GeometryError::InvalidEdit(
+                "structural redo exceeds available history".into()))?;
+            transitions.push(json!({"kind":"redo","revision_after":value.revision_after}));
+        }
+        editor.validate()?;
+        let model=editor.model();let topology=model.summary();
+        let holes=editor.bindings().into_iter()
+            .map(structural_binding_json).collect::<Vec<_>>();
+        Ok(json!({
+            "kind":"structural_brep","state":"committed",
+            "representation":match model.origin{
+                BrepOrigin::Polyhedral=>"polyhedral",
+                BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
+                BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
+                BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
+            },
+            "revision":editor.revision(),
+            "editor_token":editor.editor_token(),
+            "hole_count":editor.hole_count(),
+            "holes":holes,
+            "topology":{"vertices":topology.vertices,"edges":topology.edges,
+                "coedges":topology.coedges,"faces":topology.faces,
+                "loops":topology.loops,"shells":topology.shells,
+                "euler_characteristic":topology.euler_characteristic,
+                "genus":topology.genus,"cylindrical_faces":topology.cylindrical_faces,
+                "circular_edges":topology.circular_edges,"seam_edges":topology.seam_edges,
+                "inner_loops":model.loops.iter().filter(|l|
+                    l.role==rustsolid::LoopRole::Inner).count()},
+            "carrier_counts":{"curves3":model.geometry.curves3.len(),
+                "curves2":model.geometry.curves2.len(),
+                "surfaces":model.geometry.surfaces.len()},
+            "mass":{"volume":model.mass.volume,
+                "surface_area":model.mass.surface_area,
+                "centroid":model.mass.centroid.array()},
+            "undo_depth":editor.undo_depth(),"redo_depth":editor.redo_depth(),
+            "commits":commits,"transitions":transitions,
+            "topology_committed":true,
+            "display_mesh_available":false,
+            "generalized_topology_delta_can_apply":false,
+            "note":"Independent genus-N analytic B-rep. Dense topology IDs may change on hole removal; use process-local feature handles within one transaction session"
+        }))
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn evaluate_carrier_transaction(
     source:BrepInput,batches:Vec<Vec<CarrierCommandInput>>,undo:usize,redo:usize,
 )->Response{
@@ -1316,6 +1487,8 @@ fn process(input: &str) -> Response {
             return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
+        Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo}) =>
+            return evaluate_structural_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::BooleanRegionPlan{first,second,mode,tolerance}) =>
             return evaluate_boolean_region_plan(first,second,mode,
                 tolerance.unwrap_or_default()),
@@ -1952,6 +2125,73 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn json_structural_brep_adds_two_true_holes_and_recomputes_genus_mass(){
+        let input=r#"{"operation":"structural_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add_through_hole","center":[-1.5,0],"radius":0.5},
+            {"kind":"add_through_hole","center":[1.5,0],"radius":0.7},
+            {"kind":"reparameterize_hole_edge","slot":1,
+             "role":"bottom_circle","scale":1,"offset":0.4},
+            {"kind":"rebase_base_face_uv","face_id":0,"du":0.1,"dv":-0.2}
+          ]]}"#;
+        let result=process(input);
+        assert!(result.ok,"{:?}",result.error);
+        assert!(result.solid.is_none());
+        let d=result.data.unwrap();
+        assert_eq!(d["hole_count"],2);
+        assert_eq!(d["representation"],"analytic_multiple_through_holes");
+        assert_eq!(d["topology"]["genus"],2);
+        assert_eq!(d["topology"]["euler_characteristic"],-2);
+        assert_eq!(d["topology"]["inner_loops"],4);
+        assert_eq!(d["topology"]["cylindrical_faces"],2);
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["display_mesh_available"],false);
+        assert_eq!(d["commits"][0]["command_count"],4);
+        assert!((d["mass"]["volume"].as_f64().unwrap()-
+            (144.0-4.0*std::f64::consts::PI*(0.25+0.49))).abs()<1e-9);
+    }
+    #[test]
+    fn json_structural_compaction_and_undo_redo_keep_true_topology(){
+        let input=r#"{"operation":"structural_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add_through_hole","center":[-1.5,0],"radius":0.5},
+            {"kind":"add_through_hole","center":[1.5,0],"radius":0.7}
+          ],[
+            {"kind":"remove_through_hole","slot":0}
+          ]],"undo":1,"redo":1}"#;
+        let response=process(input);
+        assert!(response.ok,"{:?}",response.error);
+        let d=response.data.unwrap();
+        assert_eq!(d["revision"],4);
+        assert_eq!(d["hole_count"],1);
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["commits"][1]["remapped"][0]["side_face_before"],7);
+        assert_eq!(d["commits"][1]["remapped"][0]["side_face_after"],6);
+        assert_eq!(d["transitions"].as_array().unwrap().len(),2);
+    }
+    #[test]
+    fn json_structural_overlap_or_invalid_carrier_cannot_expose_partial_brep(){
+        for pair in [
+            r#"{"kind":"add_through_hole","center":[-1.4,0],"radius":0.8}"#,
+            r#"{"kind":"rebase_hole_face_uv","slot":0,"du":0.125,"dv":0}"#,
+        ] {
+            let request=format!(r#"{{"operation":"structural_transaction",
+                "source":{{"kind":"block","origin":[-3,-1,-3],
+                    "width":6,"height":4,"depth":6}},
+                "batches":[[
+                    {{"kind":"add_through_hole","center":[-1.5,0],"radius":0.7}},
+                    {pair}
+                ]]}}"#);
+            let r=process(&request);
+            assert!(!r.ok,"invalid topology or carrier edit should not commit");
+            assert!(r.solid.is_none());
+            assert!(r.data.is_none());
+        }
+    }
     #[test]
     fn json_canonical_carrier_batches_reparameterize_without_changing_mass(){
         let result=process(r#"{"operation":"carrier_transaction",
