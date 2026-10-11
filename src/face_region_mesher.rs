@@ -347,6 +347,9 @@ fn certify_closed_facets(source:&Solid,model:&BrepModel,
                 }
             }
             Some(crate::Surface3::Cylinder(_))=>{
+                if model.face_sense(*owner)!=Some(crate::FaceSense::Reversed){
+                    return Err(invalid("hole cylinder face must reverse its support normal"));
+                }
                 let Some(hole)=holes.iter().find(|h|h.topology.side_face==*owner)
                     else{return Err(invalid("unknown cylindrical display face"))};
                 let inward=Point3{x:hole.params.center_x-centroid.x,
