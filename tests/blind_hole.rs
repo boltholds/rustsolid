@@ -139,7 +139,7 @@ fn invalid_partial_depth_and_contact_geometries_fail_closed(){
         par(0.,0.,-1.,1.),
     ]{assert!(BlindHoleBrep::from_box(&box_(),q).is_err(),"invalid {q:?}");}
     for (origin_y,height) in [(-1.,3.),(0.,2.),(1.,1.),
-        (1.,3.),(-0.9,3.9)] {
+        (1.,3.),(-1.0+1e-11,4.0-1e-11)] {
         let cutter=CylindricalBrep::upright(p(0.,origin_y,0.),1.,height,
             GeometryTolerance::default()).unwrap();
         assert!(BooleanKernel::apply(&BrepBody::from(box_()),
