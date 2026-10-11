@@ -520,7 +520,7 @@ fn certify_blind_display(box_:&Solid,model:&BrepModel,mesh:&Mesh,
                 if normal.dot(Point3{x:p.center_x-centroid.x,y:0.0,
                     z:p.center_z-centroid.z})<=0.0 ||
                    [v0,v1,v2].iter().any(|v|{
-                       (v.x-p.center_x).hypot(v.z-p.center_z).sub_abs(p.radius)>eps
+                       ((v.x-p.center_x).hypot(v.z-p.center_z)-p.radius).abs()>eps
                    }){
                     return Err(invalid("blind cylindrical facet has incorrect inward orientation or radius"));
                 }
