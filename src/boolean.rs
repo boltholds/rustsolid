@@ -32,7 +32,7 @@ pub struct BooleanFaceSource {
 }
 
 #[derive(Debug, Clone)]
-pub enum BooleanOutcome { Empty, Solid(Solid) }
+pub enum BooleanOutcome { Empty, Solid(Solid), Analytic(crate::ThroughHoleBrep) }
 
 #[derive(Debug, Clone)]
 pub struct BooleanResult {
