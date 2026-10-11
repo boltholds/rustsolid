@@ -2642,6 +2642,120 @@ mod tests {
         assert!(result.data.is_none());
     }
 
+
+    #[test]
+    fn json_composite_transaction_creates_mixed_true_brep_and_closed_facets(){
+        let request=r#"{"operation":"composite_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],
+              "width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add","cut":{"kind":"through","center":[-1.5,0],"radius":0.6}},
+            {"kind":"add","cut":{"kind":"blind","center":[1.4,0.3],
+                "radius":0.75,"depth":1.5}}
+          ]],"display_segments":48}"#;
+        let response=process(request);
+        assert!(response.ok,"{:?}",response.error);
+        let d=response.data.unwrap();
+        let solid=response.solid.unwrap();
+        assert_eq!(d["kind"],"composite_analytic_cuts");
+        assert_eq!(d["representation"],"analytic_composite_cuts");
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["cut_count"],2);
+        assert_eq!(d["through_cuts"],1);
+        assert_eq!(d["blind_cuts"],1);
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["topology"]["euler_characteristic"],0);
+        assert_eq!(d["topology"]["faces"],9);
+        assert_eq!(d["display_mesh_included"],true);
+        assert_eq!(d["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert_eq!(d["display_quality"]["bottom_cap"]["loops"],2);
+        assert_eq!(d["display_quality"]["top_cap"]["loops"],3);
+        assert_eq!(d["cuts"][0]["kind"],"through");
+        assert_eq!(d["cuts"][1]["floor_face_id"],8);
+        assert!(solid.triangle_face_ids.contains(&8));
+        assert_eq!(solid.triangle_face_ids.len(),solid.faces.len());
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["inner_loops"],3);
+        assert!((solid.mass.volume-
+            (144.-std::f64::consts::PI*(0.6*0.6*4.+0.75*0.75*1.5))).abs()<1e-9);
+        assert!(d["display_quality"]["volume_faceting_error"].as_f64().unwrap()>0.0);
+    }
+    #[test]
+    fn json_composite_cut_replacement_undo_redo_and_dense_remapping(){
+        let request=r#"{"operation":"composite_transaction",
+          "source":{"kind":"block","origin":[-3,-1,-3],
+              "width":6,"height":4,"depth":6},
+          "batches":[[
+            {"kind":"add","cut":{"kind":"through","center":[-1.5,0],"radius":0.6}},
+            {"kind":"add","cut":{"kind":"blind","center":[1.4,0.3],
+                "radius":0.75,"depth":1.5}}
+          ],[
+            {"kind":"remove","slot":0}
+          ],[
+            {"kind":"replace","slot":1,"cut":{"kind":"through",
+                "center":[1.4,0.3],"radius":0.75}}
+          ]],"undo":1,"redo":1}"#;
+        let response=process(request);
+        assert!(response.ok,"{:?}",response.error);
+        let d=response.data.unwrap();
+        assert_eq!(d["revision"],5);
+        assert_eq!(d["cut_count"],1);
+        assert_eq!(d["through_cuts"],1);
+        assert_eq!(d["blind_cuts"],0);
+        assert_eq!(d["topology"]["faces"],7);
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["display_mesh_included"],false);
+        assert_eq!(d["commits"][1]["remapped"][0]["before_side_face_id"],7);
+        assert_eq!(d["commits"][1]["remapped"][0]["after_side_face_id"],6);
+        assert_eq!(d["transitions"].as_array().unwrap().len(),2);
+        assert!(response.solid.is_none());
+    }
+    #[test]
+    fn json_composite_overlap_and_invalid_display_request_fail_without_partial_result(){
+        for request in [
+            r#"{"operation":"composite_transaction","source":
+                {"kind":"block","origin":[-3,-1,-3],
+                  "width":6,"height":4,"depth":6},
+                "batches":[[
+                    {"kind":"add","cut":{"kind":"through","center":[0,0],"radius":0.8}},
+                    {"kind":"add","cut":{"kind":"blind","center":[0.1,0],"radius":0.6,"depth":2}}
+                ]]}"#,
+            r#"{"operation":"composite_transaction","source":
+                {"kind":"block","origin":[-3,-1,-3],
+                  "width":6,"height":4,"depth":6},
+                "batches":[[
+                    {"kind":"add","cut":{"kind":"blind","center":[0,0],"radius":0.8,"depth":2}}
+                ]],"display_segments":8}"#,
+        ]{
+            let response=process(request);
+            assert!(!response.ok);
+            assert!(response.solid.is_none());
+            assert!(response.data.is_none());
+        }
+    }
+    #[test]
+    fn json_analytic_composite_source_is_inspectable_and_queryable(){
+        let input=r#"{"kind":"analytic_composite_cuts","origin":[-3,-1,-3],
+             "width":6,"height":4,"depth":6,
+             "cuts":[{"kind":"through","center":[-1.5,0],"radius":0.6},
+                     {"kind":"blind","center":[1.4,0.3],"radius":0.75,"depth":1.5}],
+             "segments":24}"#;
+        let request=format!(r#"{{"operation":"inspect_brep","source":{input}}}"#);
+        let response=process(&request);
+        assert!(response.ok,"{:?}",response.error);
+        let solid=response.solid.unwrap();
+        let brep=solid.brep.unwrap();
+        assert_eq!(brep["representation"],"analytic_composite_cuts");
+        assert_eq!(brep["topology"]["genus"],1);
+        assert_eq!(brep["topology"]["faces"],9);
+        assert_eq!(brep["geometry"]["face_senses"][8],"reversed");
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        let query=format!(r#"{{"operation":"geometry_query","source":{input},
+            "query":"query {{body {{kind topology {{faceCount genus}} mass {{volume}}}}}}"}}"#);
+        let response=process(&query);
+        assert!(response.ok,"{:?}",response.error);
+        let value=response.data.unwrap();
+        assert_eq!(value["kind"],"geometry_query");
+    }
     #[test]
     fn json_blind_cylinder_difference_executes_real_floor_face_and_exact_mass(){
         let request=r#"{"operation":"boolean","mode":"difference",
