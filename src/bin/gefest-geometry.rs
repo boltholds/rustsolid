@@ -2754,6 +2754,65 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn json_boolean_sequence_executes_two_independent_source_cylinders_into_one_solid(){
+        let input=r#"{"operation":"boolean_sequence","mode":"difference",
+            "left":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "right":[
+                {"kind":"analytic_cylinder","origin":[-1.5,-1,0],
+                    "radius":0.6,"height":4},
+                {"kind":"analytic_cylinder","origin":[1.4,1.5,0.3],
+                    "radius":0.75,"height":1.5}
+            ],"segments":48}"#;
+        let response=process(input);
+        assert!(response.ok,"{:?}",response.error);
+        let d=response.data.unwrap();
+        let solid=response.solid.unwrap();
+        assert_eq!(d["kind"],"boolean");
+        assert_eq!(d["representation"],"analytic_composite_cuts");
+        assert_eq!(d["state"],"solid");
+        assert_eq!(d["genus"],1);
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["per_cutter_lineage"][0]["cut_kind"],"through");
+        assert_eq!(d["per_cutter_lineage"][0]["cutter_index"],0);
+        assert_eq!(d["per_cutter_lineage"][1]["cut_kind"],"blind");
+        assert_eq!(d["per_cutter_lineage"][1]["cutter_index"],1);
+        assert_eq!(d["per_cutter_lineage"][1]["result_floor_face"],8);
+        assert_eq!(d["face_sources"].as_array().unwrap().len(),9);
+        assert_eq!(d["top_cap_loops"],3);
+        assert_eq!(d["bottom_cap_loops"],2);
+        assert_eq!(d["closed_oriented_display_mesh_certified"],true);
+        assert_eq!(solid.topology.euler_characteristic,0);
+        assert!(solid.triangle_face_ids.contains(&8));
+        assert!((solid.mass.volume-
+            (144.-std::f64::consts::PI*(0.6*0.6*4.+0.75*0.75*1.5))).abs()<1e-9);
+    }
+    #[test]
+    fn json_boolean_sequence_rejects_tangent_cutters_and_wrong_operation(){
+        let left=r#"{"kind":"block","origin":[-3,-1,-3],
+            "width":6,"height":4,"depth":6}"#;
+        for (mode,right) in [
+            ("union",r#"[{"kind":"analytic_cylinder",
+                "origin":[0,-1,0],"radius":1,"height":4}]"#),
+            ("difference",r#"[
+                {"kind":"analytic_cylinder","origin":[0,-1,0],
+                    "radius":1,"height":4},
+                {"kind":"analytic_cylinder","origin":[0.2,1,0],
+                    "radius":0.7,"height":2}
+            ]"#),
+            ("difference",r#"[{"kind":"analytic_cylinder",
+                "origin":[0,1,0],"radius":1,"height":1.99999999}]"#),
+        ] {
+            let input=format!(r#"{{"operation":"boolean_sequence","mode":"{mode}",
+                "left":{left},"right":{right}}}"#);
+            let r=process(&input);
+            assert!(!r.ok);
+            assert!(r.solid.is_none());
+            assert!(r.data.is_none());
+        }
+    }
     #[test]
     fn json_composite_transaction_creates_mixed_true_brep_and_closed_facets(){
         let request=r#"{"operation":"composite_transaction",
