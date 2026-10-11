@@ -334,3 +334,45 @@ fn arbitrary_cutting_axis_and_partial_contour_crossings_still_not_accepted(){
     assert!(stage.add(blind(0.,0.,0.8,1.)).is_err());
     assert!(stage.commit().is_err());
 }
+
+#[test]
+fn boolean_kernel_sequence_builds_actual_mixed_analytic_solid_and_lineage(){
+    let left=BrepBody::from(box_());
+    let right=vec![
+        BrepBody::from(rustsolid::CylindricalBrep::upright(
+            p(-1.5,-1.,0.),0.6,4.,GeometryTolerance::default()).unwrap()),
+        BrepBody::from(rustsolid::CylindricalBrep::upright(
+            p(1.4,1.5,0.3),0.75,1.5,GeometryTolerance::default()).unwrap()),
+    ];
+    let result=rustsolid::BooleanKernel::apply_sequence(
+        &left,&right,rustsolid::BooleanOperation::Difference).unwrap();
+    assert_eq!(result.face_sources.len(),9);
+    for source in &result.face_sources[6..]{
+        assert_eq!(source.operand,rustsolid::BooleanOperand::Right);
+        assert!(source.reversed);
+    }
+    assert_eq!(result.face_sources[6].source_face,FaceId(2));
+    assert_eq!(result.face_sources[7].source_face,FaceId(2));
+    assert_eq!(result.face_sources[8].source_face,FaceId(0));
+    let rustsolid::BooleanOutcome::Composite(editor)=result.outcome else{
+        panic!("expected true compositional analytical B-rep outcome")
+    };
+    prove(&editor,1,1);
+    prove_mesh(&editor,48);
+}
+#[test]
+fn sequence_rejects_overlap_wrong_mode_and_unsupported_non_cylinders(){
+    let left=BrepBody::from(box_());
+    let first=BrepBody::from(rustsolid::CylindricalBrep::upright(
+        p(0.,-1.,0.),1.,4.,GeometryTolerance::default()).unwrap());
+    let overlapping=BrepBody::from(rustsolid::CylindricalBrep::upright(
+        p(0.2,1.,0.),0.75,2.,GeometryTolerance::default()).unwrap());
+    assert!(rustsolid::BooleanKernel::apply_sequence(&left,
+        &[first.clone(),overlapping],rustsolid::BooleanOperation::Difference).is_err());
+    assert!(rustsolid::BooleanKernel::apply_sequence(&left,
+        &[first.clone()],rustsolid::BooleanOperation::Union).is_err());
+    assert!(rustsolid::BooleanKernel::apply_sequence(&left,
+        &[BrepBody::from(box_())],rustsolid::BooleanOperation::Difference).is_err());
+    assert!(rustsolid::BooleanKernel::apply_sequence(&left,
+        &[],rustsolid::BooleanOperation::Difference).is_err());
+}
