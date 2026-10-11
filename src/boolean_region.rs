@@ -31,6 +31,8 @@ fn position_eps(body:&BrepBody)->f64{
             length(h.model().bbox.max.sub(h.model().bbox.min))),
         BrepBody::BlindHole(h)=>(h.model().tolerance,
             length(h.model().bbox.max.sub(h.model().bbox.min))),
+        BrepBody::Composite(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
@@ -103,6 +105,35 @@ impl BooleanRegionClassifier {
                     (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
                     (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
                     .iter().any(|d|*d<=eps) {
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
+            BrepBody::Composite(editor)=>{
+                let b=editor.model().bbox;
+                if point.x<b.min.x-eps||point.x>b.max.x+eps||
+                    point.y<b.min.y-eps||point.y>b.max.y+eps||
+                    point.z<b.min.z-eps||point.z>b.max.z+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                for binding in editor.bindings(){
+                    let cut=binding.cut;
+                    let [cx,cz]=cut.center();
+                    let r=cut.radius();
+                    let floor=b.max.y-cut.depth(editor.source_box());
+                    let radial=(point.x-cx).hypot(point.z-cz);
+                    if radial<r-eps && point.y>floor+eps {
+                        return Ok(VolumePosition::Outside);
+                    }
+                    if (radial-r).abs()<=eps && point.y>=floor-eps ||
+                       (point.y-floor).abs()<=eps && radial<=r+eps {
+                        return Ok(VolumePosition::Boundary);
+                    }
+                }
+                if [(point.x-b.min.x).abs(),(point.x-b.max.x).abs(),
+                    (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
+                    (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
+                    .iter().any(|d|*d<=eps){
                     return Ok(VolumePosition::Boundary);
                 }
                 Ok(VolumePosition::Inside)
@@ -255,7 +286,8 @@ impl BooleanRegionClassifier {
 fn body_tolerance(body:&BrepBody)->GeometryTolerance{
     match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance,
         BrepBody::ThroughHole(h)=>h.model().tolerance,
-        BrepBody::BlindHole(h)=>h.model().tolerance}
+        BrepBody::BlindHole(h)=>h.model().tolerance,
+        BrepBody::Composite(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {
