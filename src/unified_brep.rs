@@ -202,7 +202,7 @@ impl BrepModel {
     pub fn from_cylinder(body: &CylindricalBrep) -> Result<Self, GeometryError> {
         body.validate()?;
         let faces = body.faces.iter().map(|f| BrepFace {
-            id: f.id, loops: f.loops.clone(), geometry: f.geometry.clone(),
+            id: f.id, loops: f.loops.clone(), geometry: f.geometry.clone(), sense:FaceSense::Forward,
         }).collect();
         let result = Self {
             origin: BrepOrigin::AnalyticCylinder,
