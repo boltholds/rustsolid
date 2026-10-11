@@ -107,8 +107,11 @@ impl BlindHoleBrep {
         let eps=block.tolerance.length_at(extent)
             .max(cutter.tolerance.length_at(extent));
         let upper=cutter.frame.origin.y+cutter.height;
+        let representable=[upper,b.max.y,cutter.frame.origin.y,cutter.height]
+            .into_iter().map(f64::abs).fold(1.0_f64,f64::max);
+        let plane_budget=16.0*f64::EPSILON*representable;
         if !upper.is_finite() ||
-            (upper-b.max.y).abs()>eps ||
+            (upper-b.max.y).abs()>plane_budget ||
             cutter.frame.origin.y<=b.min.y+eps ||
             cutter.frame.origin.y>=b.max.y-eps {
             return Err(invalid("blind bore requires upper cap on box top and lower cap strictly inside"));
