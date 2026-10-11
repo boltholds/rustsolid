@@ -2754,7 +2754,8 @@ mod tests {
         let response=process(&query);
         assert!(response.ok,"{:?}",response.error);
         let value=response.data.unwrap();
-        assert_eq!(value["kind"],"geometry_query");
+        assert_eq!(value["body"]["kind"],"analytic_composite_cuts");
+        assert_eq!(value["body"]["topology"]["genus"],1);
     }
     #[test]
     fn json_blind_cylinder_difference_executes_real_floor_face_and_exact_mass(){
