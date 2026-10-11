@@ -344,3 +344,60 @@ fn overlap_in_resize_rejects_without_losing_previous_history(){
     e.check_snapshot(&snapshot).unwrap();
     prove(&e,&[h(-1.5,0.,0.5),h(1.5,0.,0.5)]);
 }
+
+#[test]
+fn analytic_mass_and_genus_are_invariant_under_hole_insertion_order(){
+    let hs=[h(-1.5,-0.5,0.5),h(1.5,0.5,0.7),h(0.,-1.5,0.4)];
+    let mut left=editor();let mut right=editor();
+    {
+        let mut tx=left.begin_transaction();
+        for &p in &hs {tx.add_through_hole(p).unwrap();}
+        tx.commit().unwrap();
+    }
+    {
+        let mut tx=right.begin_transaction();
+        for &p in hs.iter().rev(){tx.add_through_hole(p).unwrap();}
+        tx.commit().unwrap();
+    }
+    let a=left.model().mass;let b=right.model().mass;
+    eq(a.volume,b.volume);
+    eq(a.surface_area,b.surface_area);
+    eq(a.centroid.x,b.centroid.x);
+    eq(a.centroid.z,b.centroid.z);
+    assert_eq!(left.model().summary(),right.model().summary());
+    prove(&left,&hs);
+    prove(&right,&hs);
+}
+#[test]
+fn undo_of_hole_insertion_and_redo_mint_new_incarnations(){
+    let mut e=editor();
+    let first={
+        let mut t=e.begin_transaction();
+        let h=t.add_through_hole(h(0.,0.,0.7)).unwrap();
+        t.commit().unwrap();h
+    };
+    e.undo().unwrap().unwrap();
+    assert_eq!(e.hole_count(),0);
+    assert_eq!(e.resolve(first),Err(StructuralHandleError::StaleHole));
+    e.redo().unwrap().unwrap();
+    assert_eq!(e.hole_count(),1);
+    let restored=e.handle(first.slot).unwrap();
+    assert_ne!(restored.generation,first.generation);
+    assert_eq!(e.resolve(first),Err(StructuralHandleError::StaleHole));
+    prove(&e,&[h(0.,0.,0.7)]);
+}
+#[test]
+fn exceeded_structural_stage_budget_blocks_partial_commit(){
+    let mut e=editor();
+    let original=e.snapshot();
+    let mut tx=e.begin_transaction();
+    for _ in 0..256 {
+        tx.rebase_face_uv(StructuralFaceRef::Base(FaceId(0)),0.,0.).unwrap();
+    }
+    assert_eq!(tx.staged_len(),256);
+    assert!(tx.rebase_face_uv(StructuralFaceRef::Base(FaceId(0)),0.,0.).is_err());
+    assert!(tx.commit().is_err());
+    e.check_snapshot(&original).unwrap();
+    assert_eq!(e.undo_depth(),0);
+    prove(&e,&[]);
+}
