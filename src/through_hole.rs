@@ -255,7 +255,7 @@ impl ThroughHoleBrep {
         model.faces[0].loops.push(LoopId(6));
         model.faces[1].loops.push(LoopId(7));
         model.faces.push(BrepFace{
-            id:FaceId(6),loops:vec![LoopId(8)],
+            id:FaceId(6),loops:vec![LoopId(8)],sense:crate::FaceSense::Reversed,
             geometry:FaceGeometry{
                 surface:cylinder_surface,outer_loop:LoopId(8),tolerance:tol,
                 bounds:ParameterDomain2{
