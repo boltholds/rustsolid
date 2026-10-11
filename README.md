@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.21 experimental kernel: committed analytic cylindrical through-hole Booleans (genus-one B-rep), scoped curved parameter transactions, region-classification previews and exact planar box CSG.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
+> **Status: v0.22 experimental kernel: atomic owner-bound editing of shared 3D curves, UV trims and surface parameterizations, together with genus-one through-hole Booleans and dependency-aware Euler operations.** It is not currently a replacement for Parasolid or OpenCascade. Its API does not claim compatibility with proprietary kernels.
 
 ## Current capabilities
 
@@ -13,6 +13,7 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Compute exact planar B-rep Boolean union/intersection/difference for two validated axis-aligned boxes, plus a constrained real analytic box-minus-through-cylinder Boolean with circular inner trim loops, genus one and independent display mesh.
 - Classify full-volume membership for validated polyhedral solids, analytic cylinders and an analytic through-hole, and construct source-bound keep/discard witnesses across analytic intersections. General Boolean cuts remain preview-only.
 - Atomically edit radius and center of an analytic through-hole, with Undo/Redo and stable semantic handles via `BrepArena::update_hole`.
+- Edit the canonical shared B-rep's 3D curve carriers, per-coedge 2D UV trims, and support-surface charts through source-preserving transactions, copy-on-write catalogs, owner-bound generational handles and Undo/Redo.
 - Validate closed manifold incidence, vertex fans, planar non-self-intersecting loops and Euler characteristic 2.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -103,7 +104,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports a constrained genus-one through-hole with two inner loops. The Boolean executor supports two exact axis-aligned boxes and box subtraction by a vertical, strictly interior cylinder spanning the full block height; it rejects unsupported polyhedral/curved combinations, disconnected outputs and general cavities. Standalone cylinders remain read-only; through-hole radius and center can be edited through a specialized parameter transaction. Generalized Boolean classification, NURBS, mutable trim loops, permanent topological naming across regeneration, STEP/X_T export, fillets and production-grade robust tolerance/quality guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports a constrained genus-one through-hole with two inner loops. The Boolean executor supports two exact axis-aligned boxes and box subtraction by a vertical, strictly interior cylinder spanning the full block height; it rejects unsupported polyhedral/curved combinations, disconnected outputs and general cavities. Standalone cylinders remain read-only; through-hole radius and center can be edited through a specialized parameter transaction. Complete global Boolean region classification, NURBS, structural creation/deletion of trim loops, permanent topological naming across regeneration, STEP/X_T export, fillets and production-grade robust tolerance/quality guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
 The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
@@ -263,6 +264,35 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.22: canonical transactional carrier and UV-trim editor
+
+The new [BrepCarrierEditor](docs/carrier-editor.md) owns a mutable validated
+`BrepModel`, including 3D curve, 2D coedge trim, and supporting surface
+catalogs. Copy-on-write replacements and dense-catalog compaction preserve
+typed generational handles bound to their owning edges, coedges and faces,
+rather than to the changing carrier-array indices.
+
+A `BrepCarrierTransaction` can replace compatible analytic carriers,
+reparameterize line/circle edges and UV trim lines, shift circular trim
+parameters by complete turns, and rebase planar or cylindrical face UV
+coordinates together with all owned coedge trims. Only shape-preserving
+edits pass commit: original physical paths and support surfaces, analytic mass,
+topology and model bounds are checked before candidate publication. Ignored
+staging errors poison the entire batch; Undo/Redo retain a single modeling step
+with monotonic revisions and stale-snapshot detection.
+
+A separate `BrepArena::detached_carrier_editor()` can start from an existing
+arena snapshot. It does not silently mutate that arena's Euler or curved
+parametric feature history. The `geometry.v1` CLI exposes
+`carrier_transaction` for safe request-local reparameterizations; direct
+typed replacement is provided by the Rust API. Independent regressions
+in [tests/carrier_editor.rs](tests/carrier_editor.rs) and mandatory GitHub
+Actions gates cover genus-one trims, periodic seams, copy-on-write aliasing,
+transaction failures and history.
+
+This slice **does not** create or delete topological edges/loops or enable
+generalized curved Boolean application of `TopologyDeltaPlan`.
 
 ## v0.21: executable genus-one analytic through-hole
 
