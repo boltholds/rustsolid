@@ -4,7 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
-    ThroughHoleBrep, HoleParameters,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -245,6 +245,10 @@ enum BrepInput {
         center:[f64;2],radius:f64,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticBlindHole {origin:[f64;3],width:f64,height:f64,depth:f64,
+        center:[f64;2],radius:f64,bore_depth:f64,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -269,6 +273,14 @@ impl BrepInput {
                     width,height,depth,tolerance.unwrap_or_default())?;
                 let body=ThroughHoleBrep::from_box(&block,
                     HoleParameters{center_x:center[0],center_z:center[1],radius})?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticBlindHole{origin,width,height,depth,center,radius,bore_depth,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let body=BlindHoleBrep::from_box(&block,BlindHoleParameters{
+                    center_x:center[0],center_z:center[1],radius,depth:bore_depth})?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
@@ -313,6 +325,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
+                BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1301,6 +1314,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticCylinder=>"analytic_cylinder",
                 BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
+                BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -1487,6 +1501,60 @@ fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Respo
                                 "display_mesh_is_not_boundary_definition":true})),
                             brep:None,
                         }),
+                    }
+                }
+                BooleanOutcome::BlindHole(body)=>{
+                    let stats=body.model().summary();
+                    let shape=body.model();
+                    let display=match body.tessellate(64){
+                        Ok(mesh)=>mesh,
+                        Err(error)=>return Response{schema_version:"geometry.v1",
+                            ok:false,solid:None,data:None,error:Some(error.to_string())},
+                    };
+                    Response {
+                        schema_version:"geometry.v1",ok:true,error:None,
+                        data:Some(json!({
+                            "kind":"boolean","mode":mode,"state":"solid",
+                            "representation":"analytic_cylindrical_blind_hole",
+                            "face_sources":lineage,"genus":stats.genus,
+                            "opening_face_id":display.opening_face.0,
+                            "floor_face_id":display.floor_face.0,
+                            "side_face_id":display.side_face.0,
+                            "opening_inner_loops":1,
+                            "faceted_volume":display.faceted_volume,
+                            "faceted_surface_area":display.faceted_surface_area,
+                            "volume_faceting_error":display.faceting_volume_error,
+                            "closed_oriented_display_mesh_certified":true,
+                            "topology_committed":true,
+                        })),
+                        solid:Some(SolidResponse{
+                            vertices:display.mesh.vertices.iter().map(|p|p.array()).collect(),
+                            faces:display.mesh.triangles,
+                            triangle_face_ids:display.mesh.triangle_faces.iter()
+                                .map(|id|id.0).collect(),
+                            topology:Topology{
+                                vertices:stats.vertices,edges:stats.edges,
+                                coedges:stats.coedges,loops:stats.loops,
+                                faces:stats.faces,shells:stats.shells,
+                                euler_characteristic:stats.euler_characteristic,
+                            },
+                            mass:Mass{volume:shape.mass.volume,
+                                surface_area:shape.mass.surface_area,
+                                centroid:shape.mass.centroid.array()},
+                            bbox:[shape.bbox.min.array(),shape.bbox.max.array()],
+                            edit_report:None,history:None,
+                            analytic_brep:Some(json!({
+                                "cylindrical_faces":stats.cylindrical_faces,
+                                "plane_faces":stats.plane_faces,
+                                "circular_edges":stats.circular_edges,
+                                "inner_loops":shape.loops.iter().filter(|l|
+                                    l.role==rustsolid::LoopRole::Inner).count(),
+                                "floor_face_id":display.floor_face.0,
+                                "genus":stats.genus,
+                                "display_mesh_is_not_boundary_definition":true,
+                            })),
+                            brep:None,
+                        })
                     }
                 }
                 BooleanOutcome::Solid(body)=>Response{
