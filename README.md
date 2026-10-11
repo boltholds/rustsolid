@@ -291,7 +291,7 @@ Closed oriented edge incidence, analytic support orientation, cap region
 areas and signed mesh volume/surface are verified against independent
 polygonal estimates while exact mass stays unchanged.
 
-Tests and mandatory CI pin 20 mixed-cut mathematical, lifecycle and
+Tests and mandatory CI pin 22 mixed-cut mathematical, lifecycle and
 mesh witnesses, plus JSON one-shot Boolean and history success/failure
 paths. **Arbitrary intersecting curved Booleans remain unsupported**:
 `TopologyDeltaPlan::can_apply` is still false.
