@@ -178,3 +178,46 @@ fn arena_boolean_is_nondestructive_and_returns_new_identity_incarnation(){
     assert_eq!(right.undo_depth(),0);
     output_arena.validate().unwrap();
 }
+
+#[test]
+fn lattice_translation_metamorphic_volume_contracts(){
+    // The overlap volume is an independent closed-form oracle, not another
+    // CAD implementation. All 27 intersections are strictly three-dimensional.
+    let origin=p(0.,0.,0.);
+    let a=Solid::block(origin,3.,3.,3.).unwrap();
+    for dx in [-2.0,0.0,2.0] {
+        for dy in [-2.0,0.0,2.0] {
+            for dz in [-2.0,0.0,2.0] {
+                let b=box_(dx,dy,dz,3.,3.,3.);
+                let intersection=run(&a,&b,BooleanOperation::Intersection);
+                let union=run(&a,&b,BooleanOperation::Union);
+                let difference=run(&a,&b,BooleanOperation::Difference);
+                let exact_overlap=(3.0-f64::abs(dx))*
+                    (3.0-f64::abs(dy))*(3.0-f64::abs(dz));
+                assert!((intersection.solid().unwrap().mass.volume-exact_overlap).abs()<1e-8);
+                assert!((union.solid().unwrap().mass.volume-(54.0-exact_overlap)).abs()<1e-8);
+                if exact_overlap==27.0 {
+                    assert!(matches!(difference.outcome,BooleanOutcome::Empty));
+                } else {
+                    assert!((difference.solid().unwrap().mass.volume -
+                        (27.0-exact_overlap)).abs()<1e-8);
+                    difference.solid().unwrap().validate().unwrap();
+                }
+                union.solid().unwrap().validate().unwrap();
+                intersection.solid().unwrap().validate().unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn large_world_coordinates_do_not_destroy_local_mass(){
+    let a=box_(1.0e9,1.0e9,1.0e9,2.,3.,4.);
+    let b=box_(1.0e9+1.,1.0e9+1.,1.0e9+1.,2.,3.,4.);
+    let result=run(&a,&b,BooleanOperation::Intersection);
+    assert!((result.solid().unwrap().mass.volume-6.0).abs()<1e-8);
+    let p=result.solid().unwrap().mass.centroid;
+    assert!((p.x-(1.0e9+1.5)).abs()<1e-6);
+    assert!((p.y-(1.0e9+2.0)).abs()<1e-6);
+    assert!((p.z-(1.0e9+2.5)).abs()<1e-6);
+}
