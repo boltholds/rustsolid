@@ -220,7 +220,7 @@ fn retained_carrier_intent_follows_survivor_after_compaction(){
 #[test]
 fn invalid_foreign_and_dropped_staged_hole_refs_remain_stale(){
     let mut a=editor();
-    let b=editor();
+    let mut b=editor();
     let abandoned={
         let mut t=a.begin_transaction();
         t.add_through_hole(h(0.,0.,1.)).unwrap()
