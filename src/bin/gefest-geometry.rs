@@ -334,6 +334,10 @@ fn inspect_brep(input:BrepInput) -> Response {
             },
             "geometry":{
                 "face_surfaces":surfaces,"edge_curves":curves,
+                "face_senses":graph.faces.iter().map(|f|match f.sense {
+                    rustsolid::FaceSense::Forward=>"forward",
+                    rustsolid::FaceSense::Reversed=>"reversed",
+                }).collect::<Vec<_>>(),
                 "coedge_trims":trims,"cylindrical_faces":stats.cylindrical_faces,
                 "circular_edges":stats.circular_edges,
                 "closed_edges":closed_edges,"seam_edges":seams,
@@ -2466,6 +2470,9 @@ mod tests {
         assert_eq!(model["topology"]["euler_characteristic"],2);
         assert_eq!(model["geometry"]["cylindrical_faces"],1);
         assert_eq!(model["geometry"]["circular_edges"],2);
+        assert_eq!(model["geometry"]["face_senses"][6],"reversed");
+        assert_eq!(model["geometry"]["face_senses"][7],"reversed");
+        assert_eq!(model["geometry"]["face_senses"][1],"forward");
         assert!((solid.mass.volume-(144.-2.*std::f64::consts::PI)).abs()<1e-9);
     }
     #[test]
