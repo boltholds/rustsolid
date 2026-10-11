@@ -335,3 +335,39 @@ fn constructed_blind_result_exposes_source_bound_analytic_opening_graph(){
         close(point.x.hypot(point.z),1.);
     }
 }
+
+#[test]
+fn physical_face_sense_distinguishes_analytic_support_from_material_normal(){
+    let b=blind();let m=b.model();
+    assert_eq!(m.face_sense(FaceId(6)),Some(rustsolid::FaceSense::Reversed));
+    assert_eq!(m.face_sense(FaceId(7)),Some(rustsolid::FaceSense::Reversed));
+    assert_eq!(m.face_sense(FaceId(1)),Some(rustsolid::FaceSense::Forward));
+    let cylinder=m.oriented_face_normal(FaceId(6),0.0,1.0).unwrap();
+    let floor=m.oriented_face_normal(FaceId(7),0.0,0.0).unwrap();
+    let opening=m.oriented_face_normal(FaceId(1),0.0,0.0).unwrap();
+    close(cylinder.x,-1.0);
+    close(cylinder.y,0.0);
+    close(floor.y,1.0);
+    close(opening.y,1.0);
+    let q=rustsolid::geometry_query(m,
+        "query {body {faces(id:7) { id sense surface { kind } }}}",
+        rustsolid::QueryLimits::default()).unwrap();
+    assert_eq!(q["body"]["faces"][0]["sense"],"reversed");
+    assert_eq!(q["body"]["faces"][0]["surface"]["kind"],"plane");
+}
+#[test]
+fn existing_through_hole_and_standalone_cylinder_have_correct_material_face_sense(){
+    let through=ThroughHoleBrep::from_box(&box_(),HoleParameters{
+        center_x:0.,center_z:0.,radius:1.}).unwrap();
+    assert_eq!(through.model().face_sense(FaceId(6)),
+        Some(rustsolid::FaceSense::Reversed));
+    let inward=through.model().oriented_face_normal(FaceId(6),0.0,1.0).unwrap();
+    close(inward.x,-1.);
+    let stand=CylindricalBrep::upright(p(0.,0.,0.),1.,2.,
+        GeometryTolerance::default()).unwrap();
+    let canonical=BrepBody::from(stand).shared().unwrap();
+    assert_eq!(canonical.face_sense(FaceId(2)),
+        Some(rustsolid::FaceSense::Forward));
+    let outward=canonical.oriented_face_normal(FaceId(2),0.0,1.0).unwrap();
+    close(outward.x,1.);
+}
