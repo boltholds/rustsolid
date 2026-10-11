@@ -1,0 +1,252 @@
+{
+  "schema": "rustsolid.parasolid_official_capabilities.v1",
+  "updated_on": "2026-10-11",
+  "independent_kernel": "rustsolid",
+  "kernel_baseline": "v0.14.0",
+  "previous_decomp_reference": {
+    "reported_version": "38.01.207",
+    "available_for_direct_verification": false,
+    "note": "Symbol names reproduced only as earlier-review leads, not verified against currently mounted binary or official signature-level SDK."
+  },
+  "official_sources": {
+    "product": "https://www.siemens.com/en-us/products/plm-components/parasolid/",
+    "overview": "https://developer.siemens.com/plm-components/overview.html",
+    "data_2018": "https://blogs.sw.siemens.com/plm-components/parasolid-data-exchange/",
+    "tracking_2019": "https://blogs.sw.siemens.com/plm-components/parasolid-v32-0-release-highlights/",
+    "mixed_2020": "https://blogs.sw.siemens.com/plm-components/parasolid-v33-0-release-highlights/",
+    "qa_2020": "https://blogs.sw.siemens.com/plm-components/parasolid-delivers-30-years-of-quality-in-industrial-use/",
+    "v38_2025": "https://blogs.sw.siemens.com/plm-components/whats-new-in-parasolid-v-38-0/",
+    "v39_2026": "https://blogs.sw.siemens.com/plm-components/parasolid-v39-0-advancing-the-future-of-geometry-modeling/"
+  },
+  "capabilities": [
+    {
+      "id": "directed_topology",
+      "official_release": "v38.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/whats-new-in-parasolid-v-38-0/",
+      "official_behavior": "Supports general bodies including locally manifold and non-manifold regions, cellular and mixed-dimensional topology.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_FIN_ask_next_in_loop",
+        "PK_FIN_ask_next_of_edge",
+        "PK_SESSION_ask_general_topology"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Loop/Coedge/twin query on closed manifold B-rep.",
+        "gap": "Radial degree >2, open sheets, regions and disconnected or mixed-dimensional components."
+      },
+      "independent_acceptance_test": "Construct a sheet joined to a solid along a shared edge; check radial cycle and local manifoldness without forcing chi=2.",
+      "priority": "P1"
+    },
+    {
+      "id": "geometry_carriers_and_trims",
+      "official_release": "2018 public capability",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-data-exchange/",
+      "official_behavior": "B-rep and trimmed B-spline input/output; geometry is distinct from the topological trim.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_FACE_ask_oriented_surf",
+        "PK_EDGE_ask_curve",
+        "PK_FIN_find_surf_parameters"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Analytic planes/cylinders, Curve3 and UV p-curves.",
+        "gap": "Native bounded NURBS and multiple trim loops, p-curve consistency/parameterization beyond current primitives."
+      },
+      "independent_acceptance_test": "Two trims on the same periodic surface must map onto the same 3D edge, including seam and reversed orientation.",
+      "priority": "P1"
+    },
+    {
+      "id": "tolerant_imports",
+      "official_release": "2018 public capability",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-data-exchange/",
+      "official_behavior": "Local tolerance information enables modeling on imported lower-resolution data.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_EDGE_ask_precision"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Body tolerance and geometry-binding tolerances.",
+        "gap": "Propagation of vertex/edge/face tolerance intervals through Boolean and Euler changes."
+      },
+      "independent_acceptance_test": "Import gap below local allowable tolerance and just above: same intended topology only for the first; report tolerance provenance.",
+      "priority": "P0"
+    },
+    {
+      "id": "boolean_region_provenance",
+      "official_release": "v32.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-v32-0-release-highlights/",
+      "official_behavior": "Boolean can provide tracking of newly created regions to original input regions.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_BODY_boolean"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "missing",
+        "implemented": "No solid Boolean or region-level provenance.",
+        "gap": "IntersectionGraph to topological edits, region classification, origin tracking."
+      },
+      "independent_acceptance_test": "Block minus cylindrical tool: analytic volume, region ownership and replayed provenance remain correct after undo/redo.",
+      "priority": "P0"
+    },
+    {
+      "id": "surface_intersections_and_sectioning",
+      "official_release": "2018 public capability",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-data-exchange/",
+      "official_behavior": "Geometric sectioning/interrogation and B-rep construction from source data are supported.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_SURF_intersect_surf"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Plane-plane and plane-cylinder analytic intersections, v0.14 UV clipping.",
+        "gap": "Robust arbitrary surface pairs, correct boundary event graph and complete topology classification."
+      },
+      "independent_acceptance_test": "All clipped samples satisfy both supports and both trims; swapping operands preserves the geometric set.",
+      "priority": "P0"
+    },
+    {
+      "id": "general_body_operations",
+      "official_release": "v38.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/whats-new-in-parasolid-v-38-0/",
+      "official_behavior": "Local edits on manifold regions of general bodies; some cellular operations and clash/face replacement support.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_SESSION_ask_general_topology"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "missing",
+        "implemented": "Only one connected closed manifold shell.",
+        "gap": "Region-aware topology and operations respecting local manifold rules."
+      },
+      "independent_acceptance_test": "Apply localized face edit on manifold region of a general body while leaving adjacent non-manifold region unchanged.",
+      "priority": "P2"
+    },
+    {
+      "id": "surface_extension_reporting",
+      "official_release": "v38.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/whats-new-in-parasolid-v-38-0/",
+      "official_behavior": "A modeling operation can report the surface extensions it created so the application can choose an alternative.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "missing",
+        "implemented": "Query diagnostics for supported geometry only.",
+        "gap": "Typed report of created/retained/replaced analytic surface carriers, editable policy."
+      },
+      "independent_acceptance_test": "Extend two neighboring surface patches; compare automatic versus user-supplied extension and preserve canonical trim.",
+      "priority": "P1"
+    },
+    {
+      "id": "patterned_face_tracking",
+      "official_release": "v38.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/whats-new-in-parasolid-v-38-0/",
+      "official_behavior": "Tracking maps patterned faces back to their input faces.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Operation-based topological naming for simple local edits.",
+        "gap": "Feature-level regenerated face lineage and one-to-many/many-to-one provenance."
+      },
+      "independent_acceptance_test": "Pattern a face N times, regenerate with changed pattern count and verify source/instance lineage.",
+      "priority": "P1"
+    },
+    {
+      "id": "mixed_brep_mesh",
+      "official_release": "v33.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-v33-0-release-highlights/",
+      "official_behavior": "Mixed classic and facet topology supports modeling, face changes and Boolean face/edge match queries.",
+      "symbols_from_previous_decomp_notes": [
+        "PK_MESH_*",
+        "PK_MFACET_*"
+      ],
+      "decomp_verification": "prior_notes_only_not_rechecked",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Separate tessellation preserving triangle-to-face IDs.",
+        "gap": "Unified mixed geometry, topology-aware operations across analytic/facet boundaries."
+      },
+      "independent_acceptance_test": "Analytic cylinder cuts a facet sheet while preserving exact machined face and a watertight boundary.",
+      "priority": "P2"
+    },
+    {
+      "id": "bidirectional_mesh_topology_map",
+      "official_release": "v39.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-v39-0-advancing-the-future-of-geometry-modeling/",
+      "official_behavior": "Find mesh elements from B-rep elements and B-rep owners from meshes; associated mesh Euler edits.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Mesh.triangle_faces gives a one-way triangle-to-B-rep face association.",
+        "gap": "Stable bidirectional mapping for vertices, fins and facets through edits, incremental retessellation."
+      },
+      "independent_acceptance_test": "Selected facet resolves its analytic face; subdividing or retessellating updates mappings without changing carrier geometry.",
+      "priority": "P1"
+    },
+    {
+      "id": "curve_reuse_policy",
+      "official_release": "v39.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-v39-0-advancing-the-future-of-geometry-modeling/",
+      "official_behavior": "During local edge editing application may choose to create new edge curves or reuse existing curve geometry.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "missing",
+        "implemented": "Current edit path keeps some numeric and semantic IDs on splits.",
+        "gap": "Explicit Replace/Reuse/Create policy plus carrier lifetime and provenance."
+      },
+      "independent_acceptance_test": "Edit one of two edges sharing a carrier: reuse preserves shared curve; replace isolates only edited edge.",
+      "priority": "P1"
+    },
+    {
+      "id": "concurrent_read_and_partition_io",
+      "official_release": "v39.0",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-v39-0-advancing-the-future-of-geometry-modeling/",
+      "official_behavior": "More enquiry operations support concurrent execution; parts and partitions may be transmitted in suitably locked threads.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "missing",
+        "implemented": "Single-body synchronous API and process-local Command/Memento.",
+        "gap": "Immutable query snapshots, partitions, concurrency/transaction isolation and durable deltas."
+      },
+      "independent_acceptance_test": "Concurrent geometry inquiries read a coherent revision while another transaction modifies a separate partition.",
+      "priority": "P2"
+    },
+    {
+      "id": "repair_and_diagnostics",
+      "official_release": "2018 public capability",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-data-exchange/",
+      "official_behavior": "Functions detect/repair geometric discontinuities and self-intersections; specialized repair tooling is separately provided.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Reject invalid profiles and return typed errors; first-party regression corpus.",
+        "gap": "Structured repair plans, certified tolerance-aware sewing and self-intersection witnesses."
+      },
+      "independent_acceptance_test": "Close a near-gap only when within audited tolerance, with output report of moved entities and preserved geometry.",
+      "priority": "P1"
+    },
+    {
+      "id": "quality_and_compatibility",
+      "official_release": "2020 public capability",
+      "official_url": "https://blogs.sw.siemens.com/plm-components/parasolid-delivers-30-years-of-quality-in-industrial-use/",
+      "official_behavior": "Regression coverage, customer cases, release compatibility and reference API stability are core declared quality practices.",
+      "symbols_from_previous_decomp_notes": [],
+      "decomp_verification": "not_established",
+      "rustsolid_v014": {
+        "status": "partial",
+        "implemented": "Pinned analytic, metamorphic, boundary, operator and intersection tests in CI.",
+        "gap": "Much larger adversarial corpus, coverage matrix and versioned state compatibility."
+      },
+      "independent_acceptance_test": "Old JSON/GQL requests and serialized histories produce compatible behavior across version upgrade.",
+      "priority": "P0"
+    }
+  ]
+}

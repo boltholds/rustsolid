@@ -1,3 +1,5 @@
+> Historical v0.9 note (not a current v0.14 status audit). For updated public vendor claims with version-aware provenance, see [official Parasolid capability crosswalk](parasolid-api-crosswalk.md). Binary-derived function-name observations below were reported by an earlier analysis and could not be independently rechecked in the 2026-10-11 audit; they are not verified official SDK signatures.
+
 # RustSolid v0.9 — unified topology/geometry graph
 
 This first **read-only shared B-rep** is an explicit transitional layer over the

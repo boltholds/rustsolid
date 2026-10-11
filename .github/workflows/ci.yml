@@ -23,6 +23,8 @@ jobs:
         run: cargo test --test surface_intersection_contracts
       - name: Independent B-rep face trimming contracts
         run: cargo test --test trimmed_intersections
+      - name: Validate versioned official Parasolid capability evidence
+        run: python3 tests/validate_parasolid_capabilities.py
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

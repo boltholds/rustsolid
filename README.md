@@ -246,3 +246,7 @@ The [modeling operator contract gate](docs/operator-contracts.md) covers each re
 ## v0.14 — bounded B-rep face intersections
 
 The [trimmed intersection engine](docs/trimmed-intersections.md) clips analytic plane/plane and plane/cylinder support curves to **actual UV contours of two selected B-rep faces**. It supports simple planar polygons, circular disks and full periodic cylindrical sides. Result branches carry analytic curves and finite parameter ranges; isolated point contacts, boundary overlaps and near-degenerate ambiguity remain distinct. It has [12 pinned, independent fixtures](tests/fixtures/trimmed_intersections.v1.json) in CI. This is not yet a Boolean operation or complete arbitrary NURBS/UV-trim support.
+
+## Evidence-based Parasolid capability comparison
+
+The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid capability map](docs/parasolid-api-crosswalk.md) records release-specific, publicly documented behavior (including v38.0 versus v39.0 differences), current kernel gaps and independently falsifiable acceptance tests. Earlier decompiler-derived symbol names are clearly labeled **not reverified in this audit**; private Siemens code and inferred internal algorithms are never incorporated. A first-party Python CI test ensures every ledger item remains sourced, versioned and paired with a non-vendor correctness oracle.
