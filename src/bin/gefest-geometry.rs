@@ -3,6 +3,7 @@
 use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
+    BooleanRegionClassifier, GraphRegionState, RegionHold,
     BrepArena, TopologyEntity,
     CylinderSurface, Frame3, IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     ParameterRange, PlaneSurface, SurfaceIntersection, SurfaceIntersectionEngine,
@@ -39,6 +40,8 @@ enum GeometryRequest {
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
+    BooleanRegionPlan { first:FaceOperand, second:FaceOperand, mode:BooleanOperation,
+        #[serde(default)] tolerance:Option<GeometryTolerance> },
     GeometryQuery { source: BrepInput, query: String },
     ProbeKernel { #[serde(default)] seed: Option<u64> },
     RegressionCorpus,
@@ -963,6 +966,100 @@ fn evaluate_arena_transaction(
 }
 
 
+
+fn evaluate_boolean_region_plan(
+    first:FaceOperand,second:FaceOperand,mode:BooleanOperation,
+    tolerance:GeometryTolerance
+)->Response {
+    let result=(||->Result<Value,GeometryError>{
+        let (left,_)=first.source.prepare()?;
+        let (right,_)=second.source.prepare()?;
+        let fa=FaceId(first.face_id);
+        let fb=FaceId(second.face_id);
+        let lm=left.shared()?;
+        let rm=right.shared()?;
+        let graph=IntersectionGraphBuilder::new(tolerance)?.intersect_faces(&lm,fa,&rm,fb)?;
+        let plan=BooleanRegionClassifier::classify_graph(
+            &graph,&left,fa,&right,fb,mode)?;
+        plan.validate_against(&graph,&left,fa,&right,fb)?;
+        let topology=TopologyDeltaPlanner::new().plan(&graph,&lm,fa,&rm,fb)?;
+        topology.validate_against(&graph,&lm,fa,&rm,fb)?;
+        let outstanding=topology.requirements.iter().map(|req|match req{
+            PlanRequirement::NumericalRefinement=>"numerical_refinement",
+            PlanRequirement::GeneralizedBrepEditor=>"generalized_brep_editor",
+            PlanRequirement::RegionClassification=>"region_classification",
+            PlanRequirement::InnerLoopConstruction=>"inner_loop_construction",
+            PlanRequirement::OpenTraceCompletion=>"open_trace_completion",
+            PlanRequirement::CurvedEdgeSubdivision=>"curved_edge_subdivision",
+            PlanRequirement::MultipleSplitsSameEdge=>"multiple_splits_same_edge",
+            PlanRequirement::TangencyClassification=>"tangency_classification",
+            PlanRequirement::BoundaryReconciliation=>"boundary_reconciliation",
+        }).collect::<Vec<_>>();
+        let position=|v|match v {
+            rustsolid::VolumePosition::Inside=>"inside",
+            rustsolid::VolumePosition::Outside=>"outside",
+            rustsolid::VolumePosition::Boundary=>"boundary",
+        };
+        let hold=plan.hold.map(|r|match r{
+            RegionHold::AmbiguousIntersection=>"ambiguous_intersection",
+            RegionHold::Tangency=>"tangency",
+            RegionHold::BoundaryOverlap=>"boundary_overlap",
+            RegionHold::NearlyTangent=>"nearly_tangent",
+            RegionHold::NonSeparatingTrace=>"non_separating_trace",
+            RegionHold::UnresolvedProbe=>"unresolved_probe",
+        });
+        let samples=plan.samples.iter().map(|item|json!({
+            "arc_id":item.arc.0,
+            "operand":match item.operand{
+                GraphOperand::First=>"first",GraphOperand::Second=>"second"},
+            "face_id":item.face.0,
+            "fraction":item.fraction,
+            "curve_point":item.point.array(),
+            "positive_probe":item.positive.array(),
+            "negative_probe":item.negative.array(),
+            "positive_other":position(item.positive_other),
+            "negative_other":position(item.negative_other),
+            "keep_positive":item.keep_positive,
+            "keep_negative":item.keep_negative,
+            "reverse_orientation":item.reverse_orientation,
+        })).collect::<Vec<_>>();
+        Ok(json!({
+            "kind":"boolean_region_plan",
+            "mode":mode,
+            "state":match plan.state{
+                GraphRegionState::NoCut=>"no_cut",
+                GraphRegionState::ClassifiedPreview=>"classified_preview",
+                GraphRegionState::Held=>"held",
+            },
+            "hold_reason":hold,
+            "graph_state":graph.kind(),
+            "source_faces":[fa.0,fb.0],
+            "intersection_arcs":graph.arcs.len(),
+            "region_samples":samples,
+            "topology_intent":{
+                "state":match topology.state {
+                    PlanState::NoChange=>"no_change",
+                    PlanState::PreviewOnly=>"preview_only",
+                    PlanState::Held=>"held",
+                },
+                "proposed_vertices":topology.vertices.len(),
+                "proposed_arcs":topology.arcs.len(),
+                "face_changes":topology.face_changes.len(),
+                "remaining_requirements":outstanding,
+                "can_apply":false,
+            },
+            "topology_committed":false,
+            "can_apply":false,
+        }))
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn evaluate_boolean(left:BrepInput,right:BrepInput,mode:BooleanOperation)->Response{
     let result=(||->Result<rustsolid::BooleanResult,GeometryError>{
         let (left,_)=left.prepare()?;
@@ -1036,6 +1133,9 @@ fn process(input: &str) -> Response {
             return evaluate_arena_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
+        Ok(GeometryRequest::BooleanRegionPlan{first,second,mode,tolerance}) =>
+            return evaluate_boolean_region_plan(first,second,mode,
+                tolerance.unwrap_or_default()),
         Ok(GeometryRequest::GeometryQuery {source,query}) =>
             return evaluate_geometry_query(source,&query),
         Ok(GeometryRequest::ProbeKernel {seed}) =>
@@ -1591,6 +1691,31 @@ mod tests {
         assert!(!process(&too_many).ok);
     }
 
+
+    #[test]
+    fn json_boolean_region_plan_samples_curved_analytic_cut_without_commit() {
+        let response=process(r#"{"operation":"boolean_region_plan","mode":"difference",
+            "first":{"source":{"kind":"block","origin":[-3,2,-3],
+                "width":6,"height":1,"depth":6},"face_id":0},
+            "second":{"source":{"kind":"analytic_cylinder","origin":[0,0,0],
+                "radius":2,"height":5},"face_id":2}}"#);
+        assert!(response.ok,"{:?}",response.error);
+        assert!(response.solid.is_none());
+        let data=response.data.unwrap();
+        assert_eq!(data["state"],"classified_preview");
+        assert_eq!(data["can_apply"],false);
+        assert_eq!(data["topology_committed"],false);
+        assert_eq!(data["intersection_arcs"],1);
+        assert_eq!(data["region_samples"].as_array().unwrap().len(),6);
+        assert_eq!(data["topology_intent"]["can_apply"],false);
+        assert!(data["topology_intent"]["remaining_requirements"].as_array().unwrap()
+            .contains(&json!("inner_loop_construction")));
+        assert!(data["topology_intent"]["remaining_requirements"].as_array().unwrap()
+            .contains(&json!("region_classification")),
+            "global region completeness remains a prerequisite");
+        assert!(data["region_samples"].as_array().unwrap().iter()
+            .any(|v|v["operand"]=="second" && v["reverse_orientation"]==true));
+    }
 
     #[test]
     fn json_boolean_union_and_intersection_return_exact_result_and_face_sources(){

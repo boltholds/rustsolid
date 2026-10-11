@@ -28,6 +28,7 @@ mod intersection_graph;
 mod topology_delta_plan;
 mod brep_arena;
 mod boolean;
+mod boolean_region;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
 pub use tolerance::GeometryTolerance;
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
@@ -62,6 +63,8 @@ pub use brep_arena::{BrepArena, ArenaHandle, ArenaHandleError, ArenaBinding,
     ArenaOutput, ArenaEntityRef};
 pub use boolean::{BooleanKernel, BooleanOperation, BooleanOperand, BooleanFaceSource,
     BooleanOutcome, BooleanResult, BooleanError};
+pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionState,
+    RegionHold, ArcRegionSample, GraphRegionPlan};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
