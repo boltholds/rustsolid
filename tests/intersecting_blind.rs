@@ -295,3 +295,43 @@ fn detached_analytic_carrier_editor_preserves_crossed_uv_trim_provenance(){
     assert_eq!(editor.model().face_sense(FaceId(6)),
         Some(rustsolid::FaceSense::Reversed));
 }
+
+#[test]
+fn independent_simpson_cross_section_oracle_confirms_unequal_disk_area_and_centroid(){
+    // Integrate union cross-section heights directly, without evaluating
+    // circular-segment formulae used by the analytical kernel.
+    let a=hole(-0.65,-0.55,1.25,2.3);
+    let b=hole(0.8,0.5,0.95,2.3);
+    let shape=IntersectingBlindBrep::from_box(&block(),[a,b]).unwrap();
+    let r=shape.region();
+    let dx=b.center_x-a.center_x;
+    let dz=b.center_z-a.center_z;
+    let d=dx.hypot(dz);let ux=dx/d;let uz=dz/d;
+    let n=60000usize;
+    let lower=-a.radius;
+    let upper=d+b.radius;
+    let step=(upper-lower)/n as f64;
+    let mut area=0.0;
+    let mut axial_moment=0.0;
+    for i in 0..=n {
+        let x=lower+i as f64*step;
+        let h1=(a.radius*a.radius-x*x).max(0.0).sqrt();
+        let h2=(b.radius*b.radius-(x-d)*(x-d)).max(0.0).sqrt();
+        let vertical=2.0*h1.max(h2);
+        let weight=if i==0 || i==n {1.0}
+            else if i%2==0 {2.0}else{4.0};
+        area+=weight*vertical;
+        axial_moment+=weight*vertical*x;
+    }
+    area*=step/3.0;
+    axial_moment*=step/3.0;
+    let absolute_axial=area*(a.center_x*ux+a.center_z*uz)+axial_moment;
+    let analytical_axial=r.relative_area_moment[0]*ux+
+        r.relative_area_moment[1]*uz;
+    eq(area,r.disk_union_area,8e-5);
+    eq(absolute_axial,analytical_axial,8e-5);
+    let px=-uz;let pz=ux;
+    let perpendicular=r.relative_area_moment[0]*px+
+        r.relative_area_moment[1]*pz;
+    eq(perpendicular,area*(a.center_x*px+a.center_z*pz),8e-5);
+}
