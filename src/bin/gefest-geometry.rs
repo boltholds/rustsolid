@@ -15,6 +15,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     IntersectionGraphBuilder, GraphState, GraphNodeKind, GraphOperand, TrimPosition,
     TopologyDeltaPlanner, PlanState, PlanArcRole, PlanFaceEffect,
     PlanRequirement, PlanVertexPlacement, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+mod mixed_regions_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -47,6 +48,12 @@ enum GeometryRequest {
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<IntersectingBlindEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
+    ComposeMixedRegions {source:SolidSource,
+        through:Vec<mixed_regions_cli::ThroughHoleInput>,
+        blind:Vec<BlindHoleInput>,
+        #[serde(default)] batches:Vec<Vec<mixed_regions_cli::MixedRegionEditInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
         #[serde(default)] display_segments:Option<usize>},
     ComposeBlindRegions {source:SolidSource,holes:Vec<BlindHoleInput>,
@@ -353,6 +360,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
+                BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1349,6 +1357,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
+                BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -2019,6 +2028,10 @@ fn process(input: &str) -> Response {
             source,holes,batches,undo,redo,display_segments,
         })=>return evaluate_compound_blind_regions(
             source,holes,batches,undo,redo,display_segments),
+        Ok(GeometryRequest::ComposeMixedRegions{
+            source,through,blind,batches,undo,redo,display_segments,
+        })=>return mixed_regions_cli::evaluate(
+            source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
