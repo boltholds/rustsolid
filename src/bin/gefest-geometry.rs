@@ -269,6 +269,11 @@ enum BrepInput {
         holes:Vec<BlindHoleInput>,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticMixedRegions {origin:[f64;3],width:f64,height:f64,depth:f64,
+        through:Vec<mixed_regions_cli::ThroughHoleInput>,
+        blind:Vec<BlindHoleInput>,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -312,6 +317,22 @@ impl BrepInput {
                         center_x:h.center[0],center_z:h.center[1],
                         radius:h.radius,depth:h.depth
                     }).collect())?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticMixedRegions{origin,width,height,depth,through,blind,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let params=rustsolid::MixedThroughBlindParameters{
+                    through:through.into_iter().map(|p|HoleParameters{
+                        center_x:p.center[0],center_z:p.center[1],radius:p.radius
+                    }).collect(),
+                    blind:blind.into_iter().map(|p|BlindHoleParameters{
+                        center_x:p.center[0],center_z:p.center[1],
+                        radius:p.radius,depth:p.depth
+                    }).collect(),
+                };
+                let body=rustsolid::MixedThroughBlindBrep::from_box(&block,params)?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
