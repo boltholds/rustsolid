@@ -158,6 +158,7 @@ impl BrepBody {
             Self::ThroughHole(body) => body.validate(),
             Self::BlindHole(body) => body.validate(),
             Self::IntersectingBlind(body)=>body.validate(),
+            Self::CompoundBlind(body)=>body.validate(),
         }
     }
     pub fn shared(&self) -> Result<BrepModel, GeometryError> {
