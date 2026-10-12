@@ -525,6 +525,15 @@ impl IntersectingBlindBrep {
     }
 }
 
+impl crate::BrepSource for IntersectingBlindBrep {
+    fn brep_model(&self)->Result<BrepModel,GeometryError>{
+        self.validate()?;
+        Ok(self.model.clone())
+    }
+    fn display_mesh(&self,segments:usize)->Result<crate::Mesh,GeometryError>{
+        Ok(self.tessellate(segments)?.mesh)
+    }
+}
 pub struct IntersectingBlindTransaction<'a>{
     owner:&'a mut IntersectingBlindBrep,
     staged:[BlindHoleParameters;2],
