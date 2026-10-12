@@ -436,9 +436,7 @@ impl IntersectingBlindBrep {
                 face:FaceId(1),loop_id:LoopId(6)
             });
         }
-        // Coedge order is floor A, top A, floor B, top B; reorder the
-        // pairs compiled above into the exact topological index sequence.
-        m.geometry.coedges.swap(25,26);
+        // Coedge owner order already matches indices 24..27 exactly.
         for (id,curve,face,lp) in [
             (28,side_uv[0],6,8),(29,side_uv[1],6,8),
             (30,side_uv[4],7,9),(31,side_uv[5],7,9),
