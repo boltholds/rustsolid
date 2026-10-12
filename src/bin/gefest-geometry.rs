@@ -2929,6 +2929,140 @@ mod tests {
         assert!(r.data.is_none());
         assert!(r.error.unwrap().contains("segments"));
     }
+
+    #[test]
+    fn json_mixed_blind_regions_reconstruct_exact_topology_and_mass(){
+        let input=r#"{"operation":"compose_blind_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[
+                {"center":[-1.5,-0.5],"radius":0.75,"depth":1.8},
+                {"center":[-0.4,-0.5],"radius":0.7,"depth":1.8},
+                {"center":[1.7,1.2],"radius":0.55,"depth":2.6}
+            ]}"#;
+        let r=process(input);
+        assert!(r.ok,"{:?}",r.error);
+        assert!(r.solid.is_none());
+        let d=r.data.unwrap();
+        assert_eq!(d["kind"],"compound_blind_boolean");
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["hole_count"],3);
+        assert_eq!(d["component_count"],2);
+        assert_eq!(d["representation"],"analytic_compound_blind_regions");
+        assert_eq!(d["topology"]["faces"],11);
+        assert_eq!(d["topology"]["edges"],21);
+        assert_eq!(d["topology"]["inner_loops"],2);
+        assert_eq!(d["topology"]["genus"],0);
+        assert_eq!(d["topology"]["euler_characteristic"],2);
+        assert_eq!(d["components"][0]["kind"],"two_crossing_circles");
+        assert_eq!(d["components"][0]["floor_face_id"],8);
+        assert_eq!(d["components"][1]["kind"],"single_circle");
+        assert_eq!(d["components"][1]["floor_face_id"],10);
+        assert_eq!(d["display_mesh_available"],true);
+        assert_eq!(d["display_mesh_included"],false);
+    }
+    #[test]
+    fn json_compound_blind_display_is_derived_and_closed(){
+        let input=r#"{"operation":"compose_blind_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[
+                {"center":[-1.5,-0.5],"radius":0.75,"depth":1.8},
+                {"center":[-0.4,-0.5],"radius":0.7,"depth":1.8},
+                {"center":[1.7,1.2],"radius":0.55,"depth":2.6}
+            ],
+            "display_segments":48}"#;
+        let r=process(input);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        let s=r.solid.unwrap();
+        assert_eq!(d["topology"]["inner_loops"],2);
+        assert_eq!(d["display_mesh_included"],true);
+        assert_eq!(d["display_quality"]["segments_per_circle"],48);
+        assert_eq!(d["display_quality"]["top_face_triangles"],150);
+        assert_eq!(d["display_quality"]["top_face_loop_count"],3);
+        assert_eq!(d["display_quality"]["floor_regions"][0]["floor_face_id"],8);
+        assert_eq!(d["display_quality"]["floor_regions"][1]["floor_face_id"],10);
+        assert_eq!(d["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert!(d["display_quality"]["volume_faceting_error"].as_f64().unwrap()>0.0);
+        assert_eq!(s.vertices.len(),8+6*48);
+        assert_eq!(s.faces.len(),12*48+12);
+        assert_eq!(s.faces.len(),s.triangle_face_ids.len());
+        assert_eq!(s.topology.euler_characteristic,2);
+        assert_eq!(s.analytic_brep.as_ref().unwrap()["exact_analytical_carriers"],true);
+        assert_eq!(s.analytic_brep.as_ref().unwrap()["display_mesh_is_not_boundary_definition"],true);
+    }
+    #[test]
+    fn json_compound_repartition_and_undo_redo_are_one_step_each(){
+        let input=r#"{"operation":"compose_blind_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[
+                {"center":[-1.5,-0.5],"radius":0.75,"depth":1.8},
+                {"center":[-0.4,-0.5],"radius":0.7,"depth":1.8},
+                {"center":[1.7,1.2],"radius":0.55,"depth":2.6}
+            ],
+            "batches":[[
+                {"kind":"replace","index":1,"center":[-0.4,-0.5],
+                 "radius":0.25,"depth":1.8}
+            ]],
+            "undo":1,"redo":1}"#;
+        let r=process(input);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        assert_eq!(d["revision"],3);
+        assert_eq!(d["component_count"],3);
+        assert_eq!(d["components"][0]["kind"],"single_circle");
+        assert_eq!(d["topology"]["faces"],12);
+        assert_eq!(d["topology"]["inner_loops"],3);
+        assert_eq!(d["commits"][0]["command_count"],1);
+        assert_eq!(d["transitions"].as_array().unwrap().len(),2);
+    }
+    #[test]
+    fn json_compound_invalid_three_way_crossing_or_display_returns_no_partial(){
+        let base=r#"{"kind":"block","origin":[-3,-1,-3],
+            "width":6,"height":4,"depth":6}"#;
+        let inputs=[
+            r#"[{"center":[-1,0],"radius":0.9,"depth":2},
+                {"center":[0,0],"radius":0.9,"depth":2},
+                {"center":[1,0],"radius":0.9,"depth":2}]"#,
+            r#"[{"center":[-1.5,-0.5],"radius":0.75,"depth":1.8},
+                {"center":[-0.4,-0.5],"radius":0.7,"depth":1.9}]"#,
+        ];
+        for holes in inputs {
+            let req=format!(r#"{{"operation":"compose_blind_regions",
+                "source":{base},"holes":{holes}}}"#);
+            let r=process(&req);
+            assert!(!r.ok);assert!(r.data.is_none());assert!(r.solid.is_none());
+        }
+        let invalid=format!(r#"{{"operation":"compose_blind_regions",
+            "source":{base},"holes":[
+                {{"center":[0,0],"radius":1,"depth":2}}],
+            "display_segments":8}}"#);
+        let r=process(&invalid);
+        assert!(!r.ok);assert!(r.solid.is_none());assert!(r.data.is_none());
+    }
+    #[test]
+    fn json_compound_analytic_source_supports_regular_brep_inspection(){
+        let r=process(r#"{"operation":"inspect_brep","source":{
+            "kind":"analytic_compound_blind","origin":[-3,-1,-3],
+            "width":6,"height":4,"depth":6,
+            "holes":[
+                {"center":[-1.5,-0.5],"radius":0.75,"depth":1.8},
+                {"center":[-0.4,-0.5],"radius":0.7,"depth":1.8},
+                {"center":[1.7,1.2],"radius":0.55,"depth":2.6}
+            ],
+            "segments":24}}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let s=r.solid.unwrap();
+        let b=s.brep.unwrap();
+        assert_eq!(b["representation"],"analytic_compound_blind_regions");
+        assert_eq!(b["topology"]["genus"],0);
+        assert_eq!(b["topology"]["faces"],11);
+        assert_eq!(b["geometry"]["cylindrical_faces"],3);
+        assert_eq!(s.vertices.len(),8+6*24);
+        assert_eq!(s.faces.len(),12*24+12);
+    }
     #[test]
     fn json_true_intersecting_blind_boolean_returns_split_arc_topology(){
         let r=process(r#"{"operation":"compose_intersecting_blind",
