@@ -2655,6 +2655,74 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn json_true_intersecting_blind_boolean_returns_split_arc_topology(){
+        let r=process(r#"{"operation":"compose_intersecting_blind",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[{"center":[-0.7,0],"radius":1,"depth":2},
+                     {"center":[0.7,0],"radius":1,"depth":2}]}"#);
+        assert!(r.ok,"{:?}",r.error);
+        assert!(r.solid.is_none());
+        let d=r.data.unwrap();
+        assert_eq!(d["kind"],"intersecting_blind_boolean");
+        assert_eq!(d["representation"],"analytic_intersecting_blind_holes");
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["topology"]["vertices"],12);
+        assert_eq!(d["topology"]["edges"],18);
+        assert_eq!(d["topology"]["coedges"],36);
+        assert_eq!(d["topology"]["loops"],10);
+        assert_eq!(d["topology"]["faces"],9);
+        assert_eq!(d["topology"]["inner_loops"],1);
+        assert_eq!(d["topology"]["genus"],0);
+        assert_eq!(d["topology"]["euler_characteristic"],2);
+        assert_eq!(d["region"]["state"],"certified_transverse_crossing");
+        assert_eq!(d["region"]["crossings"].as_array().unwrap().len(),2);
+        assert_eq!(d["region"]["arc_sources"].as_array().unwrap().len(),2);
+        assert_eq!(d["region"]["shared_vertical_edges"],json!([16,17]));
+        assert_eq!(d["region"]["floor_face_id"],8);
+        assert_eq!(d["region"]["cylindrical_face_ids"],json!([6,7]));
+        assert!(d["region"]["disk_union_area"].as_f64().unwrap()>std::f64::consts::PI);
+        assert!(d["mass"]["volume"].as_f64().unwrap()<144.-2.*std::f64::consts::PI);
+        assert_eq!(d["generalized_topology_delta_can_apply"],false);
+    }
+    #[test]
+    fn json_crossed_bores_fail_closed_when_tangent_or_mismatched_depth(){
+        for other in [
+            r#"{"center":[1.3,0],"radius":1,"depth":2}"#,
+            r#"{"center":[0.7,0],"radius":1,"depth":1.7}"#,
+            r#"{"center":[-0.7,0],"radius":0.4,"depth":2}"#,
+        ]{
+            let request=format!(r#"{{"operation":"compose_intersecting_blind",
+                "source":{{"kind":"block","origin":[-3,-1,-3],
+                    "width":6,"height":4,"depth":6}},
+                "holes":[{{"center":[-0.7,0],"radius":1,"depth":2}},{other}]}}"#);
+            let r=process(&request);
+            assert!(!r.ok);assert!(r.solid.is_none());assert!(r.data.is_none());
+        }
+    }
+    #[test]
+    fn json_crossing_rebuild_and_undo_redo_produce_one_new_revision_per_batch(){
+        let r=process(r#"{"operation":"compose_intersecting_blind",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[{"center":[-0.7,0],"radius":1,"depth":2},
+                     {"center":[0.7,0],"radius":1,"depth":2}],
+            "batches":[[
+                {"kind":"replace","index":0,"center":[-0.8,0.1],
+                 "radius":1.1,"depth":2.25},
+                {"kind":"replace","index":1,"center":[0.7,-0.1],
+                 "radius":1,"depth":2.25}
+            ]],
+            "undo":1,"redo":1}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        assert_eq!(d["revision"],3);
+        assert_eq!(d["commits"][0]["command_count"],2);
+        assert_eq!(d["transitions"].as_array().unwrap().len(),2);
+        assert_eq!(d["topology"]["genus"],0);
+    }
     #[test]
     fn json_composite_blind_valid_and_invalid_are_atomic(){
         let root=r#"{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6}"#;
