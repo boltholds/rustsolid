@@ -32,7 +32,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
