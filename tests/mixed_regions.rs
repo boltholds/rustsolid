@@ -63,7 +63,7 @@ fn one_full_tunnel_plus_one_blind_floor_has_true_genus_one_shell(){
     assert_eq!(m.faces[0].loops.len(),2);
     assert_eq!(m.faces[1].loops.len(),3);
     assert_eq!(m.summary().faces,9);
-    assert_eq!(body.components()[0].floor_face,FaceId(7));
+    assert_eq!(body.components()[0].floor_face,FaceId(8));
     let remove_through=PI*0.5*0.5*4.0;
     let remove_blind=PI*0.75*0.75*2.0;
     approx(m.mass.volume,144.0-remove_through-remove_blind,1e-9);
@@ -198,7 +198,7 @@ fn mixed_brep_is_queryable_with_actual_analytic_topology_and_material_sense(){
     let body=sample();
     let m=body.model();
     let query=rustsolid::geometry_query(m,
-        "query {body {kind topology {faceCount genus eulerCharacteristic circularEdges} faces(id:7) {id sense surface {kind}} mass {volume}}}",
+        "query {body {kind topology {faceCount genus eulerCharacteristic circularEdges} faces(id:8) {id sense surface {kind}} mass {volume}}}",
         rustsolid::QueryLimits::default()).unwrap();
     assert_eq!(query["body"]["kind"],"analytic_mixed_through_blind_regions");
     assert_eq!(query["body"]["topology"]["genus"],1);
