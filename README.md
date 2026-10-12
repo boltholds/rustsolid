@@ -2,7 +2,7 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.27 experimental kernel: executable intersecting curved circle-arc Boolean topology for a strictly bounded two-blind-cylinder case, with analytical overlap mass, atomic region reassembly and certified display meshes.** Not a universal curved Boolean engine.
+> **Status: v0.28 experimental kernel: source-certified composition of independent and intersecting blind-cut regions in one B-rep, with exact mass, atomic connectivity changes, multi-floor UV trims and watertight display meshing.** Not a universal curved Boolean engine.
 
 ## Current capabilities
 
@@ -10,12 +10,12 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 - Maintain explicit oriented B-rep: shells, material-facing face sense independent of surface UV frames, faces, loops, coedges (twin/next/prev), edges and vertices.
 - Edit the polyhedral B-rep atomically: split edges and faces, maintain twin/loop links, preserve unaffected local handles, validate and rollback on failure.
 - Chain Euler operations using typed outputs created earlier in the same transaction, with one Undo/Redo step for the batch.
-- Compute exact planar B-rep Boolean union/intersection/difference for validated axis-aligned boxes and true analytic cylinder cuts: full-height through-holes, finite-depth blind bores, and a strict two-cylinder *partially overlapping, equal-depth* blind union opening with shared 3D crossing edges.
+- Compute exact planar B-rep Boolean union/intersection/difference for validated axis-aligned boxes and true analytical cylinder cuts: through-holes, finite-depth blind bores, crossed pairs, and bounded mixtures of independent single-circle and transversely crossing two-circle blind regions.
 - Classify source volumes for validated polyhedral solids, cylinders, through-holes and finite-depth blind bores; construct source-validated plane/cylinder opening traces and a two-circle transverse crossing arrangement. General curved Boolean plans beyond these certified cases remain preview-only.
 - Atomically edit radius and center of an analytic through-hole, and radius/center/depth of a blind bore, with Undo/Redo, independent B-rep reconstruction and stable semantic handles through BrepArena.
 - Edit the canonical shared B-rep's 3D curve carriers, per-coedge 2D UV trims, and support-surface charts through source-preserving transactions, copy-on-write catalogs, owner-bound generational handles and Undo/Redo.
 - Create, remove and resize up to 32 independent full-height analytic cylindrical holes in a box, including true inner UV loops/coedges and genus/analytic mass changes; combine structural work and carrier reparameterization in one atomic transaction.
-- Derive watertight, oriented display triangle meshes for those analytic multi-hole bodies, triangulating planar cap regions with multiple inner loops and validating independent polygonal volume, surface area, and B-rep face ownership.
+- Derive watertight, oriented display triangle meshes for analytical multi-hole bodies, including multiple nonconvex blind-cut floors and independent top inner loops, while checking projected area, signed facet volume and B-rep face ownership.
 - Validate closed manifold incidence, vertex fans and planar non-self-intersecting loops; the restricted polyhedral editor has Euler characteristic 2, while the multi-hole analytic B-rep has Euler characteristic 2−2N.
 - Configure model-space absolute/relative/angular tolerances for each solid or JSON request.
 - Triangulate polygon caps and sides, retaining per-triangle source face IDs for CAD selection.
@@ -106,7 +106,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles exact axis-aligned box CSG, a single full-height through-cylinder or a certified top-entry blind cylinder; additional through-holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary cross-depth or oblique intersecting cut arrangements, combining more than two crossing blind cylinders, arbitrary structural cuts/inner-loop insertion, combinations of multiple blind and through holes, multi-component bodies, NURBS, general cavities, generalized polygon-with-holes meshes outside certified box-and-cylinder source families, persistent topological naming across arbitrary regeneration, STEP/X_T, fillets and production-grade robust numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles exact axis-aligned box CSG, a single full-height through-cylinder or a certified top-entry blind cylinder; additional through-holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary cross-depth or oblique intersecting cuts, connected regions of three or more crossing cylinders, combinations of blind and through holes, arbitrary structural cuts, multi-component bodies, NURBS, general cavities, source-independent meshing and stable topological naming across connectivity changes, STEP/X_T, fillets and production-grade numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
 The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
@@ -266,6 +266,42 @@ The versioned [official Siemens ↔ previously observed PK API ↔ RustSolid cap
 
 The [IntersectionGraph](docs/intersection-graph.md) can now be converted into a preview-only [TopologyDeltaPlan](docs/topology-delta-plan.md). Each plan records source vertex reuse, proposed edge splitting, interior face vertices, virtual periodic anchors, original source curves, per-face cut intentions, and explicit prerequisites. It does not edit any B-rep or decide which regions a Boolean would keep. Every plan reports can_apply=false. Twelve pinned mathematical scenarios and tampering tests are enforced by CI.
 
+
+## v0.28: mixed connected blind-cut region components
+
+The new [compound analytical blind-region compositor](docs/compound-blind-regions.md)
+builds a **single exact genus-zero B-rep** from up to 16 strictly certified
+top-entry blind cylindrical cuts, partitioned into independent connected
+footprint regions. Each region is either a full isolated circle or a
+**two-circle partially overlapping pair sharing one floor depth**.
+Independent regions can have different depths.
+
+The compositor reuses the source-certified v0.25 circular bores and v0.27
+true split circular-arc crossings, then remaps their actual analytic
+vertices, edges, coedges, UV loops, surfaces and independent floor faces
+into one manifold shell. All apertures share the box's original top
+face, with one inner loop per connected region. Volume, area and
+centroid derive from exact source area/perimeter/moments, not facets.
+
+`CompoundBlindBrep` supports **atomic changes to the connected region
+classification**: a crossing pair can split into separate single holes
+and be restored through Undo/Redo with one revision per entire batch.
+The shared `BrepBody` query and read-only arena inspect this topology;
+generic arena mutation with persistent feature names after renumbering
+is deliberately not claimed.
+
+`geometry.v1 compose_blind_regions` returns component-to-source indexes,
+real floor/side topology IDs, analytical mass, revision/history and
+optional `display_segments` with a **watertight multi-floor display mesh**
+and an independent polygonal mass certificate. The ordinary
+`analytic_compound_blind` B-rep source kind also supports inspection
+and geometry queries. Tests cover two pairs, mixed pair/single,
+atomic repartition, fail-closed three-way crossings and facet
+convergence.
+
+Global `TopologyDeltaPlan` is still preview-only, and three-way
+circle arrangements or overlapping cuts with stepped floors are not
+silently approximated.
 
 ## v0.27: executable analytic crossing-circle region reassembly
 
