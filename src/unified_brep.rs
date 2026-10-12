@@ -8,7 +8,7 @@
 //! non-manifold models are deliberately not claimed yet.
 use crate::{
     BoundingBox, Coedge, CoedgeGeometry, CoedgeId, Curve2, Curve3,
-    ThroughHoleBrep,BlindHoleBrep,IntersectingBlindBrep,
+    ThroughHoleBrep,BlindHoleBrep,IntersectingBlindBrep,CompoundBlindBrep,
     CylindricalBrep, Edge, EdgeGeometry, EdgeId, FaceGeometry, FaceId,
     GeometryError, GeometryTolerance, Loop, LoopId, MassProperties,
     Mesh, ModelUnits, ParameterRange, Point3, Shell, Solid, Surface3, Vertex,
