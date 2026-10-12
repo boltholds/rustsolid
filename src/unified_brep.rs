@@ -152,6 +152,9 @@ impl From<IntersectingBlindBrep> for BrepBody {
 impl From<CompoundBlindBrep> for BrepBody {
     fn from(body: CompoundBlindBrep)->Self{Self::CompoundBlind(body)}
 }
+impl From<MixedThroughBlindBrep> for BrepBody {
+    fn from(body:MixedThroughBlindBrep)->Self{Self::MixedRegions(body)}
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
