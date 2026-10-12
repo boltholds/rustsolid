@@ -15,7 +15,7 @@ use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
     BrepCarrierEditor, BrepStructuralEditor,
     ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
-    IntersectingBlindBrep, HistoryDirection,
+    IntersectingBlindBrep, CompoundBlindBrep, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
@@ -181,11 +181,12 @@ enum ArenaKernel {
     AnalyticHole(ThroughHoleBrep),
     AnalyticBlind(BlindHoleBrep),
     AnalyticCrossing(IntersectingBlindBrep),
+    CompoundReadOnly(CompoundBlindBrep),
 }
 impl ArenaKernel {
     fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0,
         Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision(),
-        Self::AnalyticCrossing(h)=>h.revision()}}
+        Self::AnalyticCrossing(h)=>h.revision(),Self::CompoundReadOnly(_)=>0}}
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         match self {
             Self::Editable(h)=>BrepModel::from_polyhedral(h.solid(),ModelUnits::default()),
@@ -193,6 +194,7 @@ impl ArenaKernel {
             Self::AnalyticHole(body)=>Ok(body.model().clone()),
             Self::AnalyticBlind(body)=>Ok(body.model().clone()),
             Self::AnalyticCrossing(body)=>Ok(body.model().clone()),
+            Self::CompoundReadOnly(body)=>Ok(body.model().clone()),
         }
     }
     fn named(&self)->Result<Vec<(TopologyEntity,TopologyName)>,GeometryError>{
@@ -211,7 +213,7 @@ impl ArenaKernel {
                 Self::Editable(h)=>h.solid().topology_name(e)
                     .ok_or_else(||invalid(format!("missing semantic name for {e:?}")))?.clone(),
                 Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_) |
-                    Self::AnalyticCrossing(_)=>{
+                    Self::AnalyticCrossing(_) | Self::CompoundReadOnly(_)=>{
                     let (ty,idx)=match e {
                         TopologyEntity::Body=>("body",0),
                         TopologyEntity::Vertex(x)=>("vertex",x.0),
@@ -224,6 +226,7 @@ impl ArenaKernel {
                     let prefix=match self {Self::AnalyticHole(_)=>"analytic_through_hole",
                         Self::AnalyticBlind(_)=>"analytic_blind_hole",
                         Self::AnalyticCrossing(_)=>"analytic_intersecting_blind_holes",
+                        Self::CompoundReadOnly(_)=>"analytic_compound_blind_regions",
                         _=>"analytic_cylinder"};
                     TopologyName(format!("{prefix}/{ty}/{idx}"))
                 },
@@ -269,6 +272,9 @@ impl BrepArena {
             },
             BrepBody::IntersectingBlind(body)=>{
                 body.validate()?;ArenaKernel::AnalyticCrossing(body)
+            },
+            BrepBody::CompoundBlind(body)=>{
+                body.validate()?;ArenaKernel::CompoundReadOnly(body)
             }
         };
         let mut registry=Registry::empty();
@@ -281,6 +287,9 @@ impl BrepArena {
     pub fn from_blind_hole(body:BlindHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::BlindHole(body))}
     pub fn from_intersecting_blind(body:IntersectingBlindBrep)->Result<Self,GeometryError>{
         Self::new(BrepBody::IntersectingBlind(body))
+    }
+    pub fn from_compound_blind(body:CompoundBlindBrep)->Result<Self,GeometryError>{
+        Self::new(BrepBody::CompoundBlind(body))
     }
     pub fn arena_token(&self)->u64{self.registry.token}
     pub fn revision(&self)->u64{self.storage.revision()}
@@ -304,7 +313,7 @@ impl BrepArena {
             ArenaKernel::AnalyticHole(hole)=>
                 BrepStructuralEditor::from_through_hole(hole),
             ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_) |
-                ArenaKernel::AnalyticCrossing(_)=>
+                ArenaKernel::AnalyticCrossing(_) | ArenaKernel::CompoundReadOnly(_)=>
                 Err(invalid("only box and full-height through-hole are supported structural sources")),
         }
     }
