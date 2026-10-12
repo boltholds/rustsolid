@@ -311,7 +311,7 @@ fn certify_mesh(box_:&Solid,model:&BrepModel,
                 if model.face_sense(*face)!=Some(crate::FaceSense::Reversed) ||
                    normal.y<=0.0 ||
                    [v0,v1,v2].iter().any(|v|
-                       (v.y-(box_.bbox.max.y-(box_.bbox.max.y-center.y))).abs()>eps) {
+                       (v.y-center.y).abs()>eps) {
                     // Check plane independently against canonical floor
                     // support below; the comparison above guards deviation
                     // across three vertices without trusting source normals.
