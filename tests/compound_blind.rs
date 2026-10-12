@@ -185,3 +185,74 @@ fn compound_body_is_brep_queryable_and_standalone_display_is_available(){
     assert_eq!(graph["body"]["faces"][0]["sense"],"reversed");
     assert!(!body.tessellate(24).unwrap().triangles.is_empty());
 }
+
+#[test]
+fn sixteen_independent_blind_regions_respect_bounded_finite_topology(){
+    let positions=[-2.25,-0.75,0.75,2.25];
+    let mut sources=Vec::new();
+    for &x in &positions {
+        for (index,&z) in positions.iter().enumerate(){
+            sources.push(h(x,z,0.25,1.0+0.3*index as f64));
+        }
+    }
+    assert_eq!(sources.len(),16);
+    let body=CompoundBlindBrep::from_box(&block(),sources.clone()).unwrap();
+    certify(&body,16);
+    let t=body.model().summary();
+    assert_eq!((t.vertices,t.edges,t.coedges),(40,60,120));
+    assert_eq!((t.faces,t.loops),(38,54));
+    assert_eq!(t.euler_characteristic,2);
+    let removed=sources.iter().map(|h|PI*h.radius*h.radius*h.depth).sum::<f64>();
+    approx(body.model().mass.volume,144.0-removed,1e-9);
+    let display=body.tessellate(12).unwrap();
+    assert_eq!(display.top_face_loop_count,17);
+    assert_eq!(display.floor_regions.len(),16);
+    assert_eq!(display.mesh.vertices.len(),8+2*16*12);
+    assert!(display.faceting_volume_error>0.0);
+    let one_more=sources.into_iter().chain(std::iter::once(
+        h(0.0,0.0,0.1,2.0))).collect::<Vec<_>>();
+    assert!(CompoundBlindBrep::from_box(&block(),one_more).is_err());
+}
+#[test]
+fn common_volume_membership_tracks_mixed_voids_and_true_floor_boundaries(){
+    use rustsolid::{BooleanRegionClassifier,VolumePosition};
+    let body=BrepBody::from(
+        CompoundBlindBrep::from_box(&block(),mixed()).unwrap());
+    for (point,position) in [
+        (p(-1.5,2.0,-0.5),VolumePosition::Outside),
+        (p(-0.4,2.0,-0.5),VolumePosition::Outside),
+        (p(1.7,2.0,1.2),VolumePosition::Outside),
+        (p(1.7,0.4,1.2),VolumePosition::Boundary),
+        (p(1.7,0.0,1.2),VolumePosition::Inside),
+        (p(-1.5,1.2,-0.5),VolumePosition::Boundary),
+        (p(-1.5,0.0,-0.5),VolumePosition::Inside),
+        (p(0.7,2.0,-0.5),VolumePosition::Inside),
+        (p(0.0,-1.0,0.0),VolumePosition::Boundary),
+        (p(3.5,1.0,0.0),VolumePosition::Outside),
+    ] {
+        assert_eq!(BooleanRegionClassifier::classify_point(&body,point).unwrap(),
+            position,"compound volume classification at {point:?}");
+    }
+}
+#[test]
+fn arena_can_inspect_compound_regions_but_does_not_mutate_dense_names(){
+    use rustsolid::{BrepArena,TopologyEntity};
+    let body=CompoundBlindBrep::from_box(&block(),mixed()).unwrap();
+    let arena=BrepArena::from_compound_blind(body).unwrap();
+    let before=arena.snapshot().unwrap();
+    let floor=arena.handle(TopologyEntity::Face(FaceId(8))).unwrap();
+    assert_eq!(arena.model().unwrap().summary().faces,11);
+    assert_eq!(arena.handle(TopologyEntity::Face(FaceId(8))),Some(floor));
+    assert_eq!(arena.undo_depth(),0);
+    assert_eq!(arena.redo_depth(),0);
+    arena.validate().unwrap();
+    arena.check_snapshot(&before).unwrap();
+    let mut detached=arena.detached_carrier_editor().unwrap();
+    let face=detached.handle(rustsolid::CarrierOwner::Face(FaceId(8))).unwrap();
+    let mut edit=detached.begin_transaction();
+    edit.rebase_face_uv(face,0.1,0.0).unwrap();
+    edit.commit().unwrap();
+    detached.validate().unwrap();
+    arena.check_snapshot(&before).unwrap();
+    assert_eq!(arena.handle(TopologyEntity::Face(FaceId(8))),Some(floor));
+}
