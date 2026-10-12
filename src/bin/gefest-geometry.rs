@@ -2703,6 +2703,46 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn json_crossing_boolean_optional_display_is_closed_and_keeps_exact_mass(){
+        let r=process(r#"{"operation":"compose_intersecting_blind",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[{"center":[-0.7,0],"radius":1,"depth":2},
+                     {"center":[0.7,0],"radius":1,"depth":2}],
+            "display_segments":48}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        let solid=r.solid.unwrap();
+        assert_eq!(d["topology"]["genus"],0);
+        assert_eq!(d["display_mesh_included"],true);
+        assert_eq!(d["display_mesh_available"],true);
+        assert_eq!(d["display_quality"]["segments_per_arc"],48);
+        assert_eq!(d["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert_eq!(d["display_quality"]["opening_triangles"],100);
+        assert_eq!(d["display_quality"]["floor_triangles"],94);
+        assert!(d["display_quality"]["faceting_volume_error"].as_f64().unwrap()>0.0);
+        assert_eq!(solid.vertices.len(),8+4*48);
+        assert_eq!(solid.faces.len(),8*48+12);
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        assert_eq!(solid.topology.euler_characteristic,2);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["mesh_is_display_only"],true);
+        assert!(solid.triangle_face_ids.iter().any(|id|*id==8));
+    }
+    #[test]
+    fn json_crossed_bore_invalid_display_resolution_returns_no_partial_result(){
+        let r=process(r#"{"operation":"compose_intersecting_blind",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "holes":[{"center":[-0.7,0],"radius":1,"depth":2},
+                     {"center":[0.7,0],"radius":1,"depth":2}],
+            "display_segments":8}"#);
+        assert!(!r.ok);
+        assert!(r.solid.is_none());
+        assert!(r.data.is_none());
+        assert!(r.error.unwrap().contains("segments"));
+    }
     #[test]
     fn json_true_intersecting_blind_boolean_returns_split_arc_topology(){
         let r=process(r#"{"operation":"compose_intersecting_blind",
