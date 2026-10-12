@@ -137,6 +137,25 @@ No source `Solid` or previously constructed B-rep is mutated by the
 builder. The common `geometry_query` API can inspect committed
 `BrepModel` instances, including exact curved topology and face sense.
 
+## Common kernel ownership and material classification
+
+`BrepBody::IntersectingBlind(IntersectingBlindBrep)` implements the normal
+`BrepSource` contract for canonical analytical queries and derived
+viewport meshing. The three-way `BooleanRegionClassifier` distinguishes
+material from the union of the two missing disk columns, the common
+floor plane, both visible cylindrical walls, the top opening, and the
+unchanged box envelope. Intersections hidden within the *other* removed
+disk are **not** misidentified as exterior cylinder faces.
+
+`BrepArena::from_intersecting_blind` creates a sparse
+owner-generational topology registry for these nine faces and the
+split crossing edges. `update_intersecting_blind([params_a,params_b])`
+isolates the entire reassembly, commits valid candidates together with
+identity registry reconciliation and preserves semantic handles for
+surviving face/edge owners. Failed topology transitions leave the
+source arena, revisions and handles unchanged. Arena Undo/Redo and
+`BrepCarrierEditor::from_body` support this shape as well.
+
 ## Display representation
 
 `IntersectingBlindBrep::tessellate(segments_per_arc)` constructs a
@@ -182,6 +201,15 @@ The specialized `geometry.v1` operation:
 }
 ```
 
+An optional `display_segments` integer (12–512 **per exposed arc**)
+requests the certified closed display mesh through the normal `solid`
+vertices/triangles/`triangle_face_ids` contract. The
+`data.display_quality` certificate distinguishes faceted and exact
+analytical mass. When `display_segments` is omitted, no mesh is
+computed or returned, and the old stateless response remains a canonical
+analytic topology result. Invalid resolutions and failed display
+certificates return no partial `data` or `solid` payload.
+
 The result exposes source-validated crossing coordinates, the two arc
 domains and source cutter indices, shared vertical crossing edge IDs,
 single top and floor face IDs, exact mass/centroid, genus and topology,
@@ -198,8 +226,10 @@ multi-shell Boolean operators yet.
 First-party `tests/intersecting_blind.rs` pins exact Euler/incidence,
 true split `Curve3` arcs, shared cylinder-crossing edge positions,
 equal and unequal circle radii, rotated center lines, source permutation,
-explicit tangency/containment/differing-depth refusal, lens-area oracle,
-box-relative centroid, canonical querying and strong-atomic edit/Undo.
+explicit tangency/containment/differing-depth refusal, lens-area oracle, independent Simpson-integration control for unequal
+rotated circle unions, box-relative centroid, three-way void membership,
+Arena generational naming/Undo, canonical querying and strong-atomic
+edit/Undo.
 `tests/intersecting_blind_mesh.rs` separately tests manifold display
 closure, nonconvex floor geometry, 12/48/192 sampling convergence,
 material triangle lineage, meshing after committed edits and moderate
