@@ -76,6 +76,8 @@ pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionSta
 pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
 pub use blind_hole::{BlindHoleBrep,BlindHoleParameters,BlindHoleTransaction,BlindHoleDisplay};
 pub use composite_blind::CompositeBlindBrep;
+pub use intersecting_blind::{IntersectingBlindBrep,IntersectingBlindTransaction,
+    CrossedDiskRegion,ExposedCircularArc};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
     CarrierHandle, CarrierHandleError, CarrierId, CarrierBinding, CarrierSnapshot,
     CarrierCommit, CarrierTransition};
