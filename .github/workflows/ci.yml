@@ -121,6 +121,20 @@ jobs:
           printf '%s' '{"operation":"compose_blind","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"holes":[{"center":[-1,0],"radius":1,"depth":1},{"center":[0,0],"radius":1,"depth":2}]}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
+      - name: Real crossing-arc Boolean B-rep and atomic region reassembly contracts
+        run: cargo test --test intersecting_blind
+      - name: Crossing-cylinder region and watertight display mesh mathematical contracts
+        run: cargo test --test intersecting_blind_mesh
+      - name: Source-bound overlapping blind Boolean geometry.v1 and fail-closed regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"compose_intersecting_blind","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"holes":[{"center":[-0.7,0],"radius":1,"depth":2},{"center":[0.7,0],"radius":1,"depth":2}],"display_segments":48}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,math,sys; r=json.load(sys.stdin); d=r["data"]; s=r["solid"]; q=d["display_quality"]; assert r["ok"] and d["topology_committed"] and d["topology"]["faces"]==9 and d["topology"]["edges"]==18 and d["topology"]["genus"]==0 and d["topology"]["inner_loops"]==1 and d["region"]["state"]=="certified_transverse_crossing" and d["region"]["shared_vertical_edges"]==[16,17] and len(d["region"]["arc_sources"])==2 and d["display_mesh_included"] and q["closed_oriented_manifold_certified"] and q["segments_per_arc"]==48 and len(s["faces"])==396 and len(s["triangle_face_ids"])==396 and abs(s["mass"]["volume"]-(144-2*d["region"]["disk_union_area"]))<1e-9, r'
+          printf '%s' '{"operation":"compose_intersecting_blind","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"holes":[{"center":[-0.7,0],"radius":1,"depth":2},{"center":[1.3,0],"radius":1,"depth":2}]}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
       - name: Check release compilation
         run: cargo check --release --all-targets
       - name: JSON CLI smoke test

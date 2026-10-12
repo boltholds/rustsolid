@@ -14,7 +14,8 @@
 use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
     BrepCarrierEditor, BrepStructuralEditor,
-    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, HistoryDirection,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
+    IntersectingBlindBrep, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
@@ -179,16 +180,19 @@ enum ArenaKernel {
     CurvedReadOnly(CylindricalBrep),
     AnalyticHole(ThroughHoleBrep),
     AnalyticBlind(BlindHoleBrep),
+    AnalyticCrossing(IntersectingBlindBrep),
 }
 impl ArenaKernel {
     fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0,
-        Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision()}}
+        Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision(),
+        Self::AnalyticCrossing(h)=>h.revision()}}
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         match self {
             Self::Editable(h)=>BrepModel::from_polyhedral(h.solid(),ModelUnits::default()),
             Self::CurvedReadOnly(body)=>BrepModel::from_cylinder(body),
             Self::AnalyticHole(body)=>Ok(body.model().clone()),
             Self::AnalyticBlind(body)=>Ok(body.model().clone()),
+            Self::AnalyticCrossing(body)=>Ok(body.model().clone()),
         }
     }
     fn named(&self)->Result<Vec<(TopologyEntity,TopologyName)>,GeometryError>{
@@ -206,7 +210,8 @@ impl ArenaKernel {
             let name=match self {
                 Self::Editable(h)=>h.solid().topology_name(e)
                     .ok_or_else(||invalid(format!("missing semantic name for {e:?}")))?.clone(),
-                Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_)=>{
+                Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_) |
+                    Self::AnalyticCrossing(_)=>{
                     let (ty,idx)=match e {
                         TopologyEntity::Body=>("body",0),
                         TopologyEntity::Vertex(x)=>("vertex",x.0),
@@ -218,6 +223,7 @@ impl ArenaKernel {
                     };
                     let prefix=match self {Self::AnalyticHole(_)=>"analytic_through_hole",
                         Self::AnalyticBlind(_)=>"analytic_blind_hole",
+                        Self::AnalyticCrossing(_)=>"analytic_intersecting_blind_holes",
                         _=>"analytic_cylinder"};
                     TopologyName(format!("{prefix}/{ty}/{idx}"))
                 },
@@ -260,6 +266,9 @@ impl BrepArena {
             },
             BrepBody::BlindHole(body)=>{
                 body.validate()?;ArenaKernel::AnalyticBlind(body)
+            },
+            BrepBody::IntersectingBlind(body)=>{
+                body.validate()?;ArenaKernel::AnalyticCrossing(body)
             }
         };
         let mut registry=Registry::empty();
@@ -270,6 +279,9 @@ impl BrepArena {
     pub fn from_cylinder(body:CylindricalBrep)->Result<Self,GeometryError>{Self::new(BrepBody::Cylinder(body))}
     pub fn from_through_hole(body:ThroughHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::ThroughHole(body))}
     pub fn from_blind_hole(body:BlindHoleBrep)->Result<Self,GeometryError>{Self::new(BrepBody::BlindHole(body))}
+    pub fn from_intersecting_blind(body:IntersectingBlindBrep)->Result<Self,GeometryError>{
+        Self::new(BrepBody::IntersectingBlind(body))
+    }
     pub fn arena_token(&self)->u64{self.registry.token}
     pub fn revision(&self)->u64{self.storage.revision()}
     pub fn is_editable(&self)->bool{matches!(&self.storage,ArenaKernel::Editable(_))}
@@ -291,7 +303,8 @@ impl BrepArena {
                 BrepStructuralEditor::new(history.solid().clone()),
             ArenaKernel::AnalyticHole(hole)=>
                 BrepStructuralEditor::from_through_hole(hole),
-            ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_)=>
+            ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_) |
+                ArenaKernel::AnalyticCrossing(_)=>
                 Err(invalid("only box and full-height through-hole are supported structural sources")),
         }
     }
@@ -313,10 +326,12 @@ impl BrepArena {
     pub fn allocated_slots(&self)->usize{self.registry.slots.len()}
     pub fn undo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.undo_depth(),
         ArenaKernel::AnalyticHole(h)=>h.undo_depth(),
-        ArenaKernel::AnalyticBlind(h)=>h.undo_depth(),_=>0}}
+        ArenaKernel::AnalyticBlind(h)=>h.undo_depth(),
+        ArenaKernel::AnalyticCrossing(h)=>h.undo_depth(),_=>0}}
     pub fn redo_depth(&self)->usize{match &self.storage {ArenaKernel::Editable(h)=>h.redo_depth(),
         ArenaKernel::AnalyticHole(h)=>h.redo_depth(),
-        ArenaKernel::AnalyticBlind(h)=>h.redo_depth(),_=>0}}
+        ArenaKernel::AnalyticBlind(h)=>h.redo_depth(),
+        ArenaKernel::AnalyticCrossing(h)=>h.redo_depth(),_=>0}}
     pub fn validate(&self)->Result<(),GeometryError>{
         let named=self.storage.named()?;
         if named.len()!=self.live_slots(){return Err(invalid("arena live count mismatches B-rep"));}
@@ -382,6 +397,26 @@ impl BrepArena {
         let mut registry=self.registry.clone();
         registry.reconcile(&ArenaKernel::AnalyticBlind(candidate.clone()).named()?)?;
         self.storage=ArenaKernel::AnalyticBlind(candidate);
+        self.registry=registry;
+        debug_assert!(self.validate().is_ok());
+        Ok(revision)
+    }
+    /// Rebuild an intersecting-circle analytic B-rep and reconcile its
+    /// generational topology registry before publishing either object.
+    pub fn update_intersecting_blind(&mut self,
+        params:[crate::BlindHoleParameters;2])->Result<u64,GeometryError>
+    {
+        let ArenaKernel::AnalyticCrossing(current)=&self.storage else{
+            return Err(invalid("arena does not own a crossed-blind analytic feature"));
+        };
+        let mut candidate=current.clone();
+        let mut tx=candidate.begin_edit();
+        tx.replace(0,params[0])?;
+        tx.replace(1,params[1])?;
+        let revision=tx.commit()?;
+        let mut registry=self.registry.clone();
+        registry.reconcile(&ArenaKernel::AnalyticCrossing(candidate.clone()).named()?)?;
+        self.storage=ArenaKernel::AnalyticCrossing(candidate);
         self.registry=registry;
         debug_assert!(self.validate().is_ok());
         Ok(revision)
@@ -466,6 +501,22 @@ impl BrepArena {
     pub fn undo(&mut self)->Result<Option<HistoryTransition>,GeometryError>{self.transition(false)}
     pub fn redo(&mut self)->Result<Option<HistoryTransition>,GeometryError>{self.transition(true)}
     fn transition(&mut self,redo:bool)->Result<Option<HistoryTransition>,GeometryError>{
+        if let ArenaKernel::AnalyticCrossing(current)=&self.storage {
+            let mut candidate=current.clone();
+            let before=candidate.revision();
+            let changed=if redo {candidate.redo()?}else{candidate.undo()?};
+            if !changed{return Ok(None);}
+            let after=candidate.revision();
+            let mut registry=self.registry.clone();
+            registry.reconcile(&ArenaKernel::AnalyticCrossing(candidate.clone()).named()?)?;
+            self.storage=ArenaKernel::AnalyticCrossing(candidate);
+            self.registry=registry;
+            debug_assert!(self.validate().is_ok());
+            return Ok(Some(HistoryTransition{
+                direction:if redo{HistoryDirection::Redo}else{HistoryDirection::Undo},
+                revision_before:before,revision_after:after,command_count:1
+            }));
+        }
         if let ArenaKernel::AnalyticBlind(current)=&self.storage {
             let mut candidate=current.clone();
             let before=candidate.revision();
