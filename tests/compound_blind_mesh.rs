@@ -43,7 +43,7 @@ fn mixed_pair_and_single_has_two_closed_display_floors_and_one_top_face(){
     assert_eq!(d.floor_regions[1].floor_triangles,46);
     assert_eq!(d.top_face_triangles,150);
     assert_eq!(d.mesh.vertices.len(),8+6*48);
-    assert_eq!(d.mesh.triangles.len(),12*48+10);
+    assert_eq!(d.mesh.triangles.len(),12*48+12);
     assert_eq!(d.mesh.triangle_faces.iter().filter(|f|f.0==8).count(),94);
     assert_eq!(d.mesh.triangle_faces.iter().filter(|f|f.0==10).count(),46);
     assert_eq!(d.mesh.triangle_faces.iter().filter(|f|f.0==1).count(),150);
@@ -60,7 +60,7 @@ fn two_crossing_pairs_are_closed_with_two_independent_compound_floors(){
     assert_eq!(display.top_face_loop_count,3);
     assert_eq!(display.top_face_triangles,198);
     assert_eq!(display.mesh.vertices.len(),8+8*48);
-    assert_eq!(display.mesh.triangles.len(),16*48+10);
+    assert_eq!(display.mesh.triangles.len(),16*48+12);
     assert!(display.floor_regions.iter().all(|f|f.loop_vertices==96));
     assert!(display.faceting_volume_error>0.);
 }
