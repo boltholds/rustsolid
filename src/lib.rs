@@ -35,6 +35,8 @@ mod composite_blind;
 mod intersecting_blind;
 mod intersecting_blind_mesh;
 mod compound_blind;
+mod mixed_regions;
+mod mixed_regions_mesh;
 mod compound_blind_mesh;
 mod carrier_editor;
 mod multi_through_hole;
