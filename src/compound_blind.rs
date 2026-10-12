@@ -132,7 +132,7 @@ impl BlindRegionComposer {
         Ok((model,components))
     }
 }
-fn plan_groups(source:&Solid,holes:&[BlindHoleParameters])
+pub(crate) fn plan_groups(source:&Solid,holes:&[BlindHoleParameters])
     ->Result<Vec<Vec<usize>>,GeometryError>
 {
     if holes.is_empty()||holes.len()>16 {
@@ -194,7 +194,7 @@ fn plan_groups(source:&Solid,holes:&[BlindHoleParameters])
     }
     Ok(groups)
 }
-fn graft_region(model:&mut BrepModel,donor:&BrepModel,
+pub(crate) fn graft_region(model:&mut BrepModel,donor:&BrepModel,
     source_indices:&[usize],kind:BlindRegionKind,
     area:f64,perimeter:f64,depth:f64
 )->Result<BlindRegionComponent,GeometryError>

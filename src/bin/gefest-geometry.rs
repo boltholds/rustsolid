@@ -15,6 +15,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     IntersectionGraphBuilder, GraphState, GraphNodeKind, GraphOperand, TrimPosition,
     TopologyDeltaPlanner, PlanState, PlanArcRole, PlanFaceEffect,
     PlanRequirement, PlanVertexPlacement, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
+mod mixed_regions_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -47,6 +48,12 @@ enum GeometryRequest {
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<IntersectingBlindEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
+    ComposeMixedRegions {source:SolidSource,
+        through:Vec<mixed_regions_cli::ThroughHoleInput>,
+        blind:Vec<BlindHoleInput>,
+        #[serde(default)] batches:Vec<Vec<mixed_regions_cli::MixedRegionEditInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
         #[serde(default)] display_segments:Option<usize>},
     ComposeBlindRegions {source:SolidSource,holes:Vec<BlindHoleInput>,
@@ -262,6 +269,11 @@ enum BrepInput {
         holes:Vec<BlindHoleInput>,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticMixedRegions {origin:[f64;3],width:f64,height:f64,depth:f64,
+        through:Vec<mixed_regions_cli::ThroughHoleInput>,
+        blind:Vec<BlindHoleInput>,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -305,6 +317,22 @@ impl BrepInput {
                         center_x:h.center[0],center_z:h.center[1],
                         radius:h.radius,depth:h.depth
                     }).collect())?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticMixedRegions{origin,width,height,depth,through,blind,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let params=rustsolid::MixedThroughBlindParameters{
+                    through:through.into_iter().map(|p|HoleParameters{
+                        center_x:p.center[0],center_z:p.center[1],radius:p.radius
+                    }).collect(),
+                    blind:blind.into_iter().map(|p|BlindHoleParameters{
+                        center_x:p.center[0],center_z:p.center[1],
+                        radius:p.radius,depth:p.depth
+                    }).collect(),
+                };
+                let body=rustsolid::MixedThroughBlindBrep::from_box(&block,params)?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
@@ -353,6 +381,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
+                BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1349,6 +1378,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
+                BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -2019,6 +2049,10 @@ fn process(input: &str) -> Response {
             source,holes,batches,undo,redo,display_segments,
         })=>return evaluate_compound_blind_regions(
             source,holes,batches,undo,redo,display_segments),
+        Ok(GeometryRequest::ComposeMixedRegions{
+            source,through,blind,batches,undo,redo,display_segments,
+        })=>return mixed_regions_cli::evaluate(
+            source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
@@ -2960,6 +2994,100 @@ mod tests {
         assert_eq!(d["components"][1]["floor_face_id"],10);
         assert_eq!(d["display_mesh_available"],true);
         assert_eq!(d["display_mesh_included"],false);
+    }
+
+    #[test]
+    fn json_mixed_through_blind_analytic_topology_and_mass_have_true_genus_one(){
+        let r=process(r#"{"operation":"compose_mixed_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "through":[{"center":[-1.7,0],"radius":0.5}],
+            "blind":[{"center":[1.5,0],"radius":0.75,"depth":2}]}"#);
+        assert!(r.ok,"{:?}",r.error);
+        assert!(r.solid.is_none());
+        let d=r.data.unwrap();
+        assert_eq!(d["kind"],"mixed_through_blind_regions");
+        assert_eq!(d["representation"],"analytic_mixed_through_blind_regions");
+        assert_eq!(d["topology_committed"],true);
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["topology"]["euler_characteristic"],0);
+        assert_eq!(d["topology"]["faces"],9);
+        assert_eq!(d["topology"]["inner_loops"],3);
+        assert_eq!(d["blind_regions"][0]["kind"],"single_circle");
+        assert_eq!(d["blind_regions"][0]["floor_face_id"],8);
+        assert_eq!(d["display_mesh_included"],false);
+        assert!((d["mass"]["volume"].as_f64().unwrap()-
+            (144.-std::f64::consts::PI*0.25*4.-
+                std::f64::consts::PI*0.75*0.75*2.)).abs()<1e-9);
+    }
+    #[test]
+    fn json_mixed_analytic_optional_display_reuses_top_bottom_trim_boundaries(){
+        let r=process(r#"{"operation":"compose_mixed_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "through":[{"center":[-1.7,0],"radius":0.5}],
+            "blind":[{"center":[1.5,0],"radius":0.75,"depth":2}],
+            "display_segments":48}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        let solid=r.solid.unwrap();
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["display_mesh_included"],true);
+        assert_eq!(d["display_quality"]["top_face_loop_count"],3);
+        assert_eq!(d["display_quality"]["bottom_face_loop_count"],2);
+        assert_eq!(d["display_quality"]["closed_oriented_manifold_certified"],true);
+        assert!(d["display_quality"]["faceting_volume_error"].as_f64().unwrap()>0.);
+        assert_eq!(d["display_quality"]["floor_regions"].as_array().unwrap().len(),1);
+        assert_eq!(solid.vertices.len(),8+4*48);
+        assert_eq!(solid.faces.len(),8*48+16);
+        assert_eq!(solid.faces.len(),solid.triangle_face_ids.len());
+        assert_eq!(solid.topology.euler_characteristic,0);
+        assert_eq!(solid.analytic_brep.as_ref().unwrap()["mesh_is_display_only"],true);
+    }
+    #[test]
+    fn json_mixed_crossing_component_and_undo_redo_preserve_real_genus(){
+        let r=process(r#"{"operation":"compose_mixed_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "through":[{"center":[-1.8,0],"radius":0.4}],
+            "blind":[{"center":[1.1,0],"radius":0.5,"depth":1.8},
+                     {"center":[2,0],"radius":0.5,"depth":1.8}],
+            "batches":[[
+                {"kind":"replace_through","index":0,
+                 "center":[-1.85,0.1],"radius":0.38},
+                {"kind":"replace_blind","index":0,
+                 "center":[1.05,0],"radius":0.5,"depth":1.8}
+            ]],"undo":1,"redo":1}"#);
+        assert!(r.ok,"{:?}",r.error);
+        let d=r.data.unwrap();
+        assert_eq!(d["through_count"],1);
+        assert_eq!(d["blind_count"],2);
+        assert_eq!(d["blind_regions"][0]["kind"],"two_crossing_circles");
+        assert_eq!(d["topology"]["genus"],1);
+        assert_eq!(d["topology"]["euler_characteristic"],0);
+        assert_eq!(d["revision"],3);
+        assert_eq!(d["commits"][0]["command_count"],2);
+        assert_eq!(d["transitions"].as_array().unwrap().len(),2);
+    }
+    #[test]
+    fn json_mixed_cross_family_contact_and_failed_display_never_return_partial_body(){
+        let overlap=r#"{"operation":"compose_mixed_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "through":[{"center":[-1.7,0],"radius":0.6}],
+            "blind":[{"center":[-1.4,0],"radius":0.6,"depth":1.5}]}"#;
+        let badmesh=r#"{"operation":"compose_mixed_regions",
+            "source":{"kind":"block","origin":[-3,-1,-3],
+                "width":6,"height":4,"depth":6},
+            "through":[{"center":[-1.7,0],"radius":0.5}],
+            "blind":[{"center":[1.5,0],"radius":0.75,"depth":2}],
+            "display_segments":8}"#;
+        for q in [overlap,badmesh] {
+            let r=process(q);
+            assert!(!r.ok);
+            assert!(r.solid.is_none());
+            assert!(r.data.is_none());
+        }
     }
     #[test]
     fn json_compound_blind_display_is_derived_and_closed(){

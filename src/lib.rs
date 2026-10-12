@@ -35,6 +35,8 @@ mod composite_blind;
 mod intersecting_blind;
 mod intersecting_blind_mesh;
 mod compound_blind;
+mod mixed_regions;
+mod mixed_regions_mesh;
 mod compound_blind_mesh;
 mod carrier_editor;
 mod multi_through_hole;
@@ -84,6 +86,9 @@ pub use intersecting_blind::{IntersectingBlindBrep,IntersectingBlindTransaction,
 pub use intersecting_blind_mesh::{CrossedBlindMesher,CrossedBlindDisplay};
 pub use compound_blind::{BlindRegionComposer,BlindRegionComponent,BlindRegionKind,
     CompoundBlindBrep,CompoundBlindTransaction};
+pub use mixed_regions::{MixedRegionComposer,MixedThroughBlindParameters,
+    MixedThroughBlindBrep,MixedThroughBlindTransaction};
+pub use mixed_regions_mesh::{MixedHoleMesher,MixedHoleDisplay,MixedHoleFloorRegion};
 pub use compound_blind_mesh::{CompoundBlindMesher,CompoundBlindDisplay,
     CompoundFloorRegion};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
