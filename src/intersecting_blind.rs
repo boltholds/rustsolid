@@ -243,6 +243,15 @@ impl IntersectingBlindBrep {
     }
     pub fn parameters(&self)->[BlindHoleParameters;2]{self.parameters}
     pub fn model(&self)->&BrepModel{&self.model}
+    pub(crate) fn source_box(&self)->&Solid{&self.source}
+    /// Independent, fully certified viewport tessellation. The source
+    /// analytical circles/UV trims and mathematical mass never mutate.
+    pub fn tessellate(&self,segments_per_arc:usize)
+        ->Result<crate::CrossedBlindDisplay,GeometryError>
+    {
+        crate::CrossedBlindMesher::tessellate(self,segments_per_arc)
+    }
+
     pub fn region(&self)->&CrossedDiskRegion{&self.region}
     pub fn revision(&self)->u64{self.revision}
     pub fn undo_depth(&self)->usize{self.undo.len()}
