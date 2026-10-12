@@ -1598,7 +1598,19 @@ fn evaluate_intersecting_blind(source:SolidSource,
             "face_sources":{
                 "box_face_ids":[0,1,2,3,4,5],
                 "cutter_side_face_ids":[6,7],
-                "combined_floor_face_id":8
+                "cylinder_sides":[
+                    {"result_face_id":6,"cutter_index":0,
+                     "source_face_id":2,"reversed":true},
+                    {"result_face_id":7,"cutter_index":1,
+                     "source_face_id":2,"reversed":true}
+                ],
+                "combined_floor_face_id":8,
+                "combined_floor_sources":[
+                    {"cutter_index":0,"source_cap_face_id":0,
+                     "reversed":true},
+                    {"cutter_index":1,"source_cap_face_id":0,
+                     "reversed":true}
+                ]
             },
             "revision":body.revision(),
             "undo_depth":body.undo_depth(),
