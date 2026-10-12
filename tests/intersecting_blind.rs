@@ -220,3 +220,78 @@ fn translation_keeps_local_disk_mass_and_relative_centroid_consistent(){
     eq(s.model().mass.centroid.z+d,shape2.model().mass.centroid.z,1e-8);
     eq(b.mass.volume,translated.mass.volume,1e-9);
 }
+
+#[test]
+fn common_brep_body_and_region_membership_cover_union_void_and_crossed_floor(){
+    use rustsolid::{BrepBody,BooleanRegionClassifier,VolumePosition};
+    let body=BrepBody::from(shape());
+    body.validate().unwrap();
+    let model=body.shared().unwrap();
+    assert_eq!(model.summary().faces,9);
+    let mesh=body.tessellate(32).unwrap();
+    assert!(!mesh.triangles.is_empty());
+    for (point,expected) in [
+        (p(-0.7,2.,0.),VolumePosition::Outside),
+        (p(0.7,2.,0.),VolumePosition::Outside),
+        (p(0.,2.,0.),VolumePosition::Outside),
+        (p(0.,1.,0.),VolumePosition::Boundary),
+        (p(0.,0.5,0.),VolumePosition::Inside),
+        (p(-1.7,2.,0.),VolumePosition::Boundary),
+        (p(2.5,2.,0.),VolumePosition::Inside),
+        (p(0.,3.,0.),VolumePosition::Outside),
+        (p(0.,-1.,0.),VolumePosition::Boundary),
+        (p(4.,0.,0.),VolumePosition::Outside),
+    ] {
+        assert_eq!(BooleanRegionClassifier::classify_point(&body,point).unwrap(),
+            expected,"incorrect union-bore material at {point:?}");
+    }
+}
+#[test]
+fn arena_reassembles_crossing_cylinders_without_losing_semantic_handles(){
+    use rustsolid::{BrepArena,TopologyEntity};
+    let mut arena=BrepArena::from_intersecting_blind(shape()).unwrap();
+    let snapshot=arena.snapshot().unwrap();
+    let floor=arena.handle(TopologyEntity::Face(FaceId(8))).unwrap();
+    let side=arena.handle(TopologyEntity::Face(FaceId(6))).unwrap();
+    let initial=arena.model().unwrap().mass.volume;
+    let next=[
+        hole(-0.8,0.,1.1,2.5),
+        hole(0.7,0.,0.95,2.5),
+    ];
+    assert_eq!(arena.update_intersecting_blind(next).unwrap(),1);
+    arena.validate().unwrap();
+    assert!(arena.check_snapshot(&snapshot).is_err());
+    assert_eq!(arena.handle(TopologyEntity::Face(FaceId(8))),Some(floor));
+    assert_eq!(arena.handle(TopologyEntity::Face(FaceId(6))),Some(side));
+    assert_eq!(arena.undo_depth(),1);
+    assert_ne!(arena.model().unwrap().mass.volume,initial);
+    assert!(arena.update_intersecting_blind([
+        hole(-0.8,0.,1.1,2.5),
+        hole(0.7,0.,0.95,2.4),
+    ]).is_err());
+    assert_eq!(arena.revision(),1);
+    assert!(arena.undo().unwrap().is_some());
+    eq(arena.model().unwrap().mass.volume,initial,1e-9);
+    assert!(arena.redo().unwrap().is_some());
+    assert_eq!(arena.revision(),3);
+    assert_eq!(arena.handle(TopologyEntity::Face(FaceId(8))),Some(floor));
+    arena.validate().unwrap();
+}
+#[test]
+fn detached_analytic_carrier_editor_preserves_crossed_uv_trim_provenance(){
+    use rustsolid::{BrepBody,BrepCarrierEditor,CarrierOwner,CoedgeId};
+    let input=BrepBody::from(shape());
+    let mut editor=BrepCarrierEditor::from_body(&input).unwrap();
+    let model=editor.model().clone();
+    let curve=editor.handle(CarrierOwner::Edge(EdgeId(13))).unwrap();
+    let side=editor.handle(CarrierOwner::Face(FaceId(6))).unwrap();
+    let mut tx=editor.begin_transaction();
+    tx.reparameterize_edge(curve,1.0,0.3).unwrap();
+    tx.rebase_face_uv(side,0.0,0.15).unwrap();
+    tx.commit().unwrap();
+    editor.validate().unwrap();
+    eq(editor.model().mass.volume,model.mass.volume,1e-9);
+    assert_eq!(editor.model().coedges[33].twin,CoedgeId(32));
+    assert_eq!(editor.model().face_sense(FaceId(6)),
+        Some(rustsolid::FaceSense::Reversed));
+}
