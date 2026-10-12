@@ -1486,6 +1486,155 @@ struct BlindHoleInput{center:[f64;2],radius:f64,depth:f64}
 enum IntersectingBlindEditInput {
     Replace{index:usize,center:[f64;2],radius:f64,depth:f64}
 }
+
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum CompoundBlindEditInput{
+    Replace{index:usize,center:[f64;2],radius:f64,depth:f64}
+}
+fn evaluate_compound_blind_regions(
+    source:SolidSource,holes:Vec<BlindHoleInput>,
+    batches:Vec<Vec<CompoundBlindEditInput>>,
+    undo:usize,redo:usize,display_segments:Option<usize>,
+)->Response{
+    let result=(||->Result<(Value,Option<SolidResponse>),GeometryError>{
+        if holes.len()>16||batches.len()>64||undo>64||redo>64{
+            return Err(GeometryError::InvalidEdit(
+                "compound blind request exceeds 16 holes or 64 batch/history steps".into()));
+        }
+        let params=holes.into_iter().map(|h|BlindHoleParameters{
+            center_x:h.center[0],center_z:h.center[1],
+            radius:h.radius,depth:h.depth
+        }).collect();
+        let mut body=CompoundBlindBrep::from_box(&source.build()?,params)?;
+        let mut commits=Vec::new();
+        for batch in batches{
+            if batch.is_empty()||batch.len()>256{
+                return Err(GeometryError::InvalidEdit(
+                    "compound blind edit batch requires 1..=256 replacement commands".into()));
+            }
+            let count=batch.len();
+            let mut tx=body.begin_edit();
+            for edit in batch{
+                match edit{
+                    CompoundBlindEditInput::Replace{index,center,radius,depth}=>{
+                        tx.replace(index,BlindHoleParameters{
+                            center_x:center[0],center_z:center[1],radius,depth})?;
+                    }
+                }
+            }
+            let revision=tx.commit()?;
+            commits.push(json!({"revision":revision,"command_count":count}));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            if !body.undo()? {
+                return Err(GeometryError::InvalidEdit(
+                    "compound Undo exceeds stored history".into()));
+            }
+            transitions.push(json!({"kind":"undo","revision":body.revision()}));
+        }
+        for _ in 0..redo {
+            if !body.redo()? {
+                return Err(GeometryError::InvalidEdit(
+                    "compound Redo exceeds stored history".into()));
+            }
+            transitions.push(json!({"kind":"redo","revision":body.revision()}));
+        }
+        body.validate()?;
+        let display=display_segments.map(|n|body.tessellate(n)).transpose()?;
+        let m=body.model();let t=m.summary();
+        let components=body.components().iter().enumerate().map(|(index,c)|json!({
+            "index":index,
+            "kind":match c.kind{
+                rustsolid::BlindRegionKind::SingleCircle=>"single_circle",
+                rustsolid::BlindRegionKind::TwoCrossingCircles=>"two_crossing_circles"
+            },
+            "source_indices":c.source_indices,
+            "opening_loop_id":c.opening_loop.0,
+            "floor_face_id":c.floor_face.0,
+            "cylindrical_face_ids":c.cylinder_faces.iter().map(|f|f.0).collect::<Vec<_>>(),
+            "first_edge_id":c.first_edge.0,
+            "region_area":c.region_area,
+            "exposed_perimeter":c.exposed_perimeter,
+            "depth":c.depth
+        })).collect::<Vec<_>>();
+        let quality=display.as_ref().map(|d|json!({
+            "segments_per_circle":d.segments_per_circle,
+            "top_face_triangles":d.top_face_triangles,
+            "top_face_loop_count":d.top_face_loop_count,
+            "floor_regions":d.floor_regions.iter().map(|f|json!({
+                "component_index":f.component_index,
+                "floor_face_id":f.floor_face.0,
+                "loop_vertices":f.loop_vertices,
+                "floor_triangles":f.floor_triangles,
+                "polygonal_area":f.polygonal_area,
+                "polygonal_perimeter":f.polygonal_perimeter
+            })).collect::<Vec<_>>(),
+            "faceted_volume":d.faceted_volume,
+            "faceted_surface_area":d.faceted_surface_area,
+            "analytic_volume":d.analytic_volume,
+            "volume_faceting_error":d.faceting_volume_error,
+            "closed_oriented_manifold_certified":true
+        }));
+        let solid=display.map(|d|SolidResponse{
+            vertices:d.mesh.vertices.iter().map(|p|p.array()).collect(),
+            faces:d.mesh.triangles,
+            triangle_face_ids:d.mesh.triangle_faces.iter().map(|f|f.0).collect(),
+            topology:Topology{vertices:t.vertices,edges:t.edges,
+                coedges:t.coedges,loops:t.loops,faces:t.faces,
+                shells:t.shells,euler_characteristic:t.euler_characteristic},
+            mass:Mass{volume:m.mass.volume,surface_area:m.mass.surface_area,
+                centroid:m.mass.centroid.array()},
+            bbox:[m.bbox.min.array(),m.bbox.max.array()],
+            edit_report:None,history:None,
+            analytic_brep:Some(json!({
+                "kind":"analytic_compound_blind_regions",
+                "exact_analytical_carriers":true,
+                "genus":t.genus,
+                "inner_loops":body.components().len(),
+                "cylindrical_faces":t.cylindrical_faces,
+                "circular_edges":t.circular_edges,
+                "display_mesh_is_not_boundary_definition":true
+            })),
+            brep:None,
+        });
+        let data=json!({
+            "kind":"compound_blind_boolean",
+            "representation":"analytic_compound_blind_regions",
+            "state":"committed","topology_committed":true,
+            "topology":{"vertices":t.vertices,"edges":t.edges,
+                "coedges":t.coedges,"loops":t.loops,"faces":t.faces,
+                "shells":t.shells,"genus":t.genus,
+                "euler_characteristic":t.euler_characteristic,
+                "inner_loops":m.loops.iter().filter(|l|
+                    l.role==rustsolid::LoopRole::Inner).count(),
+                "cylindrical_faces":t.cylindrical_faces,
+                "circular_edges":t.circular_edges},
+            "hole_count":body.holes().len(),
+            "component_count":body.components().len(),
+            "components":components,
+            "mass":{"volume":m.mass.volume,
+                "surface_area":m.mass.surface_area,
+                "centroid":m.mass.centroid.array()},
+            "revision":body.revision(),"undo_depth":body.undo_depth(),
+            "redo_depth":body.redo_depth(),
+            "commits":commits,"transitions":transitions,
+            "display_mesh_available":true,
+            "display_mesh_included":solid.is_some(),
+            "display_quality":quality,
+            "generalized_topology_delta_can_apply":false
+        });
+        Ok((data,solid))
+    })();
+    match result{
+        Ok((data,solid))=>Response{schema_version:"geometry.v1",
+            ok:true,solid,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",
+            ok:false,solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn evaluate_intersecting_blind(source:SolidSource,
     holes:Vec<BlindHoleInput>,
     batches:Vec<Vec<IntersectingBlindEditInput>>,undo:usize,redo:usize,
@@ -1865,6 +2014,10 @@ fn process(input: &str) -> Response {
         Ok(GeometryRequest::ComposeIntersectingBlind{
             source,holes,batches,undo,redo,display_segments,
         })=>return evaluate_intersecting_blind(
+            source,holes,batches,undo,redo,display_segments),
+        Ok(GeometryRequest::ComposeBlindRegions{
+            source,holes,batches,undo,redo,display_segments,
+        })=>return evaluate_compound_blind_regions(
             source,holes,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
