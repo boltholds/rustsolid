@@ -31,6 +31,8 @@ fn position_eps(body:&BrepBody)->f64{
             length(h.model().bbox.max.sub(h.model().bbox.min))),
         BrepBody::BlindHole(h)=>(h.model().tolerance,
             length(h.model().bbox.max.sub(h.model().bbox.min))),
+        BrepBody::IntersectingBlind(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
@@ -74,6 +76,41 @@ impl BooleanRegionClassifier {
                       (point.y-lower.y).abs(),(point.y-upper.y).abs(),
                       (point.z-lower.z).abs(),(point.z-upper.z).abs()]
                         .iter().any(|d|*d<=eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
+            BrepBody::IntersectingBlind(h)=>{
+                let b=h.model().bbox;
+                let parameters=h.parameters();
+                if point.x<b.min.x-eps||point.x>b.max.x+eps||
+                   point.y<b.min.y-eps||point.y>b.max.y+eps||
+                   point.z<b.min.z-eps||point.z>b.max.z+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                let floor=b.max.y-h.region().cut_depth;
+                let [a,c]=parameters;
+                let d1=(point.x-a.center_x).hypot(point.z-a.center_z);
+                let d2=(point.x-c.center_x).hypot(point.z-c.center_z);
+                if point.y>floor+eps {
+                    // The union of both disk interiors is the missing
+                    // material; a crossing buried inside the opposite
+                    // cylinder is never an exterior shell boundary.
+                    if d1<a.radius-eps || d2<c.radius-eps {
+                        return Ok(VolumePosition::Outside);
+                    }
+                    if (d1-a.radius).abs()<=eps || (d2-c.radius).abs()<=eps {
+                        return Ok(VolumePosition::Boundary);
+                    }
+                }
+                if (point.y-floor).abs()<=eps &&
+                   (d1<=a.radius+eps||d2<=c.radius+eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                if [(point.x-b.min.x).abs(),(point.x-b.max.x).abs(),
+                    (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
+                    (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
+                    .iter().any(|x|*x<=eps) {
                     return Ok(VolumePosition::Boundary);
                 }
                 Ok(VolumePosition::Inside)
@@ -255,7 +292,8 @@ impl BooleanRegionClassifier {
 fn body_tolerance(body:&BrepBody)->GeometryTolerance{
     match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance,
         BrepBody::ThroughHole(h)=>h.model().tolerance,
-        BrepBody::BlindHole(h)=>h.model().tolerance}
+        BrepBody::BlindHole(h)=>h.model().tolerance,
+        BrepBody::IntersectingBlind(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {
