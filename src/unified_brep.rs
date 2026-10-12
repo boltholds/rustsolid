@@ -174,6 +174,7 @@ impl BrepBody {
             Self::ThroughHole(body) => body,
             Self::BlindHole(body) => body,
             Self::IntersectingBlind(body)=>body,
+            Self::CompoundBlind(body)=>body,
         }
     }
 }
