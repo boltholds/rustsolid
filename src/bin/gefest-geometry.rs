@@ -2993,7 +2993,7 @@ mod tests {
         assert_eq!(d["topology"]["faces"],9);
         assert_eq!(d["topology"]["inner_loops"],3);
         assert_eq!(d["blind_regions"][0]["kind"],"single_circle");
-        assert_eq!(d["blind_regions"][0]["floor_face_id"],7);
+        assert_eq!(d["blind_regions"][0]["floor_face_id"],8);
         assert_eq!(d["display_mesh_included"],false);
         assert!((d["mass"]["volume"].as_f64().unwrap()-
             (144.-std::f64::consts::PI*0.25*4.-
