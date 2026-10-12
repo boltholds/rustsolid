@@ -130,6 +130,7 @@ pub enum BrepBody {
     ThroughHole(ThroughHoleBrep),
     BlindHole(BlindHoleBrep),
     IntersectingBlind(IntersectingBlindBrep),
+    CompoundBlind(CompoundBlindBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
