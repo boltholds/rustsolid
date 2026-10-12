@@ -47,7 +47,8 @@ enum GeometryRequest {
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<IntersectingBlindEditInput>>,
-        #[serde(default)] undo:usize,#[serde(default)] redo:usize},
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
@@ -1466,9 +1467,10 @@ enum IntersectingBlindEditInput {
 }
 fn evaluate_intersecting_blind(source:SolidSource,
     holes:Vec<BlindHoleInput>,
-    batches:Vec<Vec<IntersectingBlindEditInput>>,undo:usize,redo:usize
+    batches:Vec<Vec<IntersectingBlindEditInput>>,undo:usize,redo:usize,
+    display_segments:Option<usize>,
 )->Response {
-    let result=(||->Result<Value,GeometryError>{
+    let result=(||->Result<(Value,Option<SolidResponse>),GeometryError>{
         if holes.len()!=2 || batches.len()>64 || undo>64 || redo>64 {
             return Err(GeometryError::InvalidEdit(
                 "intersecting blind composition requires exactly two bores and <=64 edit/history steps".into()));
@@ -1513,8 +1515,48 @@ fn evaluate_intersecting_blind(source:SolidSource,
             transitions.push(json!({"kind":"redo","revision":body.revision()}));
         }
         body.validate()?;
+        let display=display_segments.map(|segments|body.tessellate(segments))
+            .transpose()?;
         let m=body.model();let stats=m.summary();let r=body.region();
-        Ok(json!({
+        let quality=display.as_ref().map(|mesh|json!({
+            "segments_per_arc":mesh.segments_per_arc,
+            "opening_triangles":mesh.opening_triangles,
+            "floor_triangles":mesh.floor_triangles,
+            "faceted_opening_area":mesh.faceted_opening_area,
+            "faceted_floor_area":mesh.faceted_floor_area,
+            "faceted_volume":mesh.faceted_volume,
+            "faceted_surface_area":mesh.faceted_surface_area,
+            "analytic_volume":mesh.analytic_volume,
+            "faceting_volume_error":mesh.faceting_volume_error,
+            "closed_oriented_manifold_certified":true
+        }));
+        let solid=display.map(|mesh|SolidResponse{
+            vertices:mesh.mesh.vertices.iter().map(|v|v.array()).collect(),
+            faces:mesh.mesh.triangles,
+            triangle_face_ids:mesh.mesh.triangle_faces.iter()
+                .map(|id|id.0).collect(),
+            topology:Topology{
+                vertices:stats.vertices,edges:stats.edges,
+                coedges:stats.coedges,loops:stats.loops,
+                faces:stats.faces,shells:stats.shells,
+                euler_characteristic:stats.euler_characteristic,
+            },
+            mass:Mass{volume:m.mass.volume,
+                surface_area:m.mass.surface_area,
+                centroid:m.mass.centroid.array()},
+            bbox:[m.bbox.min.array(),m.bbox.max.array()],
+            edit_report:None,history:None,
+            analytic_brep:Some(json!({
+                "kind":"analytic_intersecting_blind_holes",
+                "floor_face_id":8,
+                "material_sense_floor":"reversed",
+                "analytic_circular_edges":stats.circular_edges,
+                "analytic_cylindrical_faces":stats.cylindrical_faces,
+                "genus":stats.genus,"mesh_is_display_only":true
+            })),
+            brep:None,
+        });
+        let data=json!({
             "kind":"intersecting_blind_boolean",
             "representation":"analytic_intersecting_blind_holes",
             "state":"committed","topology_committed":true,
@@ -1562,13 +1604,16 @@ fn evaluate_intersecting_blind(source:SolidSource,
             "undo_depth":body.undo_depth(),
             "redo_depth":body.redo_depth(),
             "commits":commits,"transitions":transitions,
-            "display_mesh_included":false,
+            "display_mesh_included":solid.is_some(),
+            "display_mesh_available":true,
+            "display_quality":quality,
             "generalized_topology_delta_can_apply":false
-        }))
+        });
+        Ok((data,solid))
     })();
     match result {
-        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
-            solid:None,error:None,data:Some(data)},
+        Ok((data,solid))=>Response{schema_version:"geometry.v1",ok:true,
+            solid,error:None,data:Some(data)},
         Err(error)=>Response{schema_version:"geometry.v1",ok:false,
             solid:None,error:Some(error.to_string()),data:None},
     }
@@ -1784,8 +1829,10 @@ fn process(input: &str) -> Response {
             return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::ComposeBlind{source,holes}) =>
             return evaluate_composite_blind(source,holes),
-        Ok(GeometryRequest::ComposeIntersectingBlind{source,holes,batches,undo,redo})=>
-            return evaluate_intersecting_blind(source,holes,batches,undo,redo),
+        Ok(GeometryRequest::ComposeIntersectingBlind{
+            source,holes,batches,undo,redo,display_segments,
+        })=>return evaluate_intersecting_blind(
+            source,holes,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
