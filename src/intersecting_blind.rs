@@ -362,12 +362,13 @@ impl IntersectingBlindBrep {
             side_uv[4*i+3]=add_curve2(&mut m,uv_line(
                 uv(side_end,0.0),uv(side_end,region.cut_depth)))?;
         }
-        let vertical_low=add_curve3(&mut m,Curve3::Line(Line3 {
-            origin:m.vertices[8].position,direction:Point3{x:0.0,y:1.0,z:0.0},
-        }))?;
-        let vertical_high=add_curve3(&mut m,Curve3::Line(Line3 {
-            origin:m.vertices[9].position,direction:Point3{x:0.0,y:1.0,z:0.0},
-        }))?;
+        let first_bottom=m.vertices[8].position;
+        let second_bottom=m.vertices[9].position;
+        let direction=Point3{x:0.0,y:1.0,z:0.0};
+        let vertical_low=add_curve3(&mut m,Curve3::Line(
+            Line3{origin:first_bottom,direction}))?;
+        let vertical_high=add_curve3(&mut m,Curve3::Line(
+            Line3{origin:second_bottom,direction}))?;
         m.edges.extend([
             Edge{id:EdgeId(12),start:VertexId(8),end:VertexId(9),
                 coedges:[CoedgeId(24),CoedgeId(28)]},
