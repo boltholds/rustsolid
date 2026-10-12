@@ -5,7 +5,7 @@ use rustsolid::{MixedThroughBlindBrep,MixedThroughBlindParameters};
 
 #[derive(Debug,serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct ThroughHoleInput {center:[f64;2],radius:f64}
+pub(super) struct ThroughHoleInput {pub(super) center:[f64;2],pub(super) radius:f64}
 
 #[derive(Debug,serde::Deserialize)]
 #[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
