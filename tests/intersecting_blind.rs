@@ -97,8 +97,8 @@ fn circle_crossing_graph_has_two_real_vertical_3d_edges_and_shared_vertices(){
 #[test]
 fn partially_overlapped_equal_circles_have_exact_classical_lens_area(){
     let r=shape().region().clone();
-    let c1=1.0;
-    let d=1.4;
+    let c1:f64=1.0;
+    let d:f64=1.4;
     let x=d/2.0;
     let overlap=2.0*(c1*c1*(x/c1).acos()-x*(c1*c1-x*x).sqrt());
     eq(r.disk_union_area,2.0*PI-overlap,1e-12);
