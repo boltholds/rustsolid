@@ -4,7 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
-    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, CompositeBlindBrep, IntersectingBlindBrep,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, CompositeBlindBrep, IntersectingBlindBrep, CompoundBlindBrep,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -47,6 +47,10 @@ enum GeometryRequest {
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<IntersectingBlindEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
+    ComposeBlindRegions {source:SolidSource,holes:Vec<BlindHoleInput>,
+        #[serde(default)] batches:Vec<Vec<CompoundBlindEditInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
         #[serde(default)] display_segments:Option<usize>},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
@@ -254,6 +258,10 @@ enum BrepInput {
         center:[f64;2],radius:f64,bore_depth:f64,
         #[serde(default)] segments:Option<usize>,
         #[serde(default)] tolerance:Option<GeometryTolerance>},
+    AnalyticCompoundBlind {origin:[f64;3],width:f64,height:f64,depth:f64,
+        holes:Vec<BlindHoleInput>,
+        #[serde(default)] segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>},
 }
 impl BrepInput {
     fn prepare(self) -> Result<(BrepBody,usize), GeometryError> {
@@ -286,6 +294,17 @@ impl BrepInput {
                     width,height,depth,tolerance.unwrap_or_default())?;
                 let body=BlindHoleBrep::from_box(&block,BlindHoleParameters{
                     center_x:center[0],center_z:center[1],radius,depth:bore_depth})?;
+                Ok((BrepBody::from(body),segments.unwrap_or(64)))
+            },
+            Self::AnalyticCompoundBlind{origin,width,height,depth,holes,segments,tolerance}=>{
+                let block=Solid::block_with_tolerance(
+                    Point3{x:origin[0],y:origin[1],z:origin[2]},
+                    width,height,depth,tolerance.unwrap_or_default())?;
+                let body=CompoundBlindBrep::from_box(&block,
+                    holes.into_iter().map(|h|BlindHoleParameters{
+                        center_x:h.center[0],center_z:h.center[1],
+                        radius:h.radius,depth:h.depth
+                    }).collect())?;
                 Ok((BrepBody::from(body),segments.unwrap_or(64)))
             }
         }
@@ -333,6 +352,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
+                BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1328,6 +1348,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
+                BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
