@@ -4,7 +4,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     ArenaEntityRef, ArenaHandle, ArenaOutput, ArenaStep, ArenaTransaction,
     BooleanKernel, BooleanOperation, BooleanOperand, BooleanOutcome,
     BooleanRegionClassifier, GraphRegionState, RegionHold,
-    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, CompositeBlindBrep,
+    ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters, CompositeBlindBrep, IntersectingBlindBrep,
     BrepCarrierEditor, CarrierHandle, CarrierOwner, CarrierId, BrepCarrierTransaction,
     BrepStructuralEditor, BrepStructuralTransaction, StructuralHoleHandle,
     HoleEdgeRole, HoleTrimRole, StructuralEdgeRef, StructuralTrimRef, StructuralFaceRef,
@@ -45,6 +45,9 @@ enum GeometryRequest {
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
+    ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
+        #[serde(default)] batches:Vec<Vec<IntersectingBlindEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize},
     CarrierTransaction { source:BrepInput, batches:Vec<Vec<CarrierCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
     StructuralTransaction {source:SolidSource,batches:Vec<Vec<StructuralCommandInput>>,
@@ -328,6 +331,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
+                BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1322,6 +1326,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",
                 BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",
                 BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",
+                BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -1453,6 +1458,122 @@ fn evaluate_carrier_transaction(
 #[derive(Debug,Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BlindHoleInput{center:[f64;2],radius:f64,depth:f64}
+
+#[derive(Debug,Deserialize)]
+#[serde(tag="kind",rename_all="snake_case",deny_unknown_fields)]
+enum IntersectingBlindEditInput {
+    Replace{index:usize,center:[f64;2],radius:f64,depth:f64}
+}
+fn evaluate_intersecting_blind(source:SolidSource,
+    holes:Vec<BlindHoleInput>,
+    batches:Vec<Vec<IntersectingBlindEditInput>>,undo:usize,redo:usize
+)->Response {
+    let result=(||->Result<Value,GeometryError>{
+        if holes.len()!=2 || batches.len()>64 || undo>64 || redo>64 {
+            return Err(GeometryError::InvalidEdit(
+                "intersecting blind composition requires exactly two bores and <=64 edit/history steps".into()));
+        }
+        let params=holes.into_iter().map(|h|BlindHoleParameters{
+            center_x:h.center[0],center_z:h.center[1],radius:h.radius,depth:h.depth
+        }).collect::<Vec<_>>();
+        let mut body=IntersectingBlindBrep::from_box(&source.build()?,
+            [params[0],params[1]])?;
+        let mut commits=Vec::new();
+        for batch in batches {
+            if batch.is_empty() || batch.len()>32 {
+                return Err(GeometryError::InvalidEdit(
+                    "intersecting-circle batch needs 1..=32 source parameter edits".into()));
+            }
+            let count=batch.len();
+            let mut tx=body.begin_edit();
+            for cmd in batch {
+                match cmd {
+                    IntersectingBlindEditInput::Replace{index,center,radius,depth}=>{
+                        tx.replace(index,BlindHoleParameters{
+                            center_x:center[0],center_z:center[1],radius,depth})?;
+                    }
+                }
+            }
+            let revision=tx.commit()?;
+            commits.push(json!({"revision":revision,"command_count":count}));
+        }
+        let mut transitions=Vec::new();
+        for _ in 0..undo {
+            if !body.undo()? {
+                return Err(GeometryError::InvalidEdit(
+                    "crossed-circle Undo exceeds committed history".into()));
+            }
+            transitions.push(json!({"kind":"undo","revision":body.revision()}));
+        }
+        for _ in 0..redo {
+            if !body.redo()? {
+                return Err(GeometryError::InvalidEdit(
+                    "crossed-circle Redo exceeds available history".into()));
+            }
+            transitions.push(json!({"kind":"redo","revision":body.revision()}));
+        }
+        body.validate()?;
+        let m=body.model();let stats=m.summary();let r=body.region();
+        Ok(json!({
+            "kind":"intersecting_blind_boolean",
+            "representation":"analytic_intersecting_blind_holes",
+            "state":"committed","topology_committed":true,
+            "topology":{
+                "vertices":stats.vertices,"edges":stats.edges,
+                "coedges":stats.coedges,"loops":stats.loops,
+                "faces":stats.faces,"shells":stats.shells,
+                "euler_characteristic":stats.euler_characteristic,
+                "genus":stats.genus,
+                "inner_loops":m.loops.iter().filter(|lp|
+                    lp.role==rustsolid::LoopRole::Inner).count(),
+                "circular_edges":stats.circular_edges,
+                "cylindrical_faces":stats.cylindrical_faces
+            },
+            "region":{
+                "state":"certified_transverse_crossing",
+                "crossings":r.crossings_xz,
+                "disk_union_area":r.disk_union_area,
+                "exposed_perimeter":r.exposed_perimeter,
+                "arc_sources":[
+                    {"cutter_index":r.arc_a.cutter_index,
+                        "start":r.arc_a.parameter_start,
+                        "end":r.arc_a.parameter_end,
+                        "start_crossing":r.arc_a.start_crossing,
+                        "end_crossing":r.arc_a.end_crossing},
+                    {"cutter_index":r.arc_b.cutter_index,
+                        "start":r.arc_b.parameter_start,
+                        "end":r.arc_b.parameter_end,
+                        "start_crossing":r.arc_b.start_crossing,
+                        "end_crossing":r.arc_b.end_crossing}
+                ],
+                "shared_vertical_edges":[16,17],
+                "opening_face_id":1,"floor_face_id":8,
+                "cylindrical_face_ids":[6,7]
+            },
+            "mass":{"volume":m.mass.volume,
+                "surface_area":m.mass.surface_area,
+                "centroid":m.mass.centroid.array()},
+            "face_sources":{
+                "box_face_ids":[0,1,2,3,4,5],
+                "cutter_side_face_ids":[6,7],
+                "combined_floor_face_id":8
+            },
+            "revision":body.revision(),
+            "undo_depth":body.undo_depth(),
+            "redo_depth":body.redo_depth(),
+            "commits":commits,"transitions":transitions,
+            "display_mesh_included":false,
+            "generalized_topology_delta_can_apply":false
+        }))
+    })();
+    match result {
+        Ok(data)=>Response{schema_version:"geometry.v1",ok:true,
+            solid:None,error:None,data:Some(data)},
+        Err(error)=>Response{schema_version:"geometry.v1",ok:false,
+            solid:None,error:Some(error.to_string()),data:None},
+    }
+}
+
 fn evaluate_composite_blind(source:SolidSource,holes:Vec<BlindHoleInput>)->Response{
     let result=(||->Result<Value,GeometryError>{
         let source=source.build()?;
@@ -1663,6 +1784,8 @@ fn process(input: &str) -> Response {
             return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::ComposeBlind{source,holes}) =>
             return evaluate_composite_blind(source,holes),
+        Ok(GeometryRequest::ComposeIntersectingBlind{source,holes,batches,undo,redo})=>
+            return evaluate_intersecting_blind(source,holes,batches,undo,redo),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
