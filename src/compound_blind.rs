@@ -244,8 +244,10 @@ fn graft_region(model:&mut BrepModel,donor:&BrepModel,
         next.id=EdgeId(map_id(old.id.0,base_e as u32,target_e)?);
         next.start=VertexId(map_id(old.start.0,base_v as u32,target_v)?);
         next.end=VertexId(map_id(old.end.0,base_v as u32,target_v)?);
-        next.coedges=old.coedges.map(|id|CoedgeId(
-            map_id(id.0,base_c as u32,target_c).expect("bounded donor coedge")));
+        next.coedges=[
+            CoedgeId(map_id(old.coedges[0].0,base_c as u32,target_c)?),
+            CoedgeId(map_id(old.coedges[1].0,base_c as u32,target_c)?),
+        ];
         model.edges.push(next);
         let mut geometry=*g;
         geometry.curve=Curve3Id(map_id(g.curve.0,base_cr3,target_cr3)?);
@@ -280,8 +282,8 @@ fn graft_region(model:&mut BrepModel,donor:&BrepModel,
         let mut next=old.clone();
         next.id=FaceId(map_id(old.id.0,base_f as u32,target_f)?);
         next.loops=old.loops.iter().map(|id|
-            LoopId(map_id(id.0,base_l as u32,target_l)
-                .expect("bounded donor loop"))).collect();
+            map_id(id.0,base_l as u32,target_l).map(LoopId))
+            .collect::<Result<Vec<_>,_>>()?;
         next.geometry.surface=SurfaceId(map_id(
             old.geometry.surface.0,base_s,target_s)?);
         next.geometry.outer_loop=LoopId(map_id(
@@ -301,8 +303,8 @@ fn graft_region(model:&mut BrepModel,donor:&BrepModel,
     let floor=FaceId(map_id(floor_local.id.0,base_f as u32,target_f)?);
     let cylinders=donor.faces[base_f..].iter().filter(|f|
         matches!(donor.face_surface(f.id),Some(Surface3::Cylinder(_))))
-        .map(|f|FaceId(map_id(f.id.0,base_f as u32,target_f)
-            .expect("bounded donor side face"))).collect::<Vec<_>>();
+        .map(|f|map_id(f.id.0,base_f as u32,target_f).map(FaceId))
+        .collect::<Result<Vec<_>,_>>()?;
     let expected_cylinders=if kind==BlindRegionKind::SingleCircle{1}else{2};
     if cylinders.len()!=expected_cylinders {
         return Err(invalid("donor crossed region lost a cylindrical face"));
@@ -353,8 +355,25 @@ impl CompoundBlindBrep {
             self.model.geometry.curves3!=independent.geometry.curves3 ||
             self.model.geometry.curves2!=independent.geometry.curves2 ||
             self.model.geometry.surfaces!=independent.geometry.surfaces ||
-            self.model.faces.iter().map(|f|f.sense).collect::<Vec<_>>()!=
-                independent.faces.iter().map(|f|f.sense).collect::<Vec<_>>() {
+            self.model.tolerance!=independent.tolerance ||
+            self.model.units!=independent.units ||
+            self.model.edges.iter().zip(&independent.edges).any(|(a,b)|
+                a.id!=b.id || a.start!=b.start || a.end!=b.end ||
+                a.coedges!=b.coedges) ||
+            self.model.coedges.iter().zip(&independent.coedges).any(|(a,b)|
+                a.id!=b.id || a.edge!=b.edge || a.face!=b.face ||
+                a.loop_id!=b.loop_id || a.reversed!=b.reversed ||
+                a.next!=b.next || a.prev!=b.prev || a.twin!=b.twin) ||
+            self.model.loops.iter().zip(&independent.loops).any(|(a,b)|
+                a.id!=b.id || a.face!=b.face || a.role!=b.role ||
+                a.first_coedge!=b.first_coedge) ||
+            self.model.faces.iter().zip(&independent.faces).any(|(a,b)|
+                a.id!=b.id || a.loops!=b.loops ||
+                a.sense!=b.sense || a.geometry!=b.geometry) ||
+            self.model.shells.iter().zip(&independent.shells).any(|(a,b)|
+                a.id!=b.id || a.faces!=b.faces || a.closed!=b.closed) ||
+            self.model.geometry.edges!=independent.geometry.edges ||
+            self.model.geometry.coedges!=independent.geometry.coedges {
             return Err(invalid("compound blind body diverges from source-rebuilt analytical regions"));
         }
         Ok(())
