@@ -34,6 +34,8 @@ mod blind_hole;
 mod composite_blind;
 mod intersecting_blind;
 mod intersecting_blind_mesh;
+mod compound_blind;
+mod compound_blind_mesh;
 mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
@@ -80,6 +82,10 @@ pub use composite_blind::CompositeBlindBrep;
 pub use intersecting_blind::{IntersectingBlindBrep,IntersectingBlindTransaction,
     CrossedDiskRegion,ExposedCircularArc};
 pub use intersecting_blind_mesh::{CrossedBlindMesher,CrossedBlindDisplay};
+pub use compound_blind::{BlindRegionComposer,BlindRegionComponent,BlindRegionKind,
+    CompoundBlindBrep,CompoundBlindTransaction};
+pub use compound_blind_mesh::{CompoundBlindMesher,CompoundBlindDisplay,
+    CompoundFloorRegion};
 pub use carrier_editor::{BrepCarrierEditor, BrepCarrierTransaction, CarrierOwner,
     CarrierHandle, CarrierHandleError, CarrierId, CarrierBinding, CarrierSnapshot,
     CarrierCommit, CarrierTransition};

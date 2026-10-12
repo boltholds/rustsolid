@@ -33,6 +33,8 @@ fn position_eps(body:&BrepBody)->f64{
             length(h.model().bbox.max.sub(h.model().bbox.min))),
         BrepBody::IntersectingBlind(h)=>(h.model().tolerance,
             length(h.model().bbox.max.sub(h.model().bbox.min))),
+        BrepBody::CompoundBlind(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
@@ -75,6 +77,43 @@ impl BooleanRegionClassifier {
                     [ (point.x-lower.x).abs(),(point.x-upper.x).abs(),
                       (point.y-lower.y).abs(),(point.y-upper.y).abs(),
                       (point.z-lower.z).abs(),(point.z-upper.z).abs()]
+                        .iter().any(|d|*d<=eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
+            BrepBody::CompoundBlind(h)=>{
+                let b=h.model().bbox;
+                if point.x<b.min.x-eps||point.x>b.max.x+eps||
+                    point.y<b.min.y-eps||point.y>b.max.y+eps||
+                    point.z<b.min.z-eps||point.z>b.max.z+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                for region in h.components() {
+                    let floor=b.max.y-region.depth;
+                    let circles=region.source_indices.iter().map(|&i|{
+                        let h=h.holes()[i];
+                        ((point.x-h.center_x).hypot(point.z-h.center_z),h.radius)
+                    }).collect::<Vec<_>>();
+                    if point.y>floor+eps {
+                        // The union of every independent aperture component
+                        // is empty. Circle boundaries covered by another
+                        // circle do not become phantom material surfaces.
+                        if circles.iter().any(|(r,limit)|*r<*limit-eps){
+                            return Ok(VolumePosition::Outside);
+                        }
+                        if circles.iter().any(|(r,limit)|(*r-*limit).abs()<=eps){
+                            return Ok(VolumePosition::Boundary);
+                        }
+                    }
+                    if (point.y-floor).abs()<=eps &&
+                        circles.iter().any(|(r,limit)|*r<=*limit+eps){
+                        return Ok(VolumePosition::Boundary);
+                    }
+                }
+                if [(point.x-b.min.x).abs(),(point.x-b.max.x).abs(),
+                    (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
+                    (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
                         .iter().any(|d|*d<=eps){
                     return Ok(VolumePosition::Boundary);
                 }
@@ -293,7 +332,8 @@ fn body_tolerance(body:&BrepBody)->GeometryTolerance{
     match body {BrepBody::Polyhedral(s)=>s.tolerance,BrepBody::Cylinder(c)=>c.tolerance,
         BrepBody::ThroughHole(h)=>h.model().tolerance,
         BrepBody::BlindHole(h)=>h.model().tolerance,
-        BrepBody::IntersectingBlind(h)=>h.model().tolerance}
+        BrepBody::IntersectingBlind(h)=>h.model().tolerance,
+        BrepBody::CompoundBlind(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {
