@@ -147,6 +147,9 @@ impl From<BlindHoleBrep> for BrepBody {
 impl From<IntersectingBlindBrep> for BrepBody {
     fn from(body: IntersectingBlindBrep) -> Self { Self::IntersectingBlind(body) }
 }
+impl From<CompoundBlindBrep> for BrepBody {
+    fn from(body: CompoundBlindBrep)->Self{Self::CompoundBlind(body)}
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
