@@ -29,12 +29,6 @@ fn inside(point:[f64;2],polygon:&[[f64;2]])->bool{
     for i in 0..polygon.len(){
         let a=polygon[i];let b=polygon[(i+1)%polygon.len()];
         if (a[1]>point[1])!=(b[1]>point[1]) &&
-            point[0]<a[0]+(point[1]-a[1])*(b[1]-a[1])/(b[1]-a[1]) {
-            // This branch is overwritten by the correct X projection
-            // immediately below; retaining only one test per edge avoids
-            // branching on nearly horizontal segment division.
-        }
-        if (a[1]>point[1])!=(b[1]>point[1]) &&
             point[0]<a[0]+(point[1]-a[1])*(b[0]-a[0])/(b[1]-a[1]){
             result=!result;
         }
