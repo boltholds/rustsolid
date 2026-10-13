@@ -100,10 +100,24 @@ impl ThroughBlindCrossingBrep {
             Some(Surface3::Plane(p))=>p,
             _=>return Err(invalid("missing top planar source support")),
         };
-        let floor=match m.face_surface(FaceId(8)){
+        let _donor_floor=match m.face_surface(FaceId(8)){
             Some(Surface3::Plane(p))=>p,
             _=>return Err(invalid("missing existing analytic blind floor support")),
         };
+        // Unlike the donor's disk-union floor, the B\T crescent has a
+        // clockwise exterior B arc and a counterclockwise interior T arc.
+        // Use a +Y support with Forward material sense and mixed-orientation
+        // analytic pcurves, so trim winding agrees with actual material.
+        let floor_frame=Frame3{
+            origin:Point3{y:floor_y,..upper.frame.origin},
+            ..upper.frame
+        };
+        let crescent_floor_surface=SurfaceId(u32::try_from(m.geometry.surfaces.len())
+            .map_err(|_|invalid("floor surface catalog exhausted"))?);
+        m.geometry.surfaces.push(Surface3::Plane(PlaneSurface{frame:floor_frame}));
+        m.faces[8].geometry.surface=crescent_floor_surface;
+        m.faces[8].geometry.bounds=m.faces[1].geometry.bounds;
+        m.faces[8].sense=FaceSense::Forward;
         let bottom=match m.face_surface(FaceId(0)){
             Some(Surface3::Plane(p))=>p,
             _=>return Err(invalid("missing bottom planar source support")),
@@ -168,13 +182,19 @@ impl ThroughBlindCrossingBrep {
         // exterior arc and a new counterclockwise hidden-T arc. Its
         // clockwise UV carrier is represented analytically rather than
         // approximated by a polyline.
-        let floor_center=floor.frame.project(Point3{
+        let floor_center=floor_frame.project(Point3{
             x:through.center_x,y:floor_y,z:through.center_z,
         })?;
-        let floor_phase=angle(upper.frame.x,floor.frame);
-        let crescent_pcurve=push_uv(&mut m,Curve2::ClockwiseCircle(
-            ClockwiseCircle2::new(floor_center,through.radius,
-                floor_phase,source.tolerance)?))?;
+        let crescent_pcurve=push_uv(&mut m,Curve2::Circle(
+            Circle2::new(floor_center,through.radius,source.tolerance)?))?;
+        let b_arc=region.arc_b;
+        let b_center=floor_frame.project(Point3{
+            x:blind.center_x,y:floor_y,z:blind.center_z,
+        })?;
+        let b_reverse_uv=push_uv(&mut m,Curve2::ClockwiseCircle(
+            ClockwiseCircle2::new(b_center,blind.radius,
+                b_arc.parameter_start+b_arc.parameter_end,source.tolerance)?))?;
+        m.geometry.coedges[26].pcurve=b_reverse_uv;
         let lower_inside_uv=push_uv(&mut m,uv_line(
             uv(span_end,lower_height),uv(arc.parameter_end,lower_height)))?;
         let bottom_center=bottom.frame.project(lower_origin)?;
