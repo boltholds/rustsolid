@@ -152,8 +152,13 @@ fn analytic_area_and_mass_do_not_require_a_mesh_as_the_truth_oracle(){
         p.predicted_remaining_volume.unwrap(),1e-12);
     close(body.model().mass.surface_area,
         p.analytic_surface_area.unwrap(),1e-12);
-    assert!(body.display_mesh(32).is_err(),
-        "until independently certified mesher is built, refuse display claim");
+    let mesh=body.tessellate(32).unwrap();
+    assert_eq!(mesh.genus,1);
+    assert_eq!(mesh.mesh.triangles.len(),mesh.mesh.triangle_faces.len());
+    close(mesh.analytical_volume,body.model().mass.volume,1e-11);
+    assert!(mesh.faceted_volume>=mesh.analytical_volume-1e-7);
+    assert_eq!(body.display_mesh(32).unwrap().triangles.len(),
+        mesh.mesh.triangles.len());
 }
 #[test]
 fn parameter_edits_are_strong_atomic_with_source_replay_and_undo_redo(){
