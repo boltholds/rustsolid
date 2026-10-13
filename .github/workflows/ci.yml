@@ -151,6 +151,15 @@ jobs:
             | python3 -c 'import sys,json; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
       - name: Connected three-cylinder global arc atoms and 3D physical halfedge incidence
         run: cargo test --test connected_triple_stitch
+      - name: Connected three-cylinder global edge stitching JSON parser and held-state checks
+        run: cargo test --bin gefest-geometry connected_triple_cli
+      - name: Three-body chain with distinct blind depths and closed 3D physical incidence JSON smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"connected_triple_stitch_plan","source":{"kind":"block","origin":[-4,-2,-3],"width":8,"height":5,"depth":6},"through":{"center":[-1.15,0],"radius":0.8},"deeper_blind":{"center":[0,0],"radius":0.8,"depth":2.8},"shallower_blind":{"center":[1.15,0],"radius":0.8,"depth":1.2}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and "solid" not in r and d["state"]=="ready" and len(d["floor_interfaces"])==2 and len(d["edge_incidence"])==26 and d["predicted_shell"]["euler"]==0 and d["predicted_shell"]["genus"]==1 and d["predicted_shell"]["edges"]==38 and d["can_apply"] is False and d["topology_committed"] is False,r'
       - name: Multi-cluster crossing B-rep, cross-layer topology and certified watertight display
         run: cargo test --test composed_crossing_brep
       - name: Multi-aperture composed crossing geometry.v1 adapter tests
