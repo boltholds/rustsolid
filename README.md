@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.32 experimental kernel: source-validated multi-cylinder circle-union region graphs and layered-depth analytical volume predictions for up to 12 cutters, while retaining the executable v0.31 one-through/one-blind B-rep.** General multi-cylinder curved Boolean commits remain unsupported.
+> **Status: v0.33 experimental kernel: source-certified composition of up to four independent through/blind crossing pairs, plus isolated blind holes, into one genus-N analytic B-rep shell with certified multi-opening display.** Direct triple-interacting cutters and general curved Booleans remain unsupported.
 
 ## Current capabilities
+
+- Build **one analytical B-rep from multiple strictly separated, individually interacting through/blind crossing clusters** with different blind depths, shared upper/lower cap loops, full coedge/UV remapping, source-atomic Undo/Redo and a certified global watertight mesh. The new `compose_crossing_clusters` API also permits strictly disjoint stand-alone blind cuts. See [v0.33 composed crossing shells](docs/composed-crossing-shells.md).
 
 - Plan multiple **interacting through and blind cylindrical cutters** (up to 12) at different finite blind depths using exact-in-form exposed circular arcs, closed source-indexed contour loops, connected-component and planar-hole classification, and per-depth-slab volume integration. Tangencies, unresolved triple junctions and numerical ambiguity produce a typed Held state, with no topology commit. See [v0.32 multi-cut layered regions](docs/multi-cut-layered-regions.md).
 
@@ -33,7 +35,8 @@ This implementation is **original code** based on common computational geometry 
 
 ## Build and test
 
-For v0.32 multi-cut region graphs and independent strip integrals, run `cargo test --test multi_cut_regions`.
+For v0.33 composed crossing-shell topology and global mesh, run `cargo test --test composed_crossing_brep`.
+For the independent v0.32 multi-cut region graph planner, run `cargo test --test multi_cut_regions`.
 For the executable v0.31 one-pair crossing topology and display, run `cargo test --test mixed_crossing_brep && cargo test --test mixed_crossing_mesh`.
 For the earlier v0.30 read-only overlap planner, run `cargo test --test mixed_footprint`.
 
