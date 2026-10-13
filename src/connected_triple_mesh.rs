@@ -165,7 +165,7 @@ impl ConnectedTripleMesher {
         for (i,layer) in p.slabs.iter().enumerate(){
             let polygon=sampled_contour(
                 &layer.exposed_contour,i,&mapping)?;
-            let area=shoelace(&mesh,&polygon)?.abs();
+            let area=shoelace(&mesh,&polygon).abs();
             if !area.is_finite()||area<=0.0{
                 return Err(invalid("source slab polygonized union is nonphysical"));
             }
