@@ -151,6 +151,8 @@ jobs:
             | python3 -c 'import sys,json; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
       - name: Read-only analytical through/blind crossing support patches and no-commit checks
         run: cargo test --test mixed_crossing_surfaces
+      - name: Certified intersecting through/blind source B-rep coedge and history contracts
+        run: cargo test --test mixed_crossing_brep
       - name: Independent v0.30 mixed through/blind footprint and numerical quadrature contracts
         run: cargo test --test mixed_footprint
       - name: v0.30 read-only mixed overlap CLI success and held-contact checks
