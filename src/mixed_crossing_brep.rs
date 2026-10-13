@@ -244,6 +244,10 @@ impl MixedCrossingBrep {
         let blind=self.blind;
         MixedCrossingTransaction{owner:self,through,blind,poisoned:false}
     }
+    pub(crate) fn source_box(&self)->&Solid{&self.source}
+    pub fn tessellate(&self,segments:usize)->Result<crate::MixedCrossingDisplay,GeometryError>{
+        crate::MixedCrossingMesher::tessellate(self,segments)
+    }
     pub fn undo(&mut self)->Result<bool,GeometryError>{self.transition(false)}
     pub fn redo(&mut self)->Result<bool,GeometryError>{self.transition(true)}
     fn transition(&mut self,redo:bool)->Result<bool,GeometryError>{
@@ -428,8 +432,8 @@ impl BrepSource for MixedCrossingBrep {
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         self.validate()?;Ok(self.model.clone())
     }
-    fn display_mesh(&self,_segments:usize)->Result<Mesh,GeometryError>{
-        Err(invalid("crossing topological B-rep display triangulation not yet certified"))
+    fn display_mesh(&self,segments:usize)->Result<Mesh,GeometryError>{
+        Ok(self.tessellate(segments)?.mesh)
     }
 }
 pub struct MixedCrossingTransaction<'a>{
