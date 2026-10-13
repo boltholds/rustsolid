@@ -37,6 +37,7 @@ mod intersecting_blind_mesh;
 mod compound_blind;
 mod mixed_regions;
 mod through_blind_crossing;
+mod through_blind_crossing_mesh;
 mod mixed_footprint;
 mod mixed_regions_mesh;
 mod compound_blind_mesh;
@@ -91,6 +92,7 @@ pub use compound_blind::{BlindRegionComposer,BlindRegionComponent,BlindRegionKin
 pub use mixed_regions::{MixedRegionComposer,MixedThroughBlindParameters,
     MixedThroughBlindBrep,MixedThroughBlindTransaction};
 pub use through_blind_crossing::{ThroughBlindCrossingBrep,ThroughBlindCrossingTransaction};
+pub use through_blind_crossing_mesh::{ThroughBlindCrossingMesher,ThroughBlindCrossingDisplay};
 pub use mixed_footprint::{MixedFootprintOverlapPlanner,MixedFootprintOverlapPlan,
     MixedFootprintContact,FootprintSource,FootprintExposedArc};
 pub use mixed_regions_mesh::{MixedHoleMesher,MixedHoleDisplay,MixedHoleFloorRegion};
