@@ -17,6 +17,7 @@ use rustsolid::{geometry_query, run_boundary_probes, run_builtin_regressions,
     PlanRequirement, PlanVertexPlacement, QueryLimits, BrepBody, BrepOrigin, CommandBatch, CommandHistory, Curve2, Curve3, CylindricalBrep, EditDelta, EditReport, EdgeId, FaceId, GeometryError, GeometryTolerance, Point2, Point3, Solid, Surface3, VertexId};
 mod mixed_regions_cli;
 mod mixed_footprint_cli;
+mod mixed_crossing_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -59,6 +60,11 @@ enum GeometryRequest {
         #[serde(default)] display_segments:Option<usize>},
     MixedFootprintOverlapPlan {source:SolidSource,
         through:mixed_regions_cli::ThroughHoleInput,blind:BlindHoleInput},
+    ComposeMixedCrossing {source:SolidSource,
+        through:mixed_regions_cli::ThroughHoleInput,blind:BlindHoleInput,
+        #[serde(default)] batches:Vec<Vec<mixed_crossing_cli::CrossingEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
     ComposeBlindRegions {source:SolidSource,holes:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<CompoundBlindEditInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
@@ -2060,6 +2066,10 @@ fn process(input: &str) -> Response {
             source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::MixedFootprintOverlapPlan{source,through,blind}) =>
             return mixed_footprint_cli::evaluate(source,through,blind),
+        Ok(GeometryRequest::ComposeMixedCrossing{
+            source,through,blind,batches,undo,redo,display_segments,
+        })=>return mixed_crossing_cli::evaluate(
+            source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>
