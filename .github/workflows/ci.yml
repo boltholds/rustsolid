@@ -163,6 +163,8 @@ jobs:
           printf '%s' '{"operation":"compose_crossing_clusters","source":{"kind":"block","origin":[-5,-1,-4],"width":10,"height":4,"depth":8},"pairs":[{"through":{"center":[-2,0],"radius":0.45},"blind":{"center":[-1.55,0],"radius":0.45,"depth":1.5}}],"isolated_blind":[{"center":[-2,0.85],"radius":0.4,"depth":1.0}]}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r,r'
+      - name: Real three-cylinder source-certified B-rep, shared coedge and watertight gate
+        run: cargo test --test connected_triple_brep
       - name: Three-source connected multi-depth face-transition geometry gate
         run: cargo test --test connected_cut_transitions
       - name: Multi-circle source-bound slab arrangement and independent strip quadrature
