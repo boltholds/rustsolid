@@ -119,6 +119,13 @@ fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
                     return Err(invalid("invalid 2D circular trim"));
                 }
             }
+            Curve2::ClockwiseCircle(circle)=>{
+                if !circle.center.u.is_finite() || !circle.center.v.is_finite() ||
+                    !circle.radius.is_finite() || circle.radius<=min_radius ||
+                    !circle.phase.is_finite() {
+                    return Err(invalid("invalid clockwise circular trim"));
+                }
+            }
         }
     }
     for surface in &model.geometry.surfaces {
@@ -434,7 +441,8 @@ impl BrepCarrierTransaction<'_> {
             let old=model.coedge_pcurve(CoedgeId(index as u32))
                 .ok_or_else(||invalid("missing coedge trim"))?;
             if !matches!((old,curve),(Curve2::Line(_),Curve2::Line(_)) |
-                (Curve2::Circle(_),Curve2::Circle(_))) {
+                (Curve2::Circle(_),Curve2::Circle(_)) |
+                (Curve2::ClockwiseCircle(_),Curve2::ClockwiseCircle(_))) {
                 return Err(invalid("changing the coedge trim family is not supported"));
             }
             curve.evaluate(lerp(domain,0.5)?)?;
@@ -526,6 +534,10 @@ impl BrepCarrierTransaction<'_> {
                 }
                 Curve2::Circle(circle)
             }
+            Curve2::ClockwiseCircle(_)=>{
+                self.failed=true;
+                return Err(invalid("clockwise circle trim reparameterization not yet supported"));
+            }
         };
         let domain=match transform_range(geom.domain,scale,offset){
             Ok(value)=>value,Err(e)=>{self.failed=true;return Err(e);}
@@ -587,6 +599,12 @@ impl BrepCarrierTransaction<'_> {
                         center:Point2Param{u:c.center.u-delta.u,
                             v:c.center.v-delta.v},radius:c.radius,
                     }),
+                    Curve2::ClockwiseCircle(c)=>Curve2::ClockwiseCircle(
+                        crate::ClockwiseCircle2{
+                            center:Point2Param{u:c.center.u-delta.u,
+                                v:c.center.v-delta.v},
+                            radius:c.radius,phase:c.phase,
+                        }),
                 };
                 let new_id=Curve2Id(u32::try_from(model.geometry.curves2.len())
                     .map_err(|_|invalid("UV curve catalog exhausted"))?);
