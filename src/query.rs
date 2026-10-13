@@ -390,7 +390,11 @@ impl Execution<'_> {
                 let p=match curve {Curve3::Line(x)=>x.direction,Curve3::Circle(x)=>x.frame.normal};
                 self.get(Node::Point(p),&s.fields)?
             }
-            (Node::Pcurve(trim),"kind")=>json!(match trim {Curve2::Line(_)=>"line",Curve2::Circle(_)=>"circle"}),
+            (Node::Pcurve(trim),"kind")=>json!(match trim {
+                Curve2::Line(_)=>"line",
+                Curve2::Circle(_)=>"circle",
+                Curve2::ClockwiseCircle(_)=>"clockwise_circle",
+            }),
             _=>return Err(bad()),
         };
         Ok(result)
