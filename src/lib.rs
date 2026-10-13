@@ -41,6 +41,8 @@ mod multi_cut_regions;
 mod mixed_crossing_surfaces;
 mod mixed_crossing_brep;
 mod mixed_crossing_mesh;
+mod composed_crossing_brep;
+mod composed_crossing_mesh;
 mod mixed_regions_mesh;
 mod compound_blind_mesh;
 mod carrier_editor;
@@ -102,6 +104,8 @@ pub use mixed_crossing_surfaces::{MixedCrossingSurfacePlanner,MixedCrossingSurfa
     MixedSurfacePatch,MixedPatchKind};
 pub use mixed_crossing_brep::{MixedCrossingBrep,MixedCrossingTransaction};
 pub use mixed_crossing_mesh::{MixedCrossingMesher,MixedCrossingDisplay};
+pub use composed_crossing_brep::{ComposedCrossingBrep,ComposedCrossingParameters,CertifiedCrossingPair,ComposedCrossingTransaction};
+pub use composed_crossing_mesh::{ComposedCrossingMesher,ComposedCrossingDisplay};
 pub use mixed_regions_mesh::{MixedHoleMesher,MixedHoleDisplay,MixedHoleFloorRegion};
 pub use compound_blind_mesh::{CompoundBlindMesher,CompoundBlindDisplay,
     CompoundFloorRegion};
