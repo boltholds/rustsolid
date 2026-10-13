@@ -1,6 +1,6 @@
 # Crossing through/blind Boolean: analytical boundary decomposition (next gated stage)
 
-The first stage after RustSolid v0.30 is a **real analytical decomposition of the boundary support regions**, but it deliberately does **not** yet allocate coedges, faces or commit a B-rep. Calling the present source-bound output a completed solid would be incorrect.
+This document records the **read-only seven-region analytical decomposition** developed after v0.30. **RustSolid v0.31 now also implements a separate, restricted executable B-rep** with real coedges, UV trims, a closed genus-one shell and a certified derived display mesh. See [v0.31 mixed crossing B-rep](mixed-crossing-brep.md). The support-area planner itself stays read-only; its `can_apply()` remains false.
 
 ## Geometry
 
@@ -22,12 +22,12 @@ This support-region area model is **not an arbitrary faceted approximation**. It
 
 `V = V0 - At * H - (Ab - Ai) * d`.
 
-The v0.30 exposed-arc witnesses delimit a single two-arc top aperture. The separate lower through-circle is one physical opening. The expected resulting connected closed shell has **genus 1**, Euler characteristic **0**. These values are predictions to be independently checked when the true B-rep is assembled, not proof that a B-rep exists today.
+The v0.30 exposed-arc witnesses delimit a single two-arc top aperture. The separate lower through-circle is one physical opening. The independently expected closed-shell invariants are **genus 1** and Euler characteristic **0**; the v0.31 dedicated B-rep constructor now checks those values together with coedge/UV integrity.
 
-## Next mandatory topology construction
+## Subsequent generalized topology milestones
 
-Before enabling this case in `MixedThroughBlindBrep`, construct source-bound 3D circle/line carriers, per-face UV p-curves, shared physical intersection edges and coedges, the upper two-arc aperture, the bottom circle, and the blind floor crescent. The through-cylinder support must be split at the blind-floor height. The cylindrical side patches and floor must have exact material-facing orientation.
+One restricted **one-through/one-blind transverse pair** now has source-bound carriers, valid coedges, a two-arc top aperture, bottom through aperture, blind-floor crescent, correct face senses and source-atomic transactions in a dedicated `MixedCrossingBrep`. The original `MixedThroughBlindBrep` supports multiple **disjoint** components and still deliberately rejects through/blind contacts.
 
-Then enforce a single connected orientable manifold shell, reciprocal twins, next/previous loop cycles, physically consistent UV→3D mappings, Euler 0/genus 1, independent analytical volume and surface-area checks, watertight tessellation and source-lineage-safe Undo/Redo. Until all gates pass, `MixedCrossingSurfacePlan::can_apply()` is always false.
+The full v0.31 restricted constructor verifies a connected orientable shell, reciprocal twins, loop cycles, sampled UV→3D consistency, Euler 0/genus 1, independent source mass and watertight tessellation. Extending it to arbitrary through/blind networks, general curved Boolean or persistent topology naming remains **unsupported**. The generic `TopologyDeltaPlan::can_apply()` and `MixedCrossingSurfacePlan::can_apply()` stay false because their general execution paths have not been implemented.
 
 This uses standard independent computational geometry only; no reverse-engineered proprietary code or ABI information enters RustSolid.
