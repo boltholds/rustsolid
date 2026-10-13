@@ -153,6 +153,8 @@ jobs:
         run: cargo test --test mixed_crossing_surfaces
       - name: Certified intersecting through/blind source B-rep coedge and history contracts
         run: cargo test --test mixed_crossing_brep
+      - name: Certified watertight crossed through/blind display, genus and mass convergence
+        run: cargo test --test mixed_crossing_mesh
       - name: Independent v0.30 mixed through/blind footprint and numerical quadrature contracts
         run: cargo test --test mixed_footprint
       - name: v0.30 read-only mixed overlap CLI success and held-contact checks
