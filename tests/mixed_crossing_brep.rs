@@ -160,3 +160,101 @@ fn mixed_crossing_rejects_tampered_source_brep_model(){
     m.faces[10].sense=FaceSense::Forward;
     assert!(m.validate().is_err());
 }
+
+
+/// Independently integrate horizontal disk-intersection strips, not the
+/// production circle-segment moment equation.
+fn overlap_area_and_axial_moment(r1:f64,r2:f64,d:f64)->(f64,f64) {
+    let left=(-r1).max(d-r2);
+    let right=r1.min(d+r2);
+    if right<=left { return (0.0,0.0) }
+    let chord=(d*d+r1*r1-r2*r2)/(2.0*d);
+    let integrate=|start:f64,end:f64|->(f64,f64){
+        if end<=start { return (0.0,0.0) }
+        let n=4096;
+        let step=std::f64::consts::PI/n as f64;
+        let mut area=0.0;
+        let mut first=0.0;
+        for i in 0..=n {
+            let theta=i as f64*step;
+            let x=start+0.5*(end-start)*(1.0-theta.cos());
+            let jac=0.5*(end-start)*theta.sin();
+            let half=(r1*r1-x*x).max(0.0).sqrt()
+                .min((r2*r2-(x-d)*(x-d)).max(0.0).sqrt());
+            let strip=2.0*half*jac;
+            let w=if i==0||i==n{1.0}else if i%2==0{2.0}else{4.0};
+            area+=w*strip;
+            first+=w*x*strip;
+        }
+        (area*step/3.0,first*step/3.0)
+    };
+    if chord>left&&chord<right {
+        let a=integrate(left,chord);
+        let b=integrate(chord,right);
+        (a.0+b.0,a.1+b.1)
+    }else {
+        integrate(left,right)
+    }
+}
+
+#[test]
+fn independently_integrated_crossed_void_matches_mass_and_centroid(){
+    let source=block();
+    for (t,b) in [
+        (t(0.,0.,0.5),b(0.5,0.,0.5,1.5)),
+        (t(-0.2,0.0,0.7),b(0.6,0.2,0.45,2.0)),
+        (t(-0.2,0.0,0.7),b(0.0,0.8,0.45,1.3)),
+    ] {
+        let body=MixedCrossingBrep::from_box(&source,t,b).unwrap();
+        body.validate().unwrap();
+        assert_eq!(body.model().summary().genus,1);
+        let dx=b.center_x-t.center_x;
+        let dz=b.center_z-t.center_z;
+        let d=dx.hypot(dz);
+        let (ai,moment_u)=overlap_area_and_axial_moment(t.radius,b.radius,d);
+        let area_t=PI*t.radius*t.radius;
+        let area_b=PI*b.radius*b.radius;
+        let h=source.bbox.max.y-source.bbox.min.y;
+        let removed_t=area_t*h;
+        let removed_blind=(area_b-ai)*b.depth;
+        let remaining=source.mass.volume-removed_t-removed_blind;
+        close(body.model().mass.volume,remaining,2e-8);
+        let c0=source.mass.centroid;
+        let ux=dx/d;let uz=dz/d;
+        let overlap_x=(t.center_x-c0.x)*ai+ux*moment_u;
+        let overlap_z=(t.center_z-c0.z)*ai+uz*moment_u;
+        let mx=(t.center_x-c0.x)*removed_t+
+            b.depth*((b.center_x-c0.x)*area_b-overlap_x);
+        let mz=(t.center_z-c0.z)*removed_t+
+            b.depth*((b.center_z-c0.z)*area_b-overlap_z);
+        let yb=source.bbox.max.y-b.depth*0.5;
+        let predicted=Point3{
+            x:c0.x-mx/remaining,
+            y:c0.y-removed_blind*(yb-c0.y)/remaining,
+            z:c0.z-mz/remaining,
+        };
+        close(body.model().mass.centroid.x,predicted.x,2e-8);
+        close(body.model().mass.centroid.y,predicted.y,2e-8);
+        close(body.model().mass.centroid.z,predicted.z,2e-8);
+        let mesh=body.tessellate(32).unwrap();
+        assert_eq!(mesh.genus,1);
+        close(mesh.analytic_volume,remaining,2e-8);
+    }
+}
+
+#[test]
+fn analytical_point_membership_respects_the_open_through_tunnel_and_blind_floor() {
+    let body: BrepBody=sample().into();
+    use rustsolid::{BooleanRegionClassifier as C,VolumePosition as V};
+    for (point,expected) in [
+        (p(0.2,0.,0.),V::Outside),
+        (p(0.7,2.,0.),V::Outside),
+        (p(0.7,1.,0.),V::Inside),
+        (p(0.7,1.5,0.),V::Boundary),
+        (p(2.,0.,0.),V::Inside),
+        (p(4.,0.,0.),V::Outside),
+    ] {
+        assert_eq!(C::classify_point(&body,point).unwrap(),expected,
+            "incorrect material classification at {point:?}");
+    }
+}
