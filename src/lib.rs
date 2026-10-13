@@ -39,6 +39,7 @@ mod mixed_regions;
 mod mixed_footprint;
 mod multi_cut_regions;
 mod connected_triple_stitch;
+mod connected_triple_brep;
 mod mixed_crossing_surfaces;
 mod mixed_crossing_brep;
 mod mixed_crossing_mesh;
@@ -105,6 +106,7 @@ pub use connected_triple_stitch::{ConnectedTripleStitchPlanner,TripleChainParame
     TripleStitchPlan,TripleStitchState,TripleStitchHold,TripleJunction,TripleArc,
     DirectedTripleArc,TripleContour,TripleSlab,TripleFloorInterface,TripleWallPatch,
     TriplePhysicalEdgeKey,TripleEdgePair};
+pub use connected_triple_brep::{ConnectedTripleBrep,ConnectedTripleTransaction};
 pub use mixed_crossing_surfaces::{MixedCrossingSurfacePlanner,MixedCrossingSurfacePlan,
     MixedSurfacePatch,MixedPatchKind};
 pub use mixed_crossing_brep::{MixedCrossingBrep,MixedCrossingTransaction};
