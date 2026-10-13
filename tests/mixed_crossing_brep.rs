@@ -88,8 +88,9 @@ fn independently_computed_area_volume_and_floor_material_sense_agree(){
     let out:BrepBody=body.clone().into();
     out.validate().unwrap();
     assert_eq!(out.shared().unwrap().summary(),m.summary());
-    assert!(out.tessellate(32).is_err(),
-        "never silently pretend an unverified mesh is watertight");
+    let display=out.tessellate(32).unwrap();
+    assert!(!display.triangles.is_empty());
+    assert_eq!(display.triangles.len(),display.triangle_faces.len());
 }
 
 #[test]
