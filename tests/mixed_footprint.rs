@@ -169,9 +169,9 @@ fn independent_numeric_oracle_matches_unequal_radii_in_both_circle_orders(){
         (0.5,0.5,0.5), (0.7,0.5,0.6), (0.95,0.4,0.8),
         (0.65,0.9,0.6), (0.9,0.75,0.3), (0.45,0.95,1.1),
     ]{
-        let through=through(0.,0.,r1);
-        let blind=blind(d,0.,r2,1.3);
-        let p=MixedFootprintOverlapPlanner::plan(&box_,through,blind).unwrap();
+        let left=through(0.,0.,r1);
+        let right=blind(d,0.,r2,1.3);
+        let p=MixedFootprintOverlapPlanner::plan(&box_,left,right).unwrap();
         assert_eq!(p.contact,MixedFootprintContact::TwoTransverseCrossings,
             "failed for {r1}, {r2}, {d}");
         let integral=strip_integral_overlap(r1,r2,d);
@@ -220,22 +220,22 @@ fn rotating_and_translating_source_preserves_analytic_volume(){
 #[test]
 fn source_or_result_tampering_is_detected_without_editing_source(){
     let source=box_();
-    let through=through(0.,0.,0.5);
-    let blind=blind(0.5,0.,0.5,1.5);
-    let p=MixedFootprintOverlapPlanner::plan(&source,through,blind).unwrap();
+    let t=through(0.,0.,0.5);
+    let b=blind(0.5,0.,0.5,1.5);
+    let p=MixedFootprintOverlapPlanner::plan(&source,t,b).unwrap();
     let before=(source.revision,source.mass,source.faces.len(),source.vertices.len());
-    p.validate_against(&source,through,blind).unwrap();
+    p.validate_against(&source,t,b).unwrap();
 
     let mut tampered=p.clone();
     tampered.overlap_area=Some(tampered.overlap_area.unwrap()+0.01);
-    assert!(tampered.validate_against(&source,through,blind).is_err());
+    assert!(tampered.validate_against(&source,t,b).is_err());
     let mut tampered=p.clone();
     tampered.crossing_points.as_mut().unwrap()[0].x+=0.05;
-    assert!(tampered.validate_against(&source,through,blind).is_err());
+    assert!(tampered.validate_against(&source,t,b).is_err());
     let mut tampered=p.clone();
     tampered.length_budget*=2.0;
-    assert!(tampered.validate_against(&source,through,blind).is_err());
-    assert!(p.validate_against(&source,through,blind(0.6,0.,0.5,1.5)).is_err());
+    assert!(tampered.validate_against(&source,t,b).is_err());
+    assert!(p.validate_against(&source,t,blind(0.6,0.,0.5,1.5)).is_err());
 
     assert_eq!(before,(source.revision,source.mass,source.faces.len(),source.vertices.len()));
     assert!(!p.can_apply());
