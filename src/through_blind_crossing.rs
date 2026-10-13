@@ -199,6 +199,8 @@ impl ThroughBlindCrossingBrep {
             ClockwiseCircle2::new(b_center,blind.radius,
                 b_arc.parameter_start+b_arc.parameter_end,source.tolerance)?))?;
         m.geometry.coedges[26].pcurve=b_reverse_uv;
+        m.geometry.coedges[26].domain=bounded(
+            b_arc.parameter_start,b_arc.parameter_end)?;
         let lower_inside_uv=push_uv(&mut m,uv_line(
             uv(span_end,lower_height),uv(arc.parameter_end,lower_height)))?;
         let bottom_center=bottom.frame.project(lower_origin)?;
