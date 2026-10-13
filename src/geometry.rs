@@ -198,8 +198,6 @@ impl Circle2 {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OrientedCircle2 {
     pub center: Point2Param,
     pub radius: f64,
@@ -229,6 +227,7 @@ impl OrientedCircle2 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Curve2 { Line(Line2), Circle(Circle2), OrientedCircle(OrientedCircle2) }
 impl Curve2 {
     pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
