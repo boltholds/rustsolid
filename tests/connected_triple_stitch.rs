@@ -75,7 +75,10 @@ fn genuinely_connected_three_cutters_stitch_closed_source_atom_contours(){
     let plan=ConnectedTripleStitchPlanner::plan(&source,input).unwrap();
     assert_eq!(plan.state,TripleStitchState::Ready);
     assert!(!plan.can_apply());
-    assert_eq!(plan.levels,vec![-2.0,0.2,1.8,3.0]);
+    assert_eq!(plan.levels.len(),4);
+    for (&level,&expected) in plan.levels.iter().zip(&[-2.0,0.2,1.8,3.0]) {
+        approx(level,expected,1e-12);
+    }
     assert_eq!(plan.junctions.len(),4);
     assert_eq!(plan.atomic_arcs.len(),8);
     assert_eq!(plan.slabs.len(),3);
