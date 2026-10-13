@@ -361,6 +361,7 @@ fn inspect_brep(input:BrepInput) -> Response {
         let trims=graph.coedges.iter().map(|c| match graph.coedge_pcurve(c.id) {
             Some(Curve2::Line(_)) => "line",
             Some(Curve2::Circle(_)) => "circle",
+            Some(Curve2::ClockwiseCircle(_)) => "clockwise_circle",
             None => "missing",
         }).collect::<Vec<_>>();
         let seams=graph.edges.iter().filter(|e| {
