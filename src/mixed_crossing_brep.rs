@@ -121,7 +121,7 @@ fn coedge_trim(model:&mut BrepModel,face:FaceId,edge:EdgeId,
             let ParameterRange::Bounded{start,end}=edge_data.domain else{
                 return Err(invalid("circular edge has no parameter range"));
             };
-            let shift=TAU*((match face_data.geometry.bounds.u {
+            let shift=TAU*(match face_data.geometry.bounds.u {
                 ParameterRange::Bounded{start:u0,end:u1}=>((u0+u1)/2.0-(start+end)/2.0)/TAU,
                 _=>return Err(invalid("cylinder face needs angular domain")),
             }).round();
