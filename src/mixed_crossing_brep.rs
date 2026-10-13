@@ -22,7 +22,7 @@ const EMPTY_COEDGE:CoedgeId=CoedgeId(u32::MAX);
 fn invalid(msg:impl Into<String>)->GeometryError{
     GeometryError::InvalidEdit(msg.into())
 }
-fn bounded(a:f64,b:f64)->Result<ParameterRange,GeometryError>{
+pub(crate) fn bounded(a:f64,b:f64)->Result<ParameterRange,GeometryError>{
     ParameterRange::bounded(a,b)
 }
 fn next_id(len:usize)->Result<u32,GeometryError>{
@@ -32,7 +32,7 @@ fn p2(u:f64,v:f64)->Point2Param{Point2Param{u,v}}
 fn line2(a:Point2Param,b:Point2Param)->Curve2{
     Curve2::Line(Line2{origin:a,delta:p2(b.u-a.u,b.v-a.v)})
 }
-fn add_surface(model:&mut BrepModel,surface:Surface3)->Result<SurfaceId,GeometryError>{
+pub(crate) fn add_surface(model:&mut BrepModel,surface:Surface3)->Result<SurfaceId,GeometryError>{
     let id=SurfaceId(next_id(model.geometry.surfaces.len())?);
     model.geometry.surfaces.push(surface);Ok(id)
 }
@@ -44,7 +44,7 @@ fn add_curve2(model:&mut BrepModel,curve:Curve2)->Result<Curve2Id,GeometryError>
     let id=Curve2Id(next_id(model.geometry.curves2.len())?);
     model.geometry.curves2.push(curve);Ok(id)
 }
-fn add_vertex(model:&mut BrepModel,point:Point3)->Result<VertexId,GeometryError>{
+pub(crate) fn add_vertex(model:&mut BrepModel,point:Point3)->Result<VertexId,GeometryError>{
     let id=VertexId(next_id(model.vertices.len())?);
     model.vertices.push(Vertex{id,position:point});Ok(id)
 }
@@ -58,13 +58,13 @@ fn add_edge(model:&mut BrepModel,start:VertexId,end:VertexId,
     });
     Ok(id)
 }
-fn add_circle(model:&mut BrepModel,frame:Frame3,radius:f64,y:f64,
+pub(crate) fn add_circle(model:&mut BrepModel,frame:Frame3,radius:f64,y:f64,
               angles:(f64,f64),start:VertexId,end:VertexId)->Result<EdgeId,GeometryError>{
     let local=Frame3{origin:Point3{y,..frame.origin},..frame};
     let circle=Circle3::new(local,radius,model.tolerance)?;
     add_edge(model,start,end,Curve3::Circle(circle),bounded(angles.0,angles.1)?)
 }
-fn add_vertical(model:&mut BrepModel,start:VertexId,end:VertexId)->Result<EdgeId,GeometryError>{
+pub(crate) fn add_vertical(model:&mut BrepModel,start:VertexId,end:VertexId)->Result<EdgeId,GeometryError>{
     let a=model.vertices[start.0 as usize].position;
     let b=model.vertices[end.0 as usize].position;
     let (line,domain)=Line3::between(a,b,model.tolerance)?;
@@ -149,7 +149,7 @@ fn coedge_trim(model:&mut BrepModel,face:FaceId,edge:EdgeId,
     let pc=add_curve2(model,curve)?;
     Ok(CoedgeGeometry{pcurve:pc,domain,face,loop_id:LoopId(u32::MAX)})
 }
-fn append_loop(model:&mut BrepModel,face:FaceId,role:LoopRole,
+pub(crate) fn append_loop(model:&mut BrepModel,face:FaceId,role:LoopRole,
                parts:&[(EdgeId,bool)])->Result<LoopId,GeometryError>{
     if parts.len()<2 {return Err(invalid("analytic loop needs at least two edges"));}
     let id=LoopId(next_id(model.loops.len())?);
@@ -182,7 +182,7 @@ fn append_loop(model:&mut BrepModel,face:FaceId,role:LoopRole,
     target.loops.push(id);
     Ok(id)
 }
-fn twins(model:&mut BrepModel,from:usize)->Result<(),GeometryError>{
+pub(crate) fn twins(model:&mut BrepModel,from:usize)->Result<(),GeometryError>{
     for e in &model.edges[from..]{
         let [a,b]=e.coedges;
         if a==EMPTY_COEDGE||b==EMPTY_COEDGE||a==b {
