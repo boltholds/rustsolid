@@ -63,6 +63,10 @@ impl ThroughBlindCrossingBrep {
             revision:0,undo:Vec::new(),redo:Vec::new()})
     }
     pub fn model(&self)->&BrepModel{&self.model}
+    pub fn tessellate(&self,segments:usize)
+        ->Result<crate::ThroughBlindCrossingDisplay,GeometryError> {
+        crate::ThroughBlindCrossingMesher::tessellate(self,segments)
+    }
     pub fn overlap(&self)->&MixedFootprintOverlapPlan{&self.overlap}
     pub fn source_box(&self)->&Solid{&self.source}
     pub fn parameters(&self)->(HoleParameters,BlindHoleParameters){(self.through,self.blind)}
@@ -349,6 +353,14 @@ impl ThroughBlindCrossingBrep {
         self.through=through;self.blind=blind;self.overlap=overlap;
         self.model=model;self.revision=revision;
         Ok(true)
+    }
+}
+impl crate::BrepSource for ThroughBlindCrossingBrep {
+    fn brep_model(&self)->Result<BrepModel,GeometryError>{
+        self.validate()?;Ok(self.model.clone())
+    }
+    fn display_mesh(&self,segments:usize)->Result<crate::Mesh,GeometryError>{
+        Ok(self.tessellate(segments)?.mesh)
     }
 }
 pub struct ThroughBlindCrossingTransaction<'a>{
