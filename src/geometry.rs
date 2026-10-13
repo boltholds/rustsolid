@@ -197,11 +197,39 @@ impl Circle2 {
         Point2Param::new(self.center.u + self.radius * angle.cos(), self.center.v + self.radius * angle.sin())
     }
 }
+/// A circular 2D p-curve with clockwise angular progression. This is
+/// necessary for planar crescent regions: one of the two concentric-style
+/// boundary arcs traverses clockwise in a shared planar UV chart.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Curve2 { Line(Line2), Circle(Circle2) }
+pub struct ClockwiseCircle2 {
+    pub center: Point2Param,
+    pub radius: f64,
+    /// UV phase for a physical 3D source angle: (phase - parameter).
+    pub phase: f64,
+}
+impl ClockwiseCircle2 {
+    pub fn new(center:Point2Param,radius:f64,phase:f64,tol:GeometryTolerance)
+        ->Result<Self,GeometryError>
+    {
+        Circle2::new(center,radius,tol)?;
+        if !phase.is_finite() {return Err(invalid_dimension("invalid clockwise pcurve phase"));}
+        Ok(Self{center,radius,phase})
+    }
+    pub fn evaluate(self,t:f64)->Result<Point2Param,GeometryError>{
+        if !t.is_finite(){return Err(invalid_dimension("nonfinite clockwise pcurve parameter"));}
+        Point2Param::new(self.center.u+self.radius*(self.phase-t).cos(),
+                         self.center.v+self.radius*(self.phase-t).sin())
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve2 { Line(Line2), Circle(Circle2), ClockwiseCircle(ClockwiseCircle2) }
 impl Curve2 {
     pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
-        match self { Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t) }
+        match self {
+            Self::Line(l) => l.evaluate(t),
+            Self::Circle(c) => c.evaluate(t),
+            Self::ClockwiseCircle(c) => c.evaluate(t),
+        }
     }
 }
 

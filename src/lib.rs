@@ -36,6 +36,8 @@ mod intersecting_blind;
 mod intersecting_blind_mesh;
 mod compound_blind;
 mod mixed_regions;
+mod through_blind_crossing;
+mod through_blind_crossing_mesh;
 mod mixed_footprint;
 mod mixed_regions_mesh;
 mod compound_blind_mesh;
@@ -89,6 +91,8 @@ pub use compound_blind::{BlindRegionComposer,BlindRegionComponent,BlindRegionKin
     CompoundBlindBrep,CompoundBlindTransaction};
 pub use mixed_regions::{MixedRegionComposer,MixedThroughBlindParameters,
     MixedThroughBlindBrep,MixedThroughBlindTransaction};
+pub use through_blind_crossing::{ThroughBlindCrossingBrep,ThroughBlindCrossingTransaction};
+pub use through_blind_crossing_mesh::{ThroughBlindCrossingMesher,ThroughBlindCrossingDisplay};
 pub use mixed_footprint::{MixedFootprintOverlapPlanner,MixedFootprintOverlapPlan,
     MixedFootprintContact,FootprintSource,FootprintExposedArc};
 pub use mixed_regions_mesh::{MixedHoleMesher,MixedHoleDisplay,MixedHoleFloorRegion};
@@ -104,7 +108,7 @@ pub use structural_editor::{BrepStructuralEditor, BrepStructuralTransaction,
     StructuralTrimRef, StructuralFaceRef};
 pub use face_region_mesher::{FaceRegionMesher,FaceRegionCertificate,CertifiedDisplayMesh};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
-    Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
+    Frame3, Line3, Circle3, Curve3, Line2, Circle2, ClockwiseCircle2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
     Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
 
