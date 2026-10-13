@@ -17,7 +17,7 @@ fn b(x:f64,z:f64,r:f64,depth:f64)->BlindHoleParameters{
 }
 fn close(a:f64,e:f64,tol:f64){
     assert!((a-e).abs()<=tol,
-        "got {a:.14}, expected {e:.14}; difference {:.4e}",(a-e).abs());
+        "got {a:0.14}, expected {e:0.14}; difference {:0.4e}",(a-e).abs());
 }
 
 /// Evaluate union of independently derived vertical circle slice intervals.
@@ -31,8 +31,8 @@ fn interval_width(x:f64,disks:&[(f64,f64,f64)])->f64{
     }).collect::<Vec<_>>();
     if spans.is_empty(){return 0.0;}
     spans.sort_by(|a,b|a.0.total_cmp(&b.0));
-    let mut lower=spans[0].0;
-    let mut upper=spans[0].1;
+    let mut lower=spans[0]0.0;
+    let mut upper=spans[0]0.1;
     let mut sum=0.0;
     for &(start,end) in spans.iter().skip(1){
         if start>upper{
@@ -268,22 +268,22 @@ fn rejects_nonbox_bad_radii_missing_families_and_unbounded_work(){
         Point2{x:-3.,z:-3.},Point2{x:3.,z:-3.},
         Point2{x:2.,z:3.},Point2{x:-3.,z:3.}],4.).unwrap();
     assert!(MultiCutRegionPlanner::plan(&not_box,
-        &[t(0.,0.,.5)],&[b(.5,0.,.5,2.)]).is_err());
-    assert!(MultiCutRegionPlanner::plan(&src,&[],&[b(.5,0.,.5,2.)]).is_err());
-    assert!(MultiCutRegionPlanner::plan(&src,&[t(0.,0.,.5)],&[]).is_err());
+        &[t(0.,0.,0.5)],&[b(0.5,0.,0.5,2.)]).is_err());
+    assert!(MultiCutRegionPlanner::plan(&src,&[],&[b(0.5,0.,0.5,2.)]).is_err());
+    assert!(MultiCutRegionPlanner::plan(&src,&[t(0.,0.,0.5)],&[]).is_err());
     for bad in [
-        t(2.9,0.,.5),t(0.,0.,0.),t(0.,0.,f64::NAN),
+        t(2.9,0.,0.5),t(0.,0.,0.),t(0.,0.,f64::NAN),
         t(0.,0.,-0.1),
     ]{
-        assert!(MultiCutRegionPlanner::plan(&src,&[bad],&[b(.5,0.,.5,2.)]).is_err());
+        assert!(MultiCutRegionPlanner::plan(&src,&[bad],&[b(0.5,0.,0.5,2.)]).is_err());
     }
     for bad in [
-        b(.5,0.,.5,0.),b(.5,0.,.5,4.),b(.5,0.,.5,-1.),
-        b(.5,0.,f64::INFINITY,2.),b(2.8,0.,.5,2.),
+        b(0.5,0.,0.5,0.),b(0.5,0.,0.5,4.),b(0.5,0.,0.5,-1.),
+        b(0.5,0.,f64::INFINITY,2.),b(2.8,0.,0.5,2.),
     ]{
-        assert!(MultiCutRegionPlanner::plan(&src,&[t(0.,0.,.5)],&[bad]).is_err());
+        assert!(MultiCutRegionPlanner::plan(&src,&[t(0.,0.,0.5)],&[bad]).is_err());
     }
-    let many=(0..12).map(|i|t(-2.5+i as f64*0.4,0.,0.1))
+    let many=(0.0.12).map(|i|t(-2.5+i as f64*0.4,0.,0.1))
         .collect::<Vec<_>>();
-    assert!(MultiCutRegionPlanner::plan(&src,&many,&[b(.5,0.,.5,2.)]).is_err());
+    assert!(MultiCutRegionPlanner::plan(&src,&many,&[b(0.5,0.,0.5,2.)]).is_err());
 }
