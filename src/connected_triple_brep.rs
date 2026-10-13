@@ -186,6 +186,10 @@ impl ConnectedTripleBrep {
     pub fn undo_depth(&self)->usize{self.undo.len()}
     pub fn redo_depth(&self)->usize{self.redo.len()}
     pub(crate) fn source_box(&self)->&Solid{&self.source}
+    pub fn tessellate(&self,segments:usize)
+        ->Result<crate::ConnectedTripleDisplay,GeometryError>{
+        crate::ConnectedTripleMesher::tessellate(self,segments)
+    }
     pub fn validate(&self)->Result<(),GeometryError>{
         self.model.validate()?;
         let (expected,stitch)=Self::build(&self.source,self.inputs)?;
@@ -394,8 +398,8 @@ impl BrepSource for ConnectedTripleBrep{
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         self.validate()?;Ok(self.model.clone())
     }
-    fn display_mesh(&self,_segments:usize)->Result<Mesh,GeometryError>{
-        Err(invalid("connected triple analytic B-rep display mesher is not certified yet"))
+    fn display_mesh(&self,segments:usize)->Result<Mesh,GeometryError>{
+        Ok(self.tessellate(segments)?.mesh)
     }
 }
 pub struct ConnectedTripleTransaction<'a> {
