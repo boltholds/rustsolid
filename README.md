@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.29 experimental kernel: one source-certified analytical B-rep combining full-height through tunnels and independent blind-cut regions, with exact genus, mass, atomic source updates and certified watertight display.** Not a universal curved Boolean engine.
+> **Status: v0.30 experimental kernel: certified analytical through/blind bodies from v0.29 plus a new read-only, source-bound through/blind crossing and volume planner.** Intersecting through/blind topologies and universal curved Booleans remain unsupported.
 
 ## Current capabilities
+
+- Read-only geometric planning for one **overlapping** upright through-hole and a finite-depth top-entry blind-hole: exact-in-form circular lens area, independent volume inclusion/exclusion, source-validated crossing points and exposed arc witnesses, typed near-tangency holds, and no topology commit. See [v0.30 overlap contract](docs/mixed-footprint-overlap.md).
 
 - Extrude a simple, possibly concave, planar XZ profile along +Y, or create a block.
 - Maintain explicit oriented B-rep: shells, material-facing face sense independent of surface UV frames, faces, loops, coedges (twin/next/prev), edges and vertices.
@@ -26,6 +28,8 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 This implementation is **original code** based on common computational geometry methods. It contains no Parasolid binaries, Siemens headers or decompiled implementation. The historical `PK_*` API inventory, if used for planning, is not source code or an implementation specification.
 
 ## Build and test
+
+For v0.30 overlap planning, run `cargo test --test mixed_footprint`.
 
 Requires a stable Rust toolchain; the minimum supported Rust version has not been revalidated for the v0.24 triangulation dependency:
 

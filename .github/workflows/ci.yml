@@ -149,6 +149,18 @@ jobs:
           printf '%s' '{"operation":"compose_blind_regions","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"holes":[{"center":[-1,0],"radius":0.9,"depth":2},{"center":[0,0],"radius":0.9,"depth":2},{"center":[1,0],"radius":0.9,"depth":2}]}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import sys,json; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
+      - name: Independent v0.30 mixed through/blind footprint and numerical quadrature contracts
+        run: cargo test --test mixed_footprint
+      - name: v0.30 read-only mixed overlap CLI success and held-contact checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"mixed_footprint_overlap_plan","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"through":{"center":[0,0],"radius":0.5},"blind":{"center":[0.5,0],"radius":0.5,"depth":1.5}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and "solid" not in r and d["state"]=="two_transverse_crossings" and d["can_apply"] is False and d["topology_committed"] is False and len(d["crossings"])==2 and len(d["exposed_arcs"])==2 and abs(d["predicted_remaining_volume"]-140.14094873829234)<1e-9, r'
+          printf '%s' '{"operation":"mixed_footprint_overlap_plan","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"through":{"center":[0,0],"radius":0.5},"blind":{"center":[1,0],"radius":0.5,"depth":1.5}}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; assert r["ok"] and "solid" not in r and d["state"]=="held_near_tangency" and d["overlap_area"] is None and d["predicted_remaining_volume"] is None and d["can_apply"] is False, r'
       - name: Heterogeneous through/blind analytical shell genus and atomic source contracts
         run: cargo test --test mixed_regions
       - name: Mixed through/blind top and bottom cap trim meshing and mass convergence
