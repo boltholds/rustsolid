@@ -25,7 +25,7 @@ pub enum MixedPatchKind {
     OuterBoxSides,
     /// Through cylinder: full circle, bottom to blind floor.
     ThroughLowerWall,
-    /// Through cylinder: angular subset inside blind cutter, upper segment.
+    /// Through cylinder: angular subset outside blind cutter, upper segment.
     ThroughUpperWall,
     /// Blind cylinder: angular subset outside through cutter, upper segment.
     BlindUpperWall,
@@ -89,13 +89,12 @@ impl MixedCrossingSurfacePlanner {
         if lower<=source.tolerance.length_at(h) ||
             !lower.is_finite(){return Err(invalid("unresolved blind-floor level"));}
 
-        // Along the upper through-cylinder wall, only the arc inside the
-        // blind footprint is part of the physical void boundary. Conversely,
+        // Along the upper through-cylinder wall, only the arc outside the
+        // blind footprint is part of the physical material boundary. Conversely,
         // the blind-cylinder wall exists only on the arc outside the through.
         let exposed_t=arcs[0].sweep_radians;
         let exposed_b=arcs[1].sweep_radians;
-        let hidden_t=TAU-exposed_t;
-        if hidden_t<=0.0 || hidden_t>=TAU ||
+        if exposed_t<=0.0 || exposed_t>=TAU ||
             exposed_b<=0.0||exposed_b>=TAU {
             return Err(invalid("invalid crossing angular partition"));
         }
@@ -109,7 +108,7 @@ impl MixedCrossingSurfacePlanner {
             2.0*(source.bbox.max.x-source.bbox.min.x)*
             (source.bbox.max.z-source.bbox.min.z);
         let through_lower=TAU*t.radius*lower;
-        let through_upper=hidden_t*t.radius*d;
+        let through_upper=exposed_t*t.radius*d;
         let blind_upper=exposed_b*b.radius*d;
         let floor=ab-overlap;
 
