@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.31 experimental kernel: executable one-through/one-blind transverse-crossing analytical B-rep, source-atomic Undo/Redo, and certified derived genus-one watertight display.** Arbitrary curved Boolean modeling remains unsupported.
+> **Status: v0.32 experimental kernel: source-validated multi-cylinder circle-union region graphs and layered-depth analytical volume predictions for up to 12 cutters, while retaining the executable v0.31 one-through/one-blind B-rep.** General multi-cylinder curved Boolean commits remain unsupported.
 
 ## Current capabilities
+
+- Plan multiple **interacting through and blind cylindrical cutters** (up to 12) at different finite blind depths using exact-in-form exposed circular arcs, closed source-indexed contour loops, connected-component and planar-hole classification, and per-depth-slab volume integration. Tangencies, unresolved triple junctions and numerical ambiguity produce a typed Held state, with no topology commit. See [v0.32 multi-cut layered regions](docs/multi-cut-layered-regions.md).
 
 - Construct **one true crossing through/blind analytical solid** in a certified axis-aligned block: shared 3D edges, two-use coedges, UV trim loops, one closed genus-one shell, independent analytic mass, source-atomic Undo/Redo and certified watertight display triangulation. Available through the Rust API and `compose_mixed_crossing` geometry.v1 command. See [v0.31 mixed crossing B-rep](docs/mixed-crossing-brep.md).
 
@@ -31,7 +33,8 @@ This implementation is **original code** based on common computational geometry 
 
 ## Build and test
 
-For v0.31 crossing topology and display, run `cargo test --test mixed_crossing_brep && cargo test --test mixed_crossing_mesh`.
+For v0.32 multi-cut region graphs and independent strip integrals, run `cargo test --test multi_cut_regions`.
+For the executable v0.31 one-pair crossing topology and display, run `cargo test --test mixed_crossing_brep && cargo test --test mixed_crossing_mesh`.
 For the earlier v0.30 read-only overlap planner, run `cargo test --test mixed_footprint`.
 
 Requires a stable Rust toolchain; the minimum supported Rust version has not been revalidated for the v0.24 triangulation dependency:
