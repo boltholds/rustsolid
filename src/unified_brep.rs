@@ -8,7 +8,7 @@
 //! non-manifold models are deliberately not claimed yet.
 use crate::{
     BoundingBox, Coedge, CoedgeGeometry, CoedgeId, Curve2, Curve3,
-    ThroughHoleBrep,BlindHoleBrep,IntersectingBlindBrep,
+    ThroughHoleBrep,BlindHoleBrep,IntersectingBlindBrep,MixedCrossingBrep,
     MixedThroughBlindBrep,CompoundBlindBrep,
     CylindricalBrep, Edge, EdgeGeometry, EdgeId, FaceGeometry, FaceId,
     GeometryError, GeometryTolerance, Loop, LoopId, MassProperties,
@@ -33,7 +33,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -133,6 +133,7 @@ pub enum BrepBody {
     IntersectingBlind(IntersectingBlindBrep),
     CompoundBlind(CompoundBlindBrep),
     MixedRegions(MixedThroughBlindBrep),
+    MixedCrossing(MixedCrossingBrep),
 }
 impl From<Solid> for BrepBody {
     fn from(body: Solid) -> Self { Self::Polyhedral(body) }
@@ -155,6 +156,9 @@ impl From<CompoundBlindBrep> for BrepBody {
 impl From<MixedThroughBlindBrep> for BrepBody {
     fn from(body:MixedThroughBlindBrep)->Self{Self::MixedRegions(body)}
 }
+impl From<MixedCrossingBrep> for BrepBody {
+    fn from(body:MixedCrossingBrep)->Self{Self::MixedCrossing(body)}
+}
 impl BrepBody {
     pub fn validate(&self) -> Result<(), GeometryError> {
         match self {
@@ -165,6 +169,7 @@ impl BrepBody {
             Self::IntersectingBlind(body)=>body.validate(),
             Self::CompoundBlind(body)=>body.validate(),
             Self::MixedRegions(body)=>body.validate(),
+            Self::MixedCrossing(body)=>body.validate(),
         }
     }
     pub fn shared(&self) -> Result<BrepModel, GeometryError> {
@@ -182,6 +187,7 @@ impl BrepBody {
             Self::IntersectingBlind(body)=>body,
             Self::CompoundBlind(body)=>body,
             Self::MixedRegions(body)=>body,
+            Self::MixedCrossing(body)=>body,
         }
     }
 }
@@ -373,7 +379,8 @@ impl BrepModel {
                 BrepOrigin::AnalyticMultipleBlindHoles=>face.id.0>=6,
                 BrepOrigin::AnalyticIntersectingBlindHoles=>face.id.0>=6,
                 BrepOrigin::AnalyticCompoundBlindRegions=>face.id.0>=6,
-                BrepOrigin::AnalyticMixedThroughBlindRegions=>face.id.0>=6,
+                BrepOrigin::AnalyticMixedThroughBlindRegions |
+                    BrepOrigin::AnalyticCrossingThroughBlind=>face.id.0>=6,
             };
             let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
             if face.sense!=expected {
