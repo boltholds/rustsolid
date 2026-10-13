@@ -374,7 +374,8 @@ impl BrepModel {
                 BrepOrigin::AnalyticIntersectingBlindHoles=>face.id.0>=6,
                 BrepOrigin::AnalyticCompoundBlindRegions=>face.id.0>=6,
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>face.id.0>=6,
-                BrepOrigin::AnalyticThroughBlindCrossing=>face.id.0>=6,
+                BrepOrigin::AnalyticThroughBlindCrossing=>
+                    face.id.0>=6 && face.id!=FaceId(8),
             };
             let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
             if face.sense!=expected {
