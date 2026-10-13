@@ -227,14 +227,44 @@ impl MixedCrossingBrep {
     pub fn validate(&self)->Result<(),GeometryError>{
         self.model.validate()?;
         let (expected,plan)=Self::build(&self.source,self.through,self.blind)?;
-        if self.model.summary()!=expected.summary() ||
-            self.model.vertices.iter().map(|v|v.position).collect::<Vec<_>>()!=
-                expected.vertices.iter().map(|v|v.position).collect::<Vec<_>>() ||
-            self.model.geometry.curves3!=expected.geometry.curves3 ||
-            self.model.geometry.curves2!=expected.geometry.curves2 ||
-            self.model.geometry.surfaces!=expected.geometry.surfaces ||
-            self.model.mass!=expected.mass ||
-            self.plan!=plan {
+        // A matching entity count and identical carriers are not sufficient:
+        // verify every physical endpoint, directed incidence and UV owner
+        // against the independently rebuilt canonical source.
+        let matches_source=
+            self.model.origin==expected.origin &&
+            self.model.summary()==expected.summary() &&
+            self.model.bbox==expected.bbox &&
+            self.model.tolerance==expected.tolerance &&
+            self.model.vertices.iter().map(|v|(v.id,v.position)).collect::<Vec<_>>()==
+                expected.vertices.iter().map(|v|(v.id,v.position)).collect::<Vec<_>>() &&
+            self.model.edges.len()==expected.edges.len() &&
+            self.model.edges.iter().zip(&expected.edges).all(|(a,b)|
+                a.id==b.id && a.start==b.start && a.end==b.end &&
+                a.coedges==b.coedges) &&
+            self.model.coedges.len()==expected.coedges.len() &&
+            self.model.coedges.iter().zip(&expected.coedges).all(|(a,b)|
+                a.id==b.id && a.edge==b.edge && a.face==b.face &&
+                a.loop_id==b.loop_id && a.reversed==b.reversed &&
+                a.next==b.next && a.prev==b.prev && a.twin==b.twin) &&
+            self.model.loops.len()==expected.loops.len() &&
+            self.model.loops.iter().zip(&expected.loops).all(|(a,b)|
+                a.id==b.id && a.face==b.face && a.role==b.role &&
+                a.first_coedge==b.first_coedge) &&
+            self.model.faces.len()==expected.faces.len() &&
+            self.model.faces.iter().zip(&expected.faces).all(|(a,b)|
+                a.id==b.id && a.loops==b.loops && a.sense==b.sense &&
+                a.geometry==b.geometry) &&
+            self.model.shells.len()==expected.shells.len() &&
+            self.model.shells.iter().zip(&expected.shells).all(|(a,b)|
+                a.id==b.id && a.faces==b.faces && a.closed==b.closed) &&
+            self.model.geometry.curves3==expected.geometry.curves3 &&
+            self.model.geometry.curves2==expected.geometry.curves2 &&
+            self.model.geometry.surfaces==expected.geometry.surfaces &&
+            self.model.geometry.edges==expected.geometry.edges &&
+            self.model.geometry.coedges==expected.geometry.coedges &&
+            self.model.mass==expected.mass &&
+            self.plan==plan;
+        if !matches_source {
             return Err(invalid("crossed through/blind topology or mass differs from source"));
         }
         Ok(())
