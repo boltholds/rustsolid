@@ -206,11 +206,11 @@ fn unsafe_external_tangency_and_triple_junction_are_held_without_mass(){
 fn near_equal_depth_events_hold_but_exact_equal_depths_are_valid(){
     let source=block();
     let through=[t(0.,0.,0.5)];
-    let cuts=[b(0.5,0.,0.5,1.2),b(-0.5,0.,0.5,1.2+1e-10)];
+    let cuts=[b(0.5,0.,0.5,1.2),b(-1.5,1.0,0.4,1.2+1e-10)];
     let held=MultiCutRegionPlanner::plan(&source,&through,&cuts).unwrap();
     assert_eq!(held.state,MultiCutPlanState::Held(
         MultiCutHold::UnresolvedDepthEvent));
-    let equal=[cuts[0],b(-0.5,0.,0.5,1.2)];
+    let equal=[cuts[0],b(-1.5,1.0,0.4,1.2)];
     let p=MultiCutRegionPlanner::plan(&source,&through,&equal).unwrap();
     assert_eq!(p.state,MultiCutPlanState::Ready);
     assert_eq!(p.slabs.len(),2);
@@ -234,7 +234,7 @@ fn depth_monotonicity_permutation_and_large_translation_preserve_source_mass(){
         p.predicted_remaining_volume.unwrap());
     let offset=10000.0;
     let shifted=Solid::block(point(-3.+offset,-1.,-3.-offset),6.,4.,6.).unwrap();
-    let t_shift=[t(offset,-offset,through[0].radius)];
+    let t_shift=[HoleParameters{center_x:offset,center_z:-offset,radius:through[0].radius}];
     let b_shift=a.map(|cut|b(cut.center_x+offset,cut.center_z-offset,cut.radius,cut.depth));
     let translated=MultiCutRegionPlanner::plan(&shifted,&t_shift,&b_shift).unwrap();
     assert_eq!(translated.state,MultiCutPlanState::Ready);
@@ -246,17 +246,17 @@ fn depth_monotonicity_permutation_and_large_translation_preserve_source_mass(){
 fn source_replay_rejects_tampering_and_never_modifies_topology(){
     let src=block();
     let t=[t(0.,0.,0.75)];
-    let b=[b(0.7,0.,0.75,2.),b(1.4,0.25,0.6,1.)];
+    let blinds=[b(0.7,0.,0.75,2.),b(1.4,0.25,0.6,1.)];
     let before=(src.revision,src.mass,src.edges.len(),src.faces.len());
-    let plan=MultiCutRegionPlanner::plan(&src,&t,&b).unwrap();
-    plan.validate_against(&src,&t,&b).unwrap();
+    let plan=MultiCutRegionPlanner::plan(&src,&t,&blinds).unwrap();
+    plan.validate_against(&src,&t,&blinds).unwrap();
     let mut tampered=plan.clone();
     tampered.slabs[2].union_area+=0.01;
-    assert!(tampered.validate_against(&src,&t,&b).is_err());
+    assert!(tampered.validate_against(&src,&t,&blinds).is_err());
     let mut tampered=plan.clone();
     tampered.slabs[2].boundary_loops[0].arcs[0].midpoint.x+=0.01;
-    assert!(tampered.validate_against(&src,&t,&b).is_err());
-    assert!(plan.validate_against(&src,&t,&[b[0],b(1.4,0.25,0.6,1.2)]).is_err());
+    assert!(tampered.validate_against(&src,&t,&blinds).is_err());
+    assert!(plan.validate_against(&src,&t,&[blinds[0],b(1.4,0.25,0.6,1.2)]).is_err());
     assert_eq!((src.revision,src.mass,src.edges.len(),src.faces.len()),before);
     assert!(!plan.can_apply());
 }
