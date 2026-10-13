@@ -60,13 +60,21 @@ fn triple_mesh_refinement_preserves_source_mass_and_reduces_faceting_error(){
     let b=body();
     let before=b.model().mass;
     let mut errors=Vec::new();
+    let mut bounds=Vec::new();
     let mut triangles=Vec::new();
     for n in [12,24,48,96]{
         let m=b.tessellate(n).unwrap();
         close(m.analytical_volume,before.volume,1e-11);
         close(m.faceted_volume,m.predicted_polygonized_volume,2e-6);
         assert!(m.faceting_volume_error.is_finite());
+        assert!(m.faceting_volume_error>=-2e-6);
+        // Source-circle sector error has a proven quadratic chord bound.
+        // Unlike a hard absolute threshold, this scales correctly with
+        // the radius, angular spans and slab heights.
+        assert!(m.faceting_volume_error <=
+            m.arc_chord_volume_error_bound+2e-6);
         errors.push(m.faceting_volume_error.abs());
+        bounds.push(m.arc_chord_volume_error_bound);
         triangles.push(m.mesh.triangles.len());
     }
     assert_eq!(b.model().mass,before);
@@ -74,8 +82,11 @@ fn triple_mesh_refinement_preserves_source_mass_and_reduces_faceting_error(){
         assert!(pair[1]<pair[0],
             "mesh refinement did not improve analytic error: {:?}",errors);
     }
+    for pair in bounds.windows(2){
+        close(pair[0]/pair[1],4.0,1e-9);
+    }
     for pair in triangles.windows(2){assert!(pair[1]>pair[0]);}
-    assert!(errors[3]<0.002);
+    assert!(errors[3]<errors[0]/40.0);
 }
 #[test]
 fn bad_display_budget_and_replay_transactions_leave_source_untouched(){
