@@ -19,6 +19,7 @@ mod mixed_regions_cli;
 mod mixed_footprint_cli;
 mod mixed_crossing_cli;
 mod composed_crossing_cli;
+mod connected_triple_cli;
 mod multi_cut_regions_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -73,6 +74,12 @@ enum GeometryRequest {
         pairs:Vec<composed_crossing_cli::PairInput>,
         #[serde(default)] isolated_blind:Vec<BlindHoleInput>,
         #[serde(default)] batches:Vec<Vec<composed_crossing_cli::ComposedEditInput>>,
+        #[serde(default)] undo:usize,#[serde(default)] redo:usize,
+        #[serde(default)] display_segments:Option<usize>},
+    ComposeConnectedTriple {source:SolidSource,
+        through:mixed_regions_cli::ThroughHoleInput,
+        blind:Vec<BlindHoleInput>,
+        #[serde(default)] batches:Vec<Vec<connected_triple_cli::TripleEditInput>>,
         #[serde(default)] undo:usize,#[serde(default)] redo:usize,
         #[serde(default)] display_segments:Option<usize>},
     ComposeBlindRegions {source:SolidSource,holes:Vec<BlindHoleInput>,
@@ -2086,6 +2093,10 @@ fn process(input: &str) -> Response {
             source,pairs,isolated_blind,batches,undo,redo,display_segments,
         })=>return composed_crossing_cli::evaluate(
             source,pairs,isolated_blind,batches,undo,redo,display_segments),
+        Ok(GeometryRequest::ComposeConnectedTriple{
+            source,through,blind,batches,undo,redo,display_segments,
+        })=>return connected_triple_cli::evaluate(
+            source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::CarrierTransaction{source,batches,undo,redo}) =>
             return evaluate_carrier_transaction(source,batches,undo,redo),
         Ok(GeometryRequest::StructuralTransaction{source,batches,undo,redo,display_segments}) =>

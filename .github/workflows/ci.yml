@@ -163,6 +163,21 @@ jobs:
           printf '%s' '{"operation":"compose_crossing_clusters","source":{"kind":"block","origin":[-5,-1,-4],"width":10,"height":4,"depth":8},"pairs":[{"through":{"center":[-2,0],"radius":0.45},"blind":{"center":[-1.55,0],"radius":0.45,"depth":1.5}}],"isolated_blind":[{"center":[-2,0.85],"radius":0.4,"depth":1.0}]}' \
             | cargo run --quiet --bin gefest-geometry \
             | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r,r'
+      - name: Real three-cylinder source-certified B-rep, shared coedge and watertight gate
+        run: cargo test --test connected_triple_brep
+      - name: Real connected triple B-rep geometry.v1 source/mesh/undo acceptance
+        run: cargo test --bin gefest-geometry connected_triple_cli
+      - name: Connected three-cylinder material and watertight display geometry.v1 smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"compose_connected_triple","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"through":{"center":[0,0],"radius":0.75},"blind":[{"center":[0.7,0],"radius":0.75,"depth":2},{"center":[1.4,0.25],"radius":0.6,"depth":1}],"display_segments":24}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); d=r["data"]; s=r["solid"]; q=d["display_quality"]; assert r["ok"] and d["topology_committed"] and d["topology"]["genus"]==1 and d["topology"]["blind_floor_faces"]==2 and len(d["slabs"])==3 and q["closed_oriented_manifold_certified"] and q["faceting_volume_error"]>=-1e-7 and len(s["faces"])==len(s["triangle_face_ids"]) and abs(s["mass"]["volume"]-q["analytic_volume"])<1e-10,r'
+          printf '%s' '{"operation":"compose_connected_triple","source":{"kind":"block","origin":[-3,-1,-3],"width":6,"height":4,"depth":6},"through":{"center":[0,0],"radius":0.75},"blind":[{"center":[0.7,0],"radius":0.75,"depth":2},{"center":[0.2,0],"radius":0.6,"depth":1}],"display_segments":24}' \
+            | cargo run --quiet --bin gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r,r'
+
       - name: Three-source connected multi-depth face-transition geometry gate
         run: cargo test --test connected_cut_transitions
       - name: Multi-circle source-bound slab arrangement and independent strip quadrature

@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.34 experimental kernel: source-certified connected three-circle floor-transition geometry, retaining the executable v0.33 separated-cluster B-rep.** Connected triple B-rep face/coedge assembly remains unsupported.
+> **Status: v0.35 experimental kernel: a source-certified, executable genus-one B-rep for a connected chain of one through and two different-depth blind cylinders, with exact-in-form mass/centroid, two physical floors, watertight derived display and atomic Undo/Redo.** Simultaneous triple junctions and arbitrary curved Boolean remain unsupported.
 
 ## Current capabilities
+
+- Build a **connected three-cylinder crossing chain** in one analytic B-rep: the through and deeper blind cutters intersect, and the deeper and shallower blind cutters intersect, while the outside pair stays separated. Source-backed angular events define shared physical line/circle edges, cylinder UV trims, two upward blind floors and one closed genus-one shell. Analytic source mass/centroid are independently checked against union-of-slices quadrature; display triangles reuse shared B-rep edges. Exposed in the `compose_connected_triple` JSON API. See [v0.35 connected triple B-rep](docs/connected-triple-brep.md).
 
 - Plan **connected through/two-blind circular boundary transitions across different floor depths**, partitioning cylinder sectors into continuing, terminating and emerging source-owned arcs. Validate floor-area growth and source replay, without premature multi-cut topology commits. See [v0.34 transition contracts](docs/connected-three-cutter-transitions.md).
 
@@ -36,6 +38,8 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 This implementation is **original code** based on common computational geometry methods. It contains no Parasolid binaries, Siemens headers or decompiled implementation. The historical `PK_*` API inventory, if used for planning, is not source code or an implementation specification.
 
 ## Build and test
+
+For v0.35 connected triple analytical source and watertight display, run `cargo test --test connected_triple_brep && cargo test --bin gefest-geometry connected_triple_cli`.
 
 For v0.33 composed crossing-shell topology and global mesh, run `cargo test --test composed_crossing_brep`.
 For the independent v0.32 multi-cut region graph planner, run `cargo test --test multi_cut_regions`.
