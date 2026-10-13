@@ -20,7 +20,7 @@ fn cross(a:Point3,b:Point3)->Point3{
 fn dot(a:Point3,b:Point3)->f64{a.x*b.x+a.y*b.y+a.z*b.z}
 fn mag(a:Point3)->f64{a.x.hypot(a.y).hypot(a.z)}
 fn dist(a:Point3,b:Point3)->f64{mag(psub(a,b))}
-fn shoelace(mesh:&Mesh,loop_:&[u32])->f64{
+pub(crate) fn shoelace(mesh:&Mesh,loop_:&[u32])->f64{
     let mut sum=0.0;
     let origin=mesh.vertices[loop_[0] as usize];
     for i in 0..loop_.len(){
@@ -64,7 +64,7 @@ fn add_triangle(mesh:&mut Mesh,mut ids:[u32;3],face:FaceId,
     mesh.triangle_faces.push(face);
     Ok(())
 }
-fn triangulate_cap(
+pub(crate) fn triangulate_cap(
     mesh:&mut Mesh,outer:&[u32],inner:Option<&[u32]>,
     face:FaceId,desired_y:i8,area_eps:f64,
 )->Result<f64,GeometryError>{
@@ -106,7 +106,7 @@ fn triangulate_cap(
     }
     Ok(area)
 }
-fn wall(mesh:&mut Mesh,lower:&[u32],upper:&[u32],face:FaceId,
+pub(crate) fn wall(mesh:&mut Mesh,lower:&[u32],upper:&[u32],face:FaceId,
         tol:f64)->Result<f64,GeometryError>{
     if lower.len()<2||lower.len()!=upper.len(){
         return Err(invalid("wall curves require equal polygonization"));
