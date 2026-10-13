@@ -151,6 +151,8 @@ jobs:
             | python3 -c 'import sys,json; r=json.load(sys.stdin); assert not r["ok"] and "solid" not in r and "data" not in r, r'
       - name: Connected three-cylinder global arc atoms and 3D physical halfedge incidence
         run: cargo test --test connected_triple_stitch
+      - name: Source-certified connected triple canonical analytic B-rep and exact centroid
+        run: cargo test --test connected_triple_brep
       - name: Connected three-cylinder global edge stitching JSON parser and held-state checks
         run: cargo test --bin gefest-geometry connected_triple_cli
       - name: Three-body chain with distinct blind depths and closed 3D physical incidence JSON smoke
