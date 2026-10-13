@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.30 experimental kernel: certified analytical through/blind bodies from v0.29 plus a new read-only, source-bound through/blind crossing and volume planner.** Intersecting through/blind topologies and universal curved Booleans remain unsupported.
+> **Status: v0.31 experimental kernel: executable one-through/one-blind transverse-crossing analytical B-rep, source-atomic Undo/Redo, and certified derived genus-one watertight display.** Arbitrary curved Boolean modeling remains unsupported.
 
 ## Current capabilities
+
+- Construct **one true crossing through/blind analytical solid** in a certified axis-aligned block: shared 3D edges, two-use coedges, UV trim loops, one closed genus-one shell, independent analytic mass, source-atomic Undo/Redo and certified watertight display triangulation. Available through the Rust API and `compose_mixed_crossing` geometry.v1 command. See [v0.31 mixed crossing B-rep](docs/mixed-crossing-brep.md).
 
 - Read-only geometric planning for one **overlapping** upright through-hole and a finite-depth top-entry blind-hole: exact-in-form circular lens area, independent volume inclusion/exclusion, source-validated crossing points and exposed arc witnesses, typed near-tangency holds, and no topology commit. See [v0.30 overlap contract](docs/mixed-footprint-overlap.md).
 
@@ -29,7 +31,8 @@ This implementation is **original code** based on common computational geometry 
 
 ## Build and test
 
-For v0.30 overlap planning, run `cargo test --test mixed_footprint`.
+For v0.31 crossing topology and display, run `cargo test --test mixed_crossing_brep && cargo test --test mixed_crossing_mesh`.
+For the earlier v0.30 read-only overlap planner, run `cargo test --test mixed_footprint`.
 
 Requires a stable Rust toolchain; the minimum supported Rust version has not been revalidated for the v0.24 triangulation dependency:
 
@@ -110,7 +113,7 @@ The existing Gefest backend uses CadQuery/OpenCascade, and its geometric constra
 
 ## Known limits
 
-The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles exact axis-aligned box CSG, a single full-height through-cylinder or a certified top-entry blind cylinder; additional through-holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary cross-depth or oblique intersecting cuts, connected regions of three or more crossing cylinders, through/blind **intersections and tangencies**, arbitrary structural cuts, multi-component bodies, NURBS, general cavities, source-independent meshing and stable topological naming across connectivity changes, STEP/X_T, fillets and production-grade numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
+The polyhedral `Solid` editor still represents **one connected genus-zero shell with one outer loop per face**. The shared analytic B-rep supports multiple disjoint full-height cylindrical holes and one closed genus-N shell in the bounded structural editor. The original Boolean endpoint handles exact axis-aligned box CSG, a single full-height through-cylinder or a certified top-entry blind cylinder; additional through-holes use the explicit `structural_transaction` path. Complete global Boolean region classification, arbitrary cross-depth or oblique intersecting cuts, connected regions of three or more crossing cylinders, generalized through/blind **intersections beyond one certified transverse pair and all tangencies**, arbitrary structural cuts, multi-component bodies, NURBS, general cavities, source-independent meshing and stable topological naming across connectivity changes, STEP/X_T, fillets and production-grade numerical guarantees remain future work. Not suitable for safety-critical or precision manufacturing use.
 
 The validated Euler command history supports atomic MEV/MEF/KEV/KEF batches with Undo/Redo. Box Boolean evaluation creates an independent B-rep rather than mutating one operand's history. General Boolean splitting of curved topology, vertex move, face extrusion and fillets remain unsupported. Arena transaction candidates still clone their command history (at least O(n) memory work).
 
