@@ -108,7 +108,7 @@ pub use structural_editor::{BrepStructuralEditor, BrepStructuralTransaction,
 pub use face_region_mesher::{FaceRegionMesher,FaceRegionCertificate,CertifiedDisplayMesh};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
     Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
-    PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives,
+    PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives, OrientedCircle2,
     Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
