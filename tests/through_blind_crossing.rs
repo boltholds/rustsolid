@@ -50,9 +50,10 @@ fn check(body:&ThroughBlindCrossingBrep){
     for id in 0..6 {
         assert_eq!(model.face_sense(FaceId(id)),Some(FaceSense::Forward));
     }
-    for id in 6..10 {
+    for id in [6,7,9] {
         assert_eq!(model.face_sense(FaceId(id)),Some(FaceSense::Reversed));
     }
+    assert_eq!(model.face_sense(FaceId(8)),Some(FaceSense::Forward));
     assert_eq!(model.edges[18].start.0,9);
     assert_eq!(model.edges[18].end.0,8);
     assert_eq!(model.edges[19].start,model.edges[19].end);
