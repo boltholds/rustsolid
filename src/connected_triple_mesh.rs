@@ -63,6 +63,9 @@ pub struct ConnectedTripleDisplay {
     pub faceted_volume:f64,
     pub faceted_surface_area:f64,
     pub faceting_volume_error:f64,
+    /// Rigorous geometric upper bound from x - sin(x) <= x^3/6,
+    /// plus a separate floating-point comparison slack in certification.
+    pub arc_chord_volume_error_bound:f64,
     pub predicted_polygonized_volume:f64,
     pub predicted_polygonized_area:f64,
     pub floor_polygon_areas:[f64;2],
@@ -171,6 +174,20 @@ impl ConnectedTripleMesher {
             }
             polygon_areas.push(area);
         }
+        let chord_volume_error_bound=p.slabs.iter().map(|slab|{
+            let h=slab.y_upper-slab.y_lower;
+            slab.exposed_contour.parts.iter().map(|edge|{
+                let atom=&p.atomic_arcs[edge.arc];
+                let r=circles[atom.source].2;
+                let angle=atom.end_angle-atom.start_angle;
+                // Each circular arc is replaced with n uniform chords.
+                // Sector-minus-chord area is bounded without reading facets.
+                r*r*angle.powi(3)/(12.0*(segments as f64).powi(2))*h
+            }).sum::<f64>()
+        }).sum::<f64>();
+        if !chord_volume_error_bound.is_finite() || chord_volume_error_bound<=0.0 {
+            return Err(invalid("circular arc faceting budget is invalid"));
+        }
         let expected_faceted_volume=source.mass.volume-
             p.slabs.iter().zip(&polygon_areas)
                 .map(|(layer,area)|area*(layer.y_upper-layer.y_lower))
@@ -235,7 +252,8 @@ impl ConnectedTripleMesher {
             !area.is_finite()||
             (signed_volume-expected_faceted_volume).abs()>slack||
             (area-predicted_faceted_area).abs()>slack*16.0 ||
-            signed_volume<body.model().mass.volume-slack{
+            signed_volume<body.model().mass.volume-slack ||
+            signed_volume-body.model().mass.volume > chord_volume_error_bound+slack{
             return Err(invalid("triple faceted volume/area not independently certified"));
         }
         Ok(ConnectedTripleDisplay{
@@ -244,6 +262,7 @@ impl ConnectedTripleMesher {
             faceted_volume:signed_volume,
             faceted_surface_area:area,
             faceting_volume_error:signed_volume-m.mass.volume,
+            arc_chord_volume_error_bound:chord_volume_error_bound,
             predicted_polygonized_volume:expected_faceted_volume,
             predicted_polygonized_area:predicted_faceted_area,
             floor_polygon_areas:floor_areas,
