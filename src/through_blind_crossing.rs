@@ -310,8 +310,10 @@ impl ThroughBlindCrossingBrep {
         Ok(())
     }
     pub fn begin_edit(&mut self)->ThroughBlindCrossingTransaction<'_>{
+        let through=self.through;
+        let blind=self.blind;
         ThroughBlindCrossingTransaction{
-            owner:self,through:self.through,blind:self.blind,poisoned:false,
+            owner:self,through,blind,poisoned:false,
         }
     }
     pub fn undo(&mut self)->Result<bool,GeometryError>{self.transition(false)}
