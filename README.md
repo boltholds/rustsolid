@@ -2,9 +2,11 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.33 experimental kernel: source-certified composition of up to four independent through/blind crossing pairs, plus isolated blind holes, into one genus-N analytic B-rep shell with certified multi-opening display.** Direct triple-interacting cutters and general curved Booleans remain unsupported.
+> **Status: v0.34 experimental kernel: source-certified connected three-circle floor-transition geometry, retaining the executable v0.33 separated-cluster B-rep.** Connected triple B-rep face/coedge assembly remains unsupported.
 
 ## Current capabilities
+
+- Plan **connected through/two-blind circular boundary transitions across different floor depths**, partitioning cylinder sectors into continuing, terminating and emerging source-owned arcs. Validate floor-area growth and source replay, without premature multi-cut topology commits. See [v0.34 transition contracts](docs/connected-three-cutter-transitions.md).
 
 - Build **one analytical B-rep from multiple strictly separated, individually interacting through/blind crossing clusters** with different blind depths, shared upper/lower cap loops, full coedge/UV remapping, source-atomic Undo/Redo and a certified global watertight mesh. The new `compose_crossing_clusters` API also permits strictly disjoint stand-alone blind cuts. See [v0.33 composed crossing shells](docs/composed-crossing-shells.md).
 

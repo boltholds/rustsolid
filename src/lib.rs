@@ -38,6 +38,7 @@ mod compound_blind;
 mod mixed_regions;
 mod mixed_footprint;
 mod multi_cut_regions;
+mod connected_cut_transitions;
 mod mixed_crossing_surfaces;
 mod mixed_crossing_brep;
 mod mixed_crossing_mesh;
@@ -100,6 +101,10 @@ pub use mixed_footprint::{MixedFootprintOverlapPlanner,MixedFootprintOverlapPlan
 pub use multi_cut_regions::{MultiCutRegionPlanner,MultiCutRegionPlan,MultiCutPlanState,
     MultiCutHold,MultiCutSource,MultiCutRegionSlab,CircleUnionVertex,
     CircleUnionArc,CircleUnionLoop};
+pub use connected_cut_transitions::{
+    ConnectedCutTransitionPlanner,ConnectedCutTransitionPlan,
+    DepthTransition,TransitionArc,TransitionArcKind
+};
 pub use mixed_crossing_surfaces::{MixedCrossingSurfacePlanner,MixedCrossingSurfacePlan,
     MixedSurfacePatch,MixedPatchKind};
 pub use mixed_crossing_brep::{MixedCrossingBrep,MixedCrossingTransaction};
