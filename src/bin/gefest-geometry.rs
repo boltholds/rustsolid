@@ -360,7 +360,7 @@ fn inspect_brep(input:BrepInput) -> Response {
         }).collect::<Vec<_>>();
         let trims=graph.coedges.iter().map(|c| match graph.coedge_pcurve(c.id) {
             Some(Curve2::Line(_)) => "line",
-            Some(Curve2::Circle(_)) => "circle",
+            Some(Curve2::Circle(_)) | Some(Curve2::OrientedCircle(_)) => "circle",
             None => "missing",
         }).collect::<Vec<_>>();
         let seams=graph.edges.iter().filter(|e| {
@@ -385,6 +385,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
+                BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1382,6 +1383,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
+                BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
