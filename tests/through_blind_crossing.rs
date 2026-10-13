@@ -58,8 +58,10 @@ fn check(body:&ThroughBlindCrossingBrep){
     assert_eq!(model.edges[18].end.0,8);
     assert_eq!(model.edges[19].start,model.edges[19].end);
     assert!(matches!(model.edge_curve(rustsolid::EdgeId(18)),Some(Curve3::Circle(_))));
-    assert!(matches!(model.coedge_pcurve(rustsolid::CoedgeId(36)),
+    assert!(matches!(model.coedge_pcurve(rustsolid::CoedgeId(26)),
         Some(Curve2::ClockwiseCircle(_))));
+    assert!(matches!(model.coedge_pcurve(rustsolid::CoedgeId(36)),
+        Some(Curve2::Circle(_))));
     assert_eq!(model.coedges[24].face,FaceId(9));
     assert_eq!(model.coedges[26].face,FaceId(8));
     assert_eq!(model.edges[20].coedges,
