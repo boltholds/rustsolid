@@ -39,6 +39,8 @@ mod mixed_regions;
 mod mixed_footprint;
 mod multi_cut_regions;
 mod connected_cut_transitions;
+mod connected_triple_brep;
+mod connected_triple_mesh;
 mod mixed_crossing_surfaces;
 mod mixed_crossing_brep;
 mod mixed_crossing_mesh;
@@ -105,6 +107,10 @@ pub use connected_cut_transitions::{
     ConnectedCutTransitionPlanner,ConnectedCutTransitionPlan,
     DepthTransition,TransitionArc,TransitionArcKind
 };
+pub use connected_triple_brep::{
+    ConnectedTripleBrep,TripleCutParameters,ConnectedTripleTransaction
+};
+pub use connected_triple_mesh::{ConnectedTripleMesher,ConnectedTripleDisplay};
 pub use mixed_crossing_surfaces::{MixedCrossingSurfacePlanner,MixedCrossingSurfacePlan,
     MixedSurfacePatch,MixedPatchKind};
 pub use mixed_crossing_brep::{MixedCrossingBrep,MixedCrossingTransaction};
