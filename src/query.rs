@@ -295,7 +295,7 @@ impl Execution<'_> {
         let bad=||qerr("query.internal",s.at,"field resolver and schema disagree");
         let result=match (node,s.name.as_str()) {
             (Node::Root,"body")=>self.get(Node::Body,&s.fields)?,
-            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions"}),
+            (Node::Body,"kind")=>json!(match m.origin {BrepOrigin::Polyhedral=>"polyhedral",BrepOrigin::AnalyticCylinder=>"analytic_cylinder",BrepOrigin::AnalyticThroughHole=>"analytic_through_hole",BrepOrigin::AnalyticMultipleThroughHoles=>"analytic_multiple_through_holes",BrepOrigin::AnalyticBlindHole=>"analytic_blind_hole",BrepOrigin::AnalyticMultipleBlindHoles=>"analytic_multiple_blind_holes",BrepOrigin::AnalyticIntersectingBlindHoles=>"analytic_intersecting_blind_holes",BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind"}),
             (Node::Body,"topology")=>self.get(Node::Topology,&s.fields)?,
             (Node::Body,"mass")=>self.get(Node::Mass,&s.fields)?,
             (Node::Body,"bounds")=>self.get(Node::Bounds,&s.fields)?,
@@ -390,7 +390,7 @@ impl Execution<'_> {
                 let p=match curve {Curve3::Line(x)=>x.direction,Curve3::Circle(x)=>x.frame.normal};
                 self.get(Node::Point(p),&s.fields)?
             }
-            (Node::Pcurve(trim),"kind")=>json!(match trim {Curve2::Line(_)=>"line",Curve2::Circle(_)=>"circle"}),
+            (Node::Pcurve(trim),"kind")=>json!(match trim {Curve2::Line(_)=>"line",Curve2::Circle(_)|Curve2::OrientedCircle(_)=>"circle"}),
             _=>return Err(bad()),
         };
         Ok(result)

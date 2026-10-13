@@ -198,10 +198,40 @@ impl Circle2 {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Curve2 { Line(Line2), Circle(Circle2) }
+pub struct OrientedCircle2 {
+    pub center: Point2Param,
+    pub radius: f64,
+    /// UV angle is phase + direction * edge_parameter.
+    pub phase: f64,
+    /// Exactly +1 or -1; mirrors the source 3D angular parameter if needed.
+    pub direction: f64,
+}
+impl OrientedCircle2 {
+    pub fn new(center: Point2Param, radius: f64, phase: f64,
+               direction: f64, tol: GeometryTolerance) -> Result<Self, GeometryError> {
+        tol.validate()?;
+        if !center.u.is_finite() || !center.v.is_finite() ||
+            !radius.is_finite() || radius <= tol.absolute_length ||
+            !phase.is_finite() || (direction != 1.0 && direction != -1.0) {
+            return Err(invalid_dimension("invalid oriented planar circular trim"));
+        }
+        Ok(Self { center, radius, phase, direction })
+    }
+    pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
+        if !t.is_finite() { return Err(invalid_dimension("nonfinite circular trim parameter")); }
+        let angle = self.phase + self.direction * t;
+        Point2Param::new(
+            self.center.u + self.radius * angle.cos(),
+            self.center.v + self.radius * angle.sin()
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve2 { Line(Line2), Circle(Circle2), OrientedCircle(OrientedCircle2) }
 impl Curve2 {
     pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
-        match self { Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t) }
+        match self { Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t), Self::OrientedCircle(c) => c.evaluate(t) }
     }
 }
 

@@ -119,6 +119,14 @@ fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
                     return Err(invalid("invalid 2D circular trim"));
                 }
             }
+            Curve2::OrientedCircle(circle)=>{
+                if !circle.center.u.is_finite() || !circle.center.v.is_finite() ||
+                    !circle.radius.is_finite() || circle.radius<=min_radius ||
+                    !circle.phase.is_finite() ||
+                    (circle.direction!=1.0 && circle.direction!= -1.0) {
+                    return Err(invalid("invalid oriented circular UV trim"));
+                }
+            }
         }
     }
     for surface in &model.geometry.surfaces {
@@ -434,7 +442,8 @@ impl BrepCarrierTransaction<'_> {
             let old=model.coedge_pcurve(CoedgeId(index as u32))
                 .ok_or_else(||invalid("missing coedge trim"))?;
             if !matches!((old,curve),(Curve2::Line(_),Curve2::Line(_)) |
-                (Curve2::Circle(_),Curve2::Circle(_))) {
+                (Curve2::Circle(_),Curve2::Circle(_)) |
+                (Curve2::OrientedCircle(_),Curve2::OrientedCircle(_))) {
                 return Err(invalid("changing the coedge trim family is not supported"));
             }
             curve.evaluate(lerp(domain,0.5)?)?;
@@ -526,6 +535,10 @@ impl BrepCarrierTransaction<'_> {
                 }
                 Curve2::Circle(circle)
             }
+            Curve2::OrientedCircle(_)=>{
+                self.failed=true;
+                return Err(invalid("oriented circle reparameterization requires a source-bound arc transaction"));
+            }
         };
         let domain=match transform_range(geom.domain,scale,offset){
             Ok(value)=>value,Err(e)=>{self.failed=true;return Err(e);}
@@ -586,6 +599,11 @@ impl BrepCarrierTransaction<'_> {
                     Curve2::Circle(c)=>Curve2::Circle(crate::Circle2{
                         center:Point2Param{u:c.center.u-delta.u,
                             v:c.center.v-delta.v},radius:c.radius,
+                    }),
+                    Curve2::OrientedCircle(c)=>Curve2::OrientedCircle(crate::OrientedCircle2{
+                        center:Point2Param{u:c.center.u-delta.u,
+                            v:c.center.v-delta.v},
+                        radius:c.radius,phase:c.phase,direction:c.direction,
                     }),
                 };
                 let new_id=Curve2Id(u32::try_from(model.geometry.curves2.len())

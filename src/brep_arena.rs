@@ -15,7 +15,7 @@ use crate::{
     BrepBody, BrepModel, CommandBatch, CommandHistory, CylindricalBrep,
     BrepCarrierEditor, BrepStructuralEditor,
     ThroughHoleBrep, HoleParameters, BlindHoleBrep, BlindHoleParameters,
-    IntersectingBlindBrep, CompoundBlindBrep, MixedThroughBlindBrep, HistoryDirection,
+    IntersectingBlindBrep, CompoundBlindBrep, MixedThroughBlindBrep, MixedCrossingBrep, HistoryDirection,
     BooleanError, BooleanKernel, BooleanOperation, BooleanResult,
     EditDelta, EditReport, EulerCommand, GeometryError, HistoryTransition, ModelUnits,
     Solid, TopologyDeltaPlan, TopologyEntity, TopologyName,
@@ -183,12 +183,13 @@ enum ArenaKernel {
     AnalyticCrossing(IntersectingBlindBrep),
     CompoundReadOnly(CompoundBlindBrep),
     MixedReadOnly(MixedThroughBlindBrep),
+    MixedCrossingReadOnly(MixedCrossingBrep),
 }
 impl ArenaKernel {
     fn revision(&self)->u64{match self{Self::Editable(h)=>h.solid().revision,Self::CurvedReadOnly(_)=>0,
         Self::AnalyticHole(h)=>h.revision(),Self::AnalyticBlind(h)=>h.revision(),
         Self::AnalyticCrossing(h)=>h.revision(),Self::CompoundReadOnly(_)=>0,
-        Self::MixedReadOnly(_)=>0}}
+        Self::MixedReadOnly(_)=>0,Self::MixedCrossingReadOnly(h)=>h.revision()}}
     fn brep_model(&self)->Result<BrepModel,GeometryError>{
         match self {
             Self::Editable(h)=>BrepModel::from_polyhedral(h.solid(),ModelUnits::default()),
@@ -198,6 +199,7 @@ impl ArenaKernel {
             Self::AnalyticCrossing(body)=>Ok(body.model().clone()),
             Self::CompoundReadOnly(body)=>Ok(body.model().clone()),
             Self::MixedReadOnly(body)=>Ok(body.model().clone()),
+            Self::MixedCrossingReadOnly(body)=>Ok(body.model().clone()),
         }
     }
     fn named(&self)->Result<Vec<(TopologyEntity,TopologyName)>,GeometryError>{
@@ -217,7 +219,7 @@ impl ArenaKernel {
                     .ok_or_else(||invalid(format!("missing semantic name for {e:?}")))?.clone(),
                 Self::CurvedReadOnly(_) | Self::AnalyticHole(_) | Self::AnalyticBlind(_) |
                     Self::AnalyticCrossing(_) | Self::CompoundReadOnly(_) |
-                    Self::MixedReadOnly(_)=>{
+                    Self::MixedReadOnly(_) | Self::MixedCrossingReadOnly(_)=>{
                     let (ty,idx)=match e {
                         TopologyEntity::Body=>("body",0),
                         TopologyEntity::Vertex(x)=>("vertex",x.0),
@@ -232,6 +234,7 @@ impl ArenaKernel {
                         Self::AnalyticCrossing(_)=>"analytic_intersecting_blind_holes",
                         Self::CompoundReadOnly(_)=>"analytic_compound_blind_regions",
                         Self::MixedReadOnly(_)=>"analytic_mixed_through_blind_regions",
+                        Self::MixedCrossingReadOnly(_)=>"analytic_crossing_through_blind",
                         _=>"analytic_cylinder"};
                     TopologyName(format!("{prefix}/{ty}/{idx}"))
                 },
@@ -283,6 +286,9 @@ impl BrepArena {
             },
             BrepBody::MixedRegions(body)=>{
                 body.validate()?;ArenaKernel::MixedReadOnly(body)
+            },
+            BrepBody::MixedCrossing(body)=>{
+                body.validate()?;ArenaKernel::MixedCrossingReadOnly(body)
             }
         };
         let mut registry=Registry::empty();
@@ -301,6 +307,9 @@ impl BrepArena {
     }
     pub fn from_mixed_regions(body:MixedThroughBlindBrep)->Result<Self,GeometryError>{
         Self::new(BrepBody::MixedRegions(body))
+    }
+    pub fn from_mixed_crossing(body:MixedCrossingBrep)->Result<Self,GeometryError>{
+        Self::new(BrepBody::MixedCrossing(body))
     }
     pub fn arena_token(&self)->u64{self.registry.token}
     pub fn revision(&self)->u64{self.storage.revision()}
@@ -325,7 +334,7 @@ impl BrepArena {
                 BrepStructuralEditor::from_through_hole(hole),
             ArenaKernel::CurvedReadOnly(_) | ArenaKernel::AnalyticBlind(_) |
                 ArenaKernel::AnalyticCrossing(_) | ArenaKernel::CompoundReadOnly(_) |
-                ArenaKernel::MixedReadOnly(_)=>
+                ArenaKernel::MixedReadOnly(_) | ArenaKernel::MixedCrossingReadOnly(_)=>
                 Err(invalid("only box and full-height through-hole are supported structural sources")),
         }
     }

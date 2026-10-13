@@ -37,6 +37,8 @@ fn position_eps(body:&BrepBody)->f64{
             length(h.model().bbox.max.sub(h.model().bbox.min))),
         BrepBody::MixedRegions(h)=>(h.model().tolerance,
             length(h.model().bbox.max.sub(h.model().bbox.min))),
+        BrepBody::MixedCrossing(h)=>(h.model().tolerance,
+            length(h.model().bbox.max.sub(h.model().bbox.min))),
     };
     tol.length_at(extent)
 }
@@ -80,6 +82,47 @@ impl BooleanRegionClassifier {
                       (point.y-lower.y).abs(),(point.y-upper.y).abs(),
                       (point.z-lower.z).abs(),(point.z-upper.z).abs()]
                         .iter().any(|d|*d<=eps){
+                    return Ok(VolumePosition::Boundary);
+                }
+                Ok(VolumePosition::Inside)
+            }
+            BrepBody::MixedCrossing(h)=>{
+                let b=h.model().bbox;
+                if point.x<b.min.x-eps||point.x>b.max.x+eps||
+                    point.y<b.min.y-eps||point.y>b.max.y+eps||
+                    point.z<b.min.z-eps||point.z>b.max.z+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                let t=h.through();let blind=h.blind();
+                let floor=b.max.y-blind.depth;
+                let dt=(point.x-t.center_x).hypot(point.z-t.center_z);
+                let db=(point.x-blind.center_x).hypot(point.z-blind.center_z);
+                // The through void removes material at every height.
+                // The blind void additionally removes its footprint ABOVE
+                // the finite-depth floor, including the overlap of both.
+                if dt<t.radius-eps ||
+                    (point.y>floor+eps && db<blind.radius-eps) {
+                    return Ok(VolumePosition::Outside);
+                }
+                if point.y>=floor-eps && dt<t.radius+eps &&
+                    point.y>floor+eps && db<blind.radius+eps {
+                    return Ok(VolumePosition::Outside);
+                }
+                if (point.y-floor).abs()<=eps &&
+                    db<=blind.radius+eps && dt>=t.radius-eps {
+                    return Ok(VolumePosition::Boundary);
+                }
+                if (dt-t.radius).abs()<=eps {
+                    return Ok(VolumePosition::Boundary);
+                }
+                if point.y>=floor-eps && (db-blind.radius).abs()<=eps &&
+                    dt>=t.radius-eps {
+                    return Ok(VolumePosition::Boundary);
+                }
+                if [(point.x-b.min.x).abs(),(point.x-b.max.x).abs(),
+                    (point.y-b.min.y).abs(),(point.y-b.max.y).abs(),
+                    (point.z-b.min.z).abs(),(point.z-b.max.z).abs()]
+                    .iter().any(|d|*d<=eps) {
                     return Ok(VolumePosition::Boundary);
                 }
                 Ok(VolumePosition::Inside)
@@ -380,7 +423,8 @@ fn body_tolerance(body:&BrepBody)->GeometryTolerance{
         BrepBody::BlindHole(h)=>h.model().tolerance,
         BrepBody::IntersectingBlind(h)=>h.model().tolerance,
         BrepBody::CompoundBlind(h)=>h.model().tolerance,
-        BrepBody::MixedRegions(h)=>h.model().tolerance}
+        BrepBody::MixedRegions(h)=>h.model().tolerance,
+        BrepBody::MixedCrossing(h)=>h.model().tolerance}
 }
 fn keep_face_piece(op:BooleanOperation,source:GraphOperand,other:VolumePosition)->bool{
     match (op,source,other) {

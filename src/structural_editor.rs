@@ -328,7 +328,7 @@ impl BrepStructuralEditor {
             BrepBody::Polyhedral(s)=>Self::new(s.clone()),
             BrepBody::ThroughHole(h)=>Self::from_through_hole(h),
             BrepBody::Cylinder(_) | BrepBody::BlindHole(_) | BrepBody::IntersectingBlind(_) | BrepBody::CompoundBlind(_) |
-                BrepBody::MixedRegions(_)=>Err(invalid("only box and full through-hole are supported structural sources")),
+                BrepBody::MixedRegions(_) | BrepBody::MixedCrossing(_)=>Err(invalid("only box and full through-hole are supported structural sources")),
         }
     }
     pub fn revision(&self)->u64{self.revision}
