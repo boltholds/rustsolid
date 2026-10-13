@@ -3,7 +3,7 @@
 //! No Parasolid implementation or vendor outputs form any test oracle.
 use std::f64::consts::PI;
 use rustsolid::{
-    BlindHoleParameters,BrepBody,BrepSource,Curve2,Curve3,FaceId,FaceSense,
+    BlindHoleParameters,BrepBody,Curve2,Curve3,FaceId,FaceSense,
     HoleParameters,LoopRole,MixedCrossingBrep,MixedCrossingSurfacePlanner,
     MixedThroughBlindBrep,MixedThroughBlindParameters,Point3,Solid,Surface3,
 };
@@ -12,7 +12,7 @@ fn p(x:f64,y:f64,z:f64)->Point3{Point3{x,y,z}}
 fn block()->Solid{Solid::block(p(-3.,-1.,-3.),6.,4.,6.).unwrap()}
 fn t(x:f64,z:f64,r:f64)->HoleParameters{HoleParameters{center_x:x,center_z:z,radius:r}}
 fn b(x:f64,z:f64,r:f64,depth:f64)->BlindHoleParameters{
-    BlindHoleParameters{center_x:x,center_z:z,radius,depth}
+    BlindHoleParameters{center_x:x,center_z:z,radius:r,depth}
 }
 fn sample()->MixedCrossingBrep{
     MixedCrossingBrep::from_box(&block(),t(0.,0.,0.5),b(0.5,0.,0.5,1.5)).unwrap()
