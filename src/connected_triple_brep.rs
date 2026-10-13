@@ -375,8 +375,9 @@ impl ConnectedTripleBrep {
                     let end=v_edge(&mut model,&mut vertical,vl1,vu1)?;
                     if start==end{return Err(invalid("coincident vertical seam endpoints"));}
                     let face=face_id(&model)?;
-                    let sid=add_surface(&mut model,Surface3::Cylinder(
-                        CylinderSurface::new(frames[disk],disks[disk].r,model.tolerance)?))?;
+                    let tol=model.tolerance;
+                    let surface=CylinderSurface::new(frames[disk],disks[disk].r,tol)?;
+                    let sid=add_surface(&mut model,Surface3::Cylinder(surface))?;
                     let uv=ParameterDomain2{
                         u:bounded(a,b)?,
                         v:bounded(ys[3]-ys[slab+1],ys[3]-ys[slab])?,
@@ -400,10 +401,10 @@ impl ConnectedTripleBrep {
         let top=horizontal.iter().filter(|((layer,disk,seg),_)|
             *layer==3&&exposed[2][*disk][*seg])
             .map(|(_,id)|(*id,false)).collect::<Vec<_>>();
-        append_loop(&mut model,FaceId(0),LoopRole::Inner,
-            &ordered_parts(&model,&bottom)?)?;
-        append_loop(&mut model,FaceId(1),LoopRole::Inner,
-            &ordered_parts(&model,&top)?)?;
+        let bottom_ordered=ordered_parts(&model,&bottom)?;
+        let top_ordered=ordered_parts(&model,&top)?;
+        append_loop(&mut model,FaceId(0),LoopRole::Inner,&bottom_ordered)?;
+        append_loop(&mut model,FaceId(1),LoopRole::Inner,&top_ordered)?;
         let mut floor_area=0.0;
         for layer in 1..3{
             let mut paths=Vec::new();
