@@ -20,6 +20,7 @@ mod mixed_footprint_cli;
 mod mixed_crossing_cli;
 mod composed_crossing_cli;
 mod multi_cut_regions_cli;
+mod connected_triple_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -62,6 +63,9 @@ enum GeometryRequest {
         #[serde(default)] display_segments:Option<usize>},
     MultiCutRegionPlan {source:SolidSource,
         through:Vec<mixed_regions_cli::ThroughHoleInput>,blind:Vec<BlindHoleInput>},
+    ConnectedTripleStitchPlan {source:SolidSource,
+        through:mixed_regions_cli::ThroughHoleInput,
+        deeper_blind:BlindHoleInput,shallower_blind:BlindHoleInput},
     MixedFootprintOverlapPlan {source:SolidSource,
         through:mixed_regions_cli::ThroughHoleInput,blind:BlindHoleInput},
     ComposeMixedCrossing {source:SolidSource,
@@ -2076,6 +2080,10 @@ fn process(input: &str) -> Response {
             source,through,blind,batches,undo,redo,display_segments),
         Ok(GeometryRequest::MultiCutRegionPlan{source,through,blind}) =>
             return multi_cut_regions_cli::evaluate(source,through,blind),
+        Ok(GeometryRequest::ConnectedTripleStitchPlan{
+            source,through,deeper_blind,shallower_blind
+        })=>return connected_triple_cli::evaluate(
+            source,through,deeper_blind,shallower_blind),
         Ok(GeometryRequest::MixedFootprintOverlapPlan{source,through,blind}) =>
             return mixed_footprint_cli::evaluate(source,through,blind),
         Ok(GeometryRequest::ComposeMixedCrossing{
