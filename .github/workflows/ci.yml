@@ -153,6 +153,8 @@ jobs:
         run: cargo test --test connected_triple_stitch
       - name: Source-certified connected triple canonical analytic B-rep and exact centroid
         run: cargo test --test connected_triple_brep
+      - name: Source-certified connected triple watertight display and volume convergence
+        run: cargo test --test connected_triple_mesh
       - name: Connected three-cylinder global edge stitching JSON parser and held-state checks
         run: cargo test --bin gefest-geometry connected_triple_cli
       - name: Three-body chain with distinct blind depths and closed 3D physical incidence JSON smoke
