@@ -118,7 +118,7 @@ fn invalid_late_commit_is_never_partially_published(){
     {
         let mut tx=body.begin_edit();
         tx.replace_through(t(0.,0.,0.55)).unwrap();
-        tx.replace_blind(b(1.,0.,0.5,1.5)).unwrap();
+        tx.replace_blind(b(1.05,0.,0.5,1.5)).unwrap(); // exact external tangency
         assert!(tx.commit().is_err());
     }
     {
