@@ -1,7 +1,8 @@
 //! RustSolid: an independent geometric modeling kernel for Gefest CAD.
 //!
-//! This module implements closed *planar polyhedral* boundary representations.
-//! It is **not** a full analytic/NURBS B-rep or a Parasolid-compatible kernel.
+//! This module combines source-certified planar and bounded analytic B-rep
+//! operations with independent geometric intersection/UV region contracts.
+//! It is **not** a general NURBS/Boolean or Parasolid-compatible kernel.
 //! The source is original and does not incorporate decompiled proprietary code.
 
 use std::collections::BTreeMap;
@@ -34,6 +35,8 @@ mod brep_arena;
 mod boolean;
 mod boolean_region;
 mod multi_face_region_preview;
+mod planar_uv_arrangement;
+mod coedge_reconciliation;
 mod through_hole;
 mod blind_hole;
 mod composite_blind;
@@ -108,6 +111,15 @@ pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionSta
 pub use multi_face_region_preview::{
     MultiFaceRegionPlan, MultiFaceRegionState, MultiFaceRegionHold,
     FacePairRegionWitness,
+};
+pub use planar_uv_arrangement::{
+    UvArrangementHold, UvCutSide, UvCycleKind, UvBoundaryProvenance,
+    UvCircularSpan, UvBoundarySpan, UvBoundaryCycle, UvFaceCell,
+    UvCutTwin, UvFaceRegionPlan, UvFaceArrangement,
+};
+pub use coedge_reconciliation::{
+    EdgeReconciliationHold, ReconciledCoedgeUse, ReconciledPhysicalEdge,
+    CoedgeReconciliationPlan, EdgeReconciliationResult,
 };
 pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
 pub use blind_hole::{BlindHoleBrep,BlindHoleParameters,BlindHoleTransaction,BlindHoleDisplay};
