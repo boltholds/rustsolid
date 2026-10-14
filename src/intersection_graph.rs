@@ -7,8 +7,8 @@
 //! self-loop; the periodic seam is not promoted to a physical cut.
 use crate::{
     BrepModel, CoedgeId, Curve3, EdgeId, FaceId, GeometryError,
-    GeometryTolerance, IntersectionCertificate, IntersectionCurve, ParameterRange,
-    Point3, Surface3, SurfaceId, TrimAmbiguity, TrimContact, TrimPosition,
+    GeometryTolerance, IntersectionCertificate, IntersectionCurve, IntersectionPcurve,
+    ParameterRange, Point3, Surface3, SurfaceId, TrimAmbiguity, TrimContact, TrimPosition,
     TrimmedBranch, TrimmedIntersection, TrimmedIntersectionEngine,
 };
 use std::collections::BTreeSet;
@@ -86,6 +86,31 @@ pub struct GraphArc {
     pub tolerance: GraphTolerance,
 }
 impl GraphArc {
+    /// Two independent analytic UV parameter curves for the same 3D branch,
+    /// one in each source-face chart. These are preview witnesses: a periodic
+    /// U seam is not a physical topology split or a committed B-rep edge.
+    pub fn pcurves(self, first:&BrepModel, second:&BrepModel)
+        -> Result<[IntersectionPcurve;2],GeometryError>
+    {
+        let [a,b]=self.source_faces;
+        if a.operand!=GraphOperand::First || b.operand!=GraphOperand::Second {
+            return Err(invalid("intersection pcurve operands are mislabeled"));
+        }
+        let surface_for=|model:&BrepModel,source:GraphFaceSource| {
+            let face=model.faces.get(source.face.0 as usize)
+                .filter(|face|face.id==source.face && face.geometry.surface==source.surface)
+                .ok_or_else(||invalid("intersection pcurve source face changed"))?;
+            model.face_surface(face.id)
+                .ok_or_else(||invalid("intersection pcurve has missing support surface"))
+        };
+        Ok([
+            IntersectionPcurve::new(self.curve,surface_for(first,a)?,
+                self.parameter_start,self.parameter_end)?,
+            IntersectionPcurve::new(self.curve,surface_for(second,b)?,
+                self.parameter_start,self.parameter_end)?,
+        ])
+    }
+
     pub fn evaluate(self, fraction: f64) -> Result<Point3, GeometryError> {
         if !fraction.is_finite() || !(0.0..=1.0).contains(&fraction) {
             return Err(invalid("graph arc evaluation fraction outside [0,1]"));
@@ -187,8 +212,18 @@ impl IntersectionGraph {
             if !arc.closed && distance(start.point,end.point)<=self.tolerance.length {
                 return Err(invalid("open graph arc collapses within tolerance"));
             }
+            // Certify that BOTH independent parameter curves reconstruct the
+            // SAME analytic 3D intersection at endpoints and interior samples.
+            // Sampling is a numerical witness, not an interval proof.
+            let pcurves=arc.pcurves(a,b)?;
             for f in [0.0,0.125,0.25,0.5,0.75,0.875,1.0] {
                 let p=arc.evaluate(f)?;
+                for pcurve in &pcurves {
+                    let reconstructed=pcurve.reconstruct(f)?;
+                    if distance(reconstructed,p)>self.tolerance.evaluation_budget {
+                        return Err(invalid("intersection pcurve / 3D carrier mismatch"));
+                    }
+                }
                 if (f==0.0 && distance(p,start.point)>self.tolerance.evaluation_budget) ||
                    (f==1.0 && distance(p,end.point)>self.tolerance.evaluation_budget) {
                     return Err(invalid("graph curve does not meet its stored endpoints"));
@@ -270,6 +305,8 @@ fn on_edge(model:&BrepModel, edge:EdgeId,p:Point3,epsilon:f64)->Result<bool,Geom
             let angular_slack=epsilon/circle.radius;
             Ok(angle>=start-angular_slack && angle<=end+angular_slack)
         }
+        Curve3::Harmonic(_)=>Err(invalid(
+            "elliptical physical boundary classification requires a dedicated inverse parameter resolver")),
     }
 }
 fn boundary_witnesses(a:&BrepModel,fa:FaceId,b:&BrepModel,fb:FaceId,

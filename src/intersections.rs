@@ -75,6 +75,39 @@ pub struct PlaneCylinderSection {
     coefficients: [f64;2],
 }
 impl PlaneCylinderSection {
+    /// The cylinder chart in which this analytic section is parameterized.
+    /// The section parameter is the *unwrapped* angular U of this chart.
+    pub(crate) fn cylinder(self) -> CylinderSurface { self.cylinder }
+
+    /// Coefficients v(u)=a+b cos(u)+c sin(u), valid only for the oblique
+    /// (non-generator) family constructed by SurfaceIntersectionEngine.
+    pub fn axial_coefficients(self)->Result<[f64;3],GeometryError>{
+        if !self.axial.is_finite() || self.axial==0.0 {
+            return Err(invalid("oblique section has degenerate axial coefficient"));
+        }
+        let k=self.cylinder.radius/self.axial;
+        let values=[self.projected_offset/self.axial,
+            -k*self.coefficients[0],-k*self.coefficients[1]];
+        if !values.iter().all(|x|x.is_finite()) {
+            return Err(invalid("oblique section axial coefficients overflow"));
+        }
+        Ok(values)
+    }
+
+    /// Exact-in-form spatial harmonic carrier of the plane/cylinder section.
+    /// No fitting, tessellation or sampling is involved.
+    pub fn harmonic_curve(self)->Result<crate::HarmonicCurve3,GeometryError>{
+        let [mean,c,s]=self.axial_coefficients()?;
+        let frame=self.cylinder.frame;
+        let center=frame.origin.add(frame.normal.scale(mean));
+        let cosine=frame.x.scale(self.cylinder.radius).add(frame.normal.scale(c));
+        let sine=frame.y.scale(self.cylinder.radius).add(frame.normal.scale(s));
+        if !center.is_finite() || !cosine.is_finite() || !sine.is_finite(){
+            return Err(invalid("nonfinite oblique spatial curve coefficients"));
+        }
+        Ok(crate::HarmonicCurve3{center,cosine,sine})
+    }
+
     pub fn axial_parameter(self, u: f64) -> Result<f64, GeometryError> {
         if !u.is_finite() {return Err(invalid("non-finite circular parameter"));}
         let (sin,cos)=u.sin_cos();

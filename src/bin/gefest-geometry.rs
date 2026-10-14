@@ -21,6 +21,7 @@ mod mixed_crossing_cli;
 mod composed_crossing_cli;
 mod connected_triple_cli;
 mod multi_cut_regions_cli;
+mod oblique_cylinder_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -35,6 +36,18 @@ enum GeometryRequest {
         origin: [f64;3], radius: f64, height: f64,
         #[serde(default)] segments: Option<usize>,
         #[serde(default)] tolerance: Option<GeometryTolerance>,
+    },
+    /// Source-owned plane/cylinder halfspace Boolean. The finite plane is
+    /// horizontal in world coordinates and the cylinder can be tilted.
+    /// Other body-pair Booleans still use their previous scoped handlers.
+    ObliqueCylinderClip {
+        cylinder:oblique_cylinder_cli::CylinderInput,
+        plane_height:f64,
+        retain:oblique_cylinder_cli::KeepSide,
+        #[serde(default)] display_segments:Option<usize>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] undo:usize,
+        #[serde(default)] redo:usize,
     },
     EditSolid { source: SolidSource, edits: Vec<EditRequest> },
     InspectBrep { source: BrepInput },
@@ -379,11 +392,14 @@ fn inspect_brep(input:BrepInput) -> Response {
         let curves=graph.edges.iter().map(|e| match graph.edge_curve(e.id) {
             Some(Curve3::Line(_)) => "line",
             Some(Curve3::Circle(_)) => "circle",
+            Some(Curve3::Harmonic(_)) => "ellipse",
             None => "missing",
         }).collect::<Vec<_>>();
         let trims=graph.coedges.iter().map(|c| match graph.coedge_pcurve(c.id) {
             Some(Curve2::Line(_)) => "line",
             Some(Curve2::Circle(_)) | Some(Curve2::OrientedCircle(_)) => "circle",
+            Some(Curve2::Harmonic(_)) => "harmonic",
+            Some(Curve2::CylinderSection(_)) => "cylinder_section",
             None => "missing",
         }).collect::<Vec<_>>();
         let seams=graph.edges.iter().filter(|e| {
@@ -409,6 +425,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
                 BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
+                BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1407,6 +1424,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticCompoundBlindRegions=>"analytic_compound_blind_regions",
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
                 BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
+                BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
@@ -2115,6 +2133,11 @@ fn process(input: &str) -> Response {
             return process_analytic_cylinder(origin,radius,height,
                 segments.unwrap_or(64),tolerance.unwrap_or_default());
         }
+        Ok(GeometryRequest::ObliqueCylinderClip {
+            cylinder,plane_height,retain,display_segments,tolerance,undo,redo
+        })=>return oblique_cylinder_cli::evaluate(
+            cylinder,plane_height,retain,display_segments.unwrap_or(64),
+            undo,redo,tolerance.unwrap_or_default()),
         Ok(GeometryRequest::EditSolid { source, edits }) => {
             if edits.len() > 256 {
                 Err(GeometryError::InvalidEdit("maximum 256 edits per request".into()))

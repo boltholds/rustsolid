@@ -59,11 +59,134 @@ pub struct TrimmedBranch {
     pub closed:bool,
 }
 impl TrimmedBranch {
+    pub fn pcurve_on(&self,surface:Surface3)->Result<IntersectionPcurve,GeometryError>{
+        IntersectionPcurve::new(self.carrier,surface,self.parameter_start,self.parameter_end)
+    }
     pub fn evaluate(&self,fraction:f64)->Result<Point3,GeometryError>{
         if !fraction.is_finite() || !(0.0..=1.0).contains(&fraction){
             return Err(invalid("trimmed parameter fraction must lie in [0,1]"));
         }
         self.carrier.evaluate(self.parameter_start+(self.parameter_end-self.parameter_start)*fraction)
+    }
+}
+/// Analytic 2D parameter curve for a *preview* intersection branch on one
+/// supporting face. It shares the 3D carrier parameter and keeps the cylinder
+/// U angle unwrapped across the periodic chart seam. This is not yet a
+/// persistent B-rep coedge pcurve or permission to split the physical face.
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub struct IntersectionPcurve {
+    pub carrier:IntersectionCurve,
+    pub surface:Surface3,
+    pub parameter_start:f64,
+    pub parameter_end:f64,
+}
+impl IntersectionPcurve {
+    pub fn new(carrier:IntersectionCurve,surface:Surface3,
+        parameter_start:f64,parameter_end:f64)->Result<Self,GeometryError>
+    {
+        if !parameter_start.is_finite() || !parameter_end.is_finite() ||
+            parameter_start>=parameter_end {
+            return Err(invalid("invalid analytic intersection pcurve interval"));
+        }
+        match (carrier,surface) {
+            // A section's U is the generating cylinder's angular coordinate.
+            (IntersectionCurve::PlaneCylinderSection(section),Surface3::Cylinder(c))
+                if section.cylinder()!=c => {
+                    return Err(invalid("section/cylinder pcurve chart does not match"));
+                }
+            (_,Surface3::Sphere(_))=>{
+                return Err(invalid("sphere intersection pcurve is not implemented"));
+            }
+            _=>{}
+        }
+        Ok(Self{carrier,surface,parameter_start,parameter_end})
+    }
+
+    pub fn evaluate(&self,fraction:f64)->Result<Point2Param,GeometryError>{
+        if !fraction.is_finite() || !(0.0..=1.0).contains(&fraction){
+            return Err(invalid("pcurve fraction must lie in [0,1]"));
+        }
+        let t=self.parameter_start+(self.parameter_end-self.parameter_start)*fraction;
+        let point=self.carrier.evaluate(t)?;
+        match self.surface {
+            Surface3::Plane(plane)=>plane.frame.project(point),
+            Surface3::Cylinder(cylinder)=>{
+                let local=point.sub(cylinder.frame.origin);
+                let v=local.dot(cylinder.frame.normal);
+                let u=match self.carrier {
+                    // Keep 2PI, 2PI+epsilon etc. No artificial seam vertex.
+                    IntersectionCurve::PlaneCylinderSection(section)
+                        if section.cylinder()==cylinder => t,
+                    IntersectionCurve::Line(_)=>{
+                        wrap(local.dot(cylinder.frame.y)
+                            .atan2(local.dot(cylinder.frame.x)))
+                    }
+                    _=>return Err(invalid("unrelated cylinder intersection pcurve carrier")),
+                };
+                Point2Param::new(u,v)
+            }
+            Surface3::Sphere(_)=>Err(invalid("sphere intersection pcurve is not implemented")),
+        }
+    }
+
+    /// Persist the UV trace as an independently evaluable analytic Curve2.
+    /// The curve carries no source pointers; the eventual coedge must still
+    /// own a domain and be validated against its physical 3D edge.
+    pub fn to_curve2(&self)->Result<Curve2,GeometryError>{
+        match (self.carrier,self.surface) {
+            (IntersectionCurve::PlaneCylinderSection(section),Surface3::Cylinder(c))
+                if section.cylinder()==c=>{
+                let [mean,cosine,sine]=section.axial_coefficients()?;
+                Ok(Curve2::CylinderSection(crate::CylinderSection2{
+                    angle_offset:0.0,direction:1.0,
+                    axial_center:mean,axial_cosine:cosine,axial_sine:sine}))
+            }
+            (IntersectionCurve::PlaneCylinderSection(section),Surface3::Plane(p))=>{
+                let curve=section.harmonic_curve()?;
+                let center=p.frame.project(curve.center)?;
+                let qcos=p.frame.project(curve.center.add(curve.cosine))?;
+                let qsin=p.frame.project(curve.center.add(curve.sine))?;
+                Ok(Curve2::Harmonic(crate::HarmonicCurve2{
+                    center,
+                    cosine:Point2Param{u:qcos.u-center.u,v:qcos.v-center.v},
+                    sine:Point2Param{u:qsin.u-center.u,v:qsin.v-center.v},
+                }))
+            }
+            (IntersectionCurve::Line(line),Surface3::Plane(p))=>{
+                let origin=p.frame.project(line.origin)?;
+                Ok(Curve2::Line(crate::Line2{
+                    origin,delta:Point2Param{
+                        u:line.direction.dot(p.frame.x),
+                        v:line.direction.dot(p.frame.y)}}))
+            }
+            (IntersectionCurve::Line(line),Surface3::Cylinder(c))=>{
+                let local=line.origin.sub(c.frame.origin);
+                let u=local.dot(c.frame.y).atan2(local.dot(c.frame.x))
+                    .rem_euclid(TAU);
+                let projected=line.direction.dot(c.frame.normal);
+                let radial=line.direction.sub(c.frame.normal.scale(projected));
+                let distance=(local.sub(c.frame.normal.scale(local.dot(c.frame.normal))))
+                    .x.hypot((local.sub(c.frame.normal.scale(local.dot(c.frame.normal)))).y)
+                    .hypot((local.sub(c.frame.normal.scale(local.dot(c.frame.normal)))).z);
+                let eps=1e-9*c.radius.max(1.0);
+                if mag(radial)>1e-9*mag(line.direction).max(1.0) ||
+                   (distance-c.radius).abs()>eps {
+                    return Err(invalid("line does not follow cylindrical generator"));
+                }
+                Ok(Curve2::Line(crate::Line2{
+                    origin:Point2Param{u,v:local.dot(c.frame.normal)},
+                    delta:Point2Param{u:0.0,v:projected},
+                }))
+            }
+            _=>Err(invalid("unsupported independent analytic pcurve carrier")),
+        }
+    }
+
+    /// Reconstruct the same 3D curve from this face's surface chart. Callers
+    /// must check the residual against their tolerance and source B-rep.
+    pub fn reconstruct(&self,fraction:f64)->Result<Point3,GeometryError>{
+        let uv=self.evaluate(fraction)?;
+        Ok(self.surface.evaluate(uv.u,uv.v)?.point)
     }
 }
 #[derive(Debug,Clone,Copy,PartialEq)]
@@ -147,6 +270,41 @@ impl TrimDomain {
                     return Err(invalid("cylindrical side needs finite axial bounds"));
                 };
                 if start>=end {return Err(invalid("invalid cylindrical side axial bounds"));}
+                // An imprinted cylindrical patch may also have FOUR
+                // coedges and periodic U bounds, while its true lateral
+                // UV boundary is a harmonic trace. The rectangle classifier
+                // must never silently replace that physical trim with a
+                // bounding box. Require the exact four linear rectangle
+                // sides before selecting this deliberately narrow path.
+                let mut horizontal=0usize;
+                let mut vertical=0usize;
+                let linear=tol.length_at(end-start);
+                let angular=tol.angular.max(128.0*f64::EPSILON);
+                for coedge in ids {
+                    let Some(Curve2::Line(curve))=body.coedge_pcurve(coedge) else {
+                        return Err(invalid("nonrectangular cylindrical UV face requires generalized trim loops"));
+                    };
+                    let geom=body.geometry.coedges.get(coedge.0 as usize)
+                        .ok_or_else(||invalid("missing cylindrical coedge domain"))?;
+                    let p=curve.evaluate(param(geom.domain,0.0)?)?;
+                    let q=curve.evaluate(param(geom.domain,1.0)?)?;
+                    let delta_u=(q.u-p.u).abs();
+                    let delta_v=(q.v-p.v).abs();
+                    if delta_v<=linear && delta_u>angular &&
+                        ((p.v-start).abs()<=linear || (p.v-end).abs()<=linear) &&
+                        ((q.v-start).abs()<=linear || (q.v-end).abs()<=linear) {
+                        horizontal+=1;
+                    }else if delta_u<=angular && delta_v>linear &&
+                        ((p.u).abs()<=angular || (p.u-TAU).abs()<=angular) &&
+                        ((q.u).abs()<=angular || (q.u-TAU).abs()<=angular) {
+                        vertical+=1;
+                    }else{
+                        return Err(invalid("unsupported nonrectangular cylindrical face UV loop"));
+                    }
+                }
+                if horizontal!=2 || vertical!=2 {
+                    return Err(invalid("cylindrical face lacks full rectangular UV boundary"));
+                }
                 Ok(Self::PeriodicSide{cylinder,lower:start,upper:end})
             }
             Surface3::Sphere(_)=>Err(invalid("sphere-face clipping is not implemented")),
