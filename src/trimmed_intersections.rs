@@ -224,37 +224,123 @@ impl TrimmedIntersection {
 enum TrimDomain {
     Polygon {frame:crate::Frame3, vertices:Vec<Point2Param>},
     Disk {frame:crate::Frame3, center:Point2Param, radius:f64},
+    /// Native analytic planar outer trim minus zero or more independently
+    /// validated circular inner loops. No hole is approximated by polygons.
+    PlanarWithHoles {outer:Box<TrimDomain>,holes:Vec<TrimDomain>},
     PeriodicSide {cylinder:crate::CylinderSurface, lower:f64, upper:f64},
 }
 impl TrimDomain {
+    fn planar_loop(body:&BrepModel,loop_id:crate::LoopId,frame:crate::Frame3,
+        tol:GeometryTolerance)->Result<Self,GeometryError>
+    {
+        let ids=loop_coedges(body,loop_id)?;
+        if ids.len()==1 {
+            let co=body.coedge_pcurve(ids[0])
+                .ok_or_else(||invalid("missing circular planar pcurve"))?;
+            if let Curve2::Circle(circle)=co {
+                if !circle.radius.is_finite() || circle.radius<=tol.absolute_length {
+                    return Err(invalid("planar disk radius below tolerance"));
+                }
+                return Ok(Self::Disk{frame,center:circle.center,radius:circle.radius});
+            }
+            return Err(invalid("only native circular single-edge planar loops are supported"));
+        }
+        if ids.len()<3 {return Err(invalid("planar polygon needs at least three edges"));}
+        let mut vertices=Vec::with_capacity(ids.len());
+        for id in ids {
+            let co=body.coedge_pcurve(id).ok_or_else(||invalid("missing polygon pcurve"))?;
+            let Curve2::Line(line)=co else {
+                return Err(invalid("mixed circle/line planar loop not certified"));
+            };
+            let geom=&body.geometry.coedges[id.0 as usize];
+            vertices.push(line.evaluate(param(geom.domain,0.0)?)?);
+        }
+        Ok(Self::Polygon{frame,vertices})
+    }
+
+    /// Each circular inner trim must be completely inside the outer
+    /// support region and separated from every other hole. Simple-loop
+    /// intersections/tangencies are never accepted through a bounding box.
+    fn certify_circular_holes(outer:&Self,holes:&[Self],
+        tol:GeometryTolerance)->Result<(),GeometryError>
+    {
+        let mut disks=Vec::new();
+        for hole in holes {
+            let Self::Disk{frame,center,radius}=hole else{
+                return Err(invalid("expected circular planar inner loop"));
+            };
+            let center_world=frame.position(center.u,center.v)?;
+            let eps=tol.length_at(*radius);
+            if outer.classify(center_world,tol)?!=TrimPosition::Interior {
+                return Err(invalid("circular inner loop center outside outer face"));
+            }
+            let clearance=match outer{
+                Self::Polygon{vertices,frame,..}=>{
+                    let center_uv=frame.project(center_world)?;
+                    let mut best=f64::INFINITY;
+                    for k in 0..vertices.len(){
+                        let a=vertices[k];let b=vertices[(k+1)%vertices.len()];
+                        let x=b.u-a.u;let y=b.v-a.v;
+                        let len2=x*x+y*y;
+                        if !len2.is_finite() || len2<=eps*eps {
+                            return Err(invalid("degenerate planar outer loop segment"));
+                        }
+                        let t=((center_uv.u-a.u)*x+(center_uv.v-a.v)*y)/len2;
+                        let t=t.clamp(0.0,1.0);
+                        best=best.min((center_uv.u-a.u-x*t)
+                            .hypot(center_uv.v-a.v-y*t));
+                    }
+                    best
+                }
+                Self::Disk{center:outer_center,radius:outer_radius,frame,..}=>{
+                    let uv=frame.project(center_world)?;
+                    outer_radius-(uv.u-outer_center.u).hypot(uv.v-outer_center.v)
+                }
+                _=>return Err(invalid("unsupported planar hole container")),
+            };
+            if !clearance.is_finite() || clearance<=radius+eps*8.0 {
+                return Err(invalid("inner circle touches or crosses the outer loop"));
+            }
+            for (previous,prev_radius) in &disks {
+                if dist(*previous,center_world)<=prev_radius+radius+eps*8.0 {
+                    return Err(invalid("circular planar holes intersect or nearly touch"));
+                }
+            }
+            disks.push((center_world,*radius));
+        }
+        Ok(())
+    }
     fn from_face(body:&BrepModel,id:FaceId,tol:GeometryTolerance)->Result<Self,GeometryError>{
         let face=body.faces.get(id.0 as usize).filter(|f|f.id==id)
             .ok_or_else(||invalid(format!("unknown trim face {:?}",id)))?;
-        if face.loops.len()!=1 {return Err(invalid("trimmed intersection currently requires exactly one outer loop"));}
+        if face.loops.is_empty() {return Err(invalid("trim face is missing an outer boundary"));}
         let surface=body.face_surface(id).ok_or_else(||invalid("face has no support surface"))?;
         match surface {
             Surface3::Plane(plane)=>{
-                let ids=loop_coedges(body,face.loops[0])?;
-                if ids.len()==1 {
-                    let co=body.coedge_pcurve(ids[0]).ok_or_else(||invalid("missing circular disk pcurve"))?;
-                    if let Curve2::Circle(circle)=co {
-                        if circle.radius<=tol.absolute_length {return Err(invalid("disk radius below tolerance"));}
-                        return Ok(Self::Disk{frame:plane.frame,center:circle.center,radius:circle.radius});
-                    }
-                }
-                if ids.len()<3 {return Err(invalid("planar polygon needs at least 3 boundary coedges"));}
-                let mut vertices=Vec::with_capacity(ids.len());
-                for id in ids {
-                    let co=body.coedge_pcurve(id).ok_or_else(||invalid("missing polygon pcurve"))?;
-                    let Curve2::Line(line)=co else {
-                        return Err(invalid("mixed planar circle/line loops are not supported by the first trim slice"));
+                let outer=Self::planar_loop(body,face.loops[0],plane.frame,tol)?;
+                if face.loops.len()==1{return Ok(outer);}
+                if face.loops.len()>65 {return Err(invalid("planar hole count exceeds 64"));}
+                let mut holes=Vec::with_capacity(face.loops.len()-1);
+                for &loop_id in face.loops.iter().skip(1){
+                    let Some(lp)=body.loops.get(loop_id.0 as usize) else{
+                        return Err(invalid("planar face references missing inner loop"));
                     };
-                    let g=&body.geometry.coedges[id.0 as usize];
-                    vertices.push(line.evaluate(param(g.domain,0.0)?)?);
+                    if lp.role!=crate::LoopRole::Inner || lp.face!=id {
+                        return Err(invalid("planar hole has wrong loop ownership"));
+                    }
+                    let hole=Self::planar_loop(body,loop_id,plane.frame,tol)?;
+                    if !matches!(hole,Self::Disk{..}){
+                        return Err(invalid("only circular planar inner loops have certified intersection events"));
+                    }
+                    holes.push(hole);
                 }
-                Ok(Self::Polygon{frame:plane.frame,vertices})
+                Self::certify_circular_holes(&outer,&holes,tol)?;
+                Ok(Self::PlanarWithHoles{outer:Box::new(outer),holes})
             }
             Surface3::Cylinder(cylinder)=>{
+                if face.loops.len()!=1 {
+                    return Err(invalid("cylindrical side with inner trims requires generalized region arrangement"));
+                }
                 // Only the full native periodic side rectangle is currently
                 // provable. The two u boundaries are a seam, not a physical
                 // edge of the face. Validated generic B-rep UV trims must not
@@ -312,6 +398,18 @@ impl TrimDomain {
     }
     fn classify(&self,p:Point3,tol:GeometryTolerance)->Result<TrimPosition,GeometryError>{
         match self {
+            Self::PlanarWithHoles{outer,holes}=>{
+                let position=outer.classify(p,tol)?;
+                if position!=TrimPosition::Interior {return Ok(position);}
+                for hole in holes {
+                    match hole.classify(p,tol)? {
+                        TrimPosition::Outside=>{},
+                        TrimPosition::Boundary=>return Ok(TrimPosition::Boundary),
+                        TrimPosition::Interior=>return Ok(TrimPosition::Outside),
+                    }
+                }
+                Ok(TrimPosition::Interior)
+            }
             Self::Polygon{frame,vertices}=>{
                 let uv=frame.project(p)?;
                 let eps=tol.absolute_length;
@@ -364,6 +462,11 @@ impl TrimDomain {
     }
     fn line_events(&self,line:crate::Line3,tol:GeometryTolerance)->Result<Vec<f64>,GeometryError>{
         match self {
+            Self::PlanarWithHoles{outer,holes}=>{
+                let mut result=outer.line_events(line,tol)?;
+                for hole in holes {result.extend(hole.line_events(line,tol)?);}
+                Ok(result)
+            }
             Self::Polygon{frame,vertices}=>{
                 let p=frame.project(line.origin)?;
                 let direction=[line.direction.dot(frame.x),line.direction.dot(frame.y)];
@@ -425,6 +528,13 @@ impl TrimDomain {
         ->Result<Vec<f64>,GeometryError>
     {
         match self {
+            Self::PlanarWithHoles{outer,holes}=>{
+                let mut marks=outer.section_events(section,section_cylinder,tol)?;
+                for hole in holes {
+                    marks.extend(hole.section_events(section,section_cylinder,tol)?);
+                }
+                Ok(marks)
+            }
             Self::PeriodicSide{cylinder,lower,upper}=>{
                 // For the periodic section S(u,v(u)), solve its exact axial
                 // boundary equations A cos u + B sin u = target.

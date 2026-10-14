@@ -2,15 +2,30 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.39 experimental kernel:** v0.38's certified oblique cylinder/halfspace Boolean is now exposed through a narrowly typed `geometry.v1` JSON operation with analytic face ownership, history replay and fail-closed errors. The v0.35 connected triple-cylinder Boolean remains available separately. **General Boolean between arbitrary B-rep bodies remains unsupported.**
+> **Status: v0.40 experimental kernel:** v0.39's restricted volume-changing cylinder/halfspace Boolean remains exposed through `geometry.v1`. The independent geometric kernel now also clips analytic intersections through real circular inner UV loops, constructs complete planar UV cells for one transverse straight cut, and reconciles dual source-face coedge carriers without promoting virtual seams to physical edges. **General Boolean between arbitrary B-rep bodies remains unsupported.**
 
 ## Current capabilities
+
+- **v0.40: bounded full planar UV cells and source-owned coedge reconciliation.**
+  Supports an outer convex linear trim with genuine disjoint circular inner
+  loops; line/hole events produce correct physical arcs without polygonizing
+  the holes. Each side of one transverse straight cut receives closed
+  oriented UV cycles (including native circular inner loops) with
+  independent Green-integral area checks. Each cut arc has one analytic 3D
+  edge candidate and exactly two opposite source-face UV pcurves, while
+  same-face cell cut fragments are reconciled back to that physical edge.
+  `MultiFaceRegionPlan` carries the source-provenant cell/reconciliation
+  evidence for selected face pairs; unsupported/tangent cases remain Held,
+  `can_apply=false`, and no arbitrary B-rep Boolean commit is enabled.
+  See [v0.40 planar UV and coedge contract](docs/planar-uv-cells-and-coedge-reconciliation.md).
 
 - **v0.39: all-or-nothing multi-face region preview.** A source-namespaced
   `MultiFaceRegionPlan` aggregates bounded geometric intersection graphs and
   local arc-side Boolean evidence across multiple finite face pairs. Any
   ambiguous pair, near tangency, or unsupported inner UV loop holds the
-  *entire* plan with no partial region report; general Boolean mutation
+  *entire* plan with no partial region report; native circular inner UV
+  loops are supported in the later v0.40 bounded planar path, but arbitrary
+  inner contours still require additional processors. General Boolean mutation
   remains disabled. [Multi-face preview contract](docs/multi-face-region-preview.md).
 
 - **v0.39: opt-in `oblique_cylinder_clip` JSON endpoint.** A tilted analytic cylinder is cut by a bounded world-horizontal plane witness. Two retained halfspace results produce genuine elliptic-cap B-reps and watertight, per-face-owned display meshes with analytic mass/centroid. One-shot Undo/Redo, typed `Held` and tolerance budgets are exposed without changing the default Gefest/OpenCascade backend. [v0.39 integration contract](docs/oblique-cylinder-geometry-v1.md).

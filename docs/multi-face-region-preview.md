@@ -1,75 +1,83 @@
-# RustSolid v0.39 — all-or-nothing multi-face region preview
+# RustSolid multi-face region preview — v0.39 basis, v0.40 extension
 
-This is a read-only generalization of the **source-provenance and local
-region classification** pipeline. It is not a global face-cell
-partitioner, topology executor, or generalized Boolean.
+This component gathers **source-owned local intersection and Boolean
+region evidence**. It does not perform general B-rep mutations.
 
 ## API
 
 ```rust
-let preview = MultiFaceRegionPlan::plan(
+let full = MultiFaceRegionPlan::plan(
     &left, &right, BooleanOperation::Difference,
     GeometryTolerance::default(),
 )?;
-preview.validate_against(&left, &right, GeometryTolerance::default())?;
-assert!(!preview.can_apply);
+
+// Restrict analysis to one genuine face pair without inventing
+// global completeness or ignoring unrelated source geometry.
+let selected = MultiFaceRegionPlan::plan_selected(
+    &left, &right, BooleanOperation::Difference,
+    GeometryTolerance::default(),
+    &[(FaceId(1), FaceId(2))],
+)?;
+selected.validate_against(&left, &right, GeometryTolerance::default())?;
+assert!(!selected.can_apply);
 ```
 
-The planner validates both closed B-rep operands, evaluates every
-supported pair of finite source faces through
-`IntersectionGraphBuilder`, and classifies the local arc-side samples
-via the existing `BooleanRegionClassifier`. A successful
-`ClassifiedPreview` records each source-face pair, its mathematically
-grounded `IntersectionGraph`, and its local `GraphRegionPlan`.
-Source face IDs remain **operand-namespaced**. Empty graph pairs do not
-invent boundary edges.
+The full `plan` evaluates all pairs of faces (up to 64 source faces per
+operand and 512 pairs). The selected variant evaluates only an
+explicitly named, validated subset. The selected variant **does not**
+claim knowledge of the other source faces.
 
-To remain bounded, one call supports at most 64 faces per source body
-and at most 512 face pairs. These limits are on the mathematical
-preview, not a guarantee of eventual Boolean complexity.
+For every classified pair, v0.40 retains:
 
-## All-or-nothing Held policy
+- `IntersectionGraph`: first-party bounded analytic 3D curves and
+  their endpoint/face provenance;
+- `GraphRegionPlan`: three local side samples per arc per operand,
+  not necessarily complete material cells;
+- `CoedgeReconciliationPlan`: one unique physical 3D carrier per
+  source graph arc with two opposite independently evaluable
+  owner-face UV pcurves;
+- `UvFaceRegionPlan` when one participating *planar* source face has
+  a strictly convex straight outer contour and supported native
+  circular inner loops, crossed by one transverse straight line.
 
-The planner returns a typed `Held` with **no partial face pairs, arcs
-or classification samples** when any of the following occurs:
+In particular, **native circular holes are no longer rejected
+globally**. Their actual line/circle intersections and source loops
+participate in clipping and face-cell construction. Unsupported curved
+inner contours, nonconvex multi-cell arrangements, and other
+uncertain trimming configurations remain held.
 
-- an input face has an inner UV loop or a non-single-loop trim domain;
-- a face pair is unsupported by current analytic intersection families;
-- a pair has unresolved tangency, overlap or numerical ambiguity;
-- an isolated physical contact would otherwise look like a real cut;
-- a local side-probe cannot classify the separating region;
-- face/pair work exceeds the fixed budget.
+## Strict all-or-nothing Held
 
-Existing source B-reps are immutable throughout. `can_apply` is
-**always false**; a separate topology editor cannot interpret this
-preview as permission to change material.
+Any unsupported face pair, numerical ambiguity, tangent or coincident
+boundary, nonseparating source region, unresolved pcurve ownership, or
+failed required hole-cell construction places the entire selected plan
+into a typed `Held` with zero retained partial geometric witnesses.
+No partial mesh or body is ever committed.
 
-The existing `TrimmedIntersectionEngine` supports only selected
-planar polygons/disks and full periodic cylinder-side rectangles.
-Proper inner-loop clipping, multi-arc arrangements, and global face
-cells are **not** implemented by this milestone.
+The same rules apply to the full Cartesian face-pair plan. An
+`Empty` result has no proposed cut. A `ClassifiedPreview` is still
+**not** permission to execute a generalized Boolean.
 
-## Verified fixtures
+The source B-rep stays immutable. All stored values can be checked by
+`validate_against`, which reconstructs the selected witnesses from
+the original operands and requested tolerance; forged counts or
+pcurve/edge witnesses are rejected.
 
-`tests/multi_face_region_preview.rs` provides:
+## Tests / limitations
 
-1. truly disjoint box and cylinder => no false cut;
-2. a finite box intersecting a cylinder across several real faces =>
-   multiple per-face arc/classification witnesses;
-3. a through-hole B-rep with genuine inner cap trim loops => typed
-   `Held(UnsupportedInnerLoop)` and zero leaked partial reports;
-4. near-tangent input => typed `Held` and zero leaked partial reports.
+`tests/multi_face_region_preview.rs` verifies a disjoint pair, at
+least four real face-pair intersections, a real native through-hole
+source, near-tangency, and a selected annular cap cut producing
+exactly two analytic arcs, two physical edge candidates and two
+complete planar UV cells.
 
-The validated plan is deterministic and recomputable against the same
-source bodies. A forged count breaks `validate_against`.
+For the full mathematical contract, area integrals, source coedge
+fragment spans, seam/periodic treatment and the boundary between
+face-cell readiness and general Boolean proof, see
+[planar UV cells and coedge reconciliation](planar-uv-cells-and-coedge-reconciliation.md).
 
-## The remaining hard problem
-
-Pair-local arc-side truth values are insufficient to choose **all**
-material regions on a complex trimmed surface. Next steps require
-complete 2D face arrangements, embedded intersection arcs, winding
-rules for all outer/inner trim loops, explicit region-cell adjacency,
-and globally consistent labeling across multiple source faces.
-Only then can a general `TopologyDeltaPlan` executor construct and
-glue shared edges/coedges and independently certify the resulting
-closed B-rep and mass. No proprietary kernel code is used.
+**Not yet supported**: all global face-cell arrangements on arbitrary
+NURBS, curved inner loops, multiple mutually intersecting cuts per
+face, boundary coincidence, disconnected nonconvex source regions,
+generalized source-independent B-rep topology execution and global
+material-region volume integration. `can_apply` is always false.
