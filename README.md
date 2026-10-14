@@ -2,9 +2,50 @@
 
 RustSolid is an **independent Rust solid geometry kernel** being developed for [Gefest CAD](https://github.com/boltholds/Gefest-CAD).
 
-> **Status: v0.35 experimental kernel: a source-certified, executable genus-one B-rep for a connected chain of one through and two different-depth blind cylinders, with exact-in-form mass/centroid, two physical floors, watertight derived display and atomic Undo/Redo.** Simultaneous triple junctions and arbitrary curved Boolean remain unsupported.
+> **Status: v0.39 experimental kernel:** v0.38's certified oblique cylinder/halfspace Boolean is now exposed through a narrowly typed `geometry.v1` JSON operation with analytic face ownership, history replay and fail-closed errors. The v0.35 connected triple-cylinder Boolean remains available separately. **General Boolean between arbitrary B-rep bodies remains unsupported.**
 
 ## Current capabilities
+
+- **v0.39: all-or-nothing multi-face region preview.** A source-namespaced
+  `MultiFaceRegionPlan` aggregates bounded geometric intersection graphs and
+  local arc-side Boolean evidence across multiple finite face pairs. Any
+  ambiguous pair, near tangency, or unsupported inner UV loop holds the
+  *entire* plan with no partial region report; general Boolean mutation
+  remains disabled. [Multi-face preview contract](docs/multi-face-region-preview.md).
+
+- **v0.39: opt-in `oblique_cylinder_clip` JSON endpoint.** A tilted analytic cylinder is cut by a bounded world-horizontal plane witness. Two retained halfspace results produce genuine elliptic-cap B-reps and watertight, per-face-owned display meshes with analytic mass/centroid. One-shot Undo/Redo, typed `Held` and tolerance budgets are exposed without changing the default Gefest/OpenCascade backend. [v0.39 integration contract](docs/oblique-cylinder-geometry-v1.md).
+
+- **v0.38: certified oblique imprint display and bounded halfspace Boolean.**
+  A single canonical physical elliptical edge is sampled once, shared by
+  upper/lower cylinder-side faces, and validated as a four-face watertight
+  display with exact physical face ownership. The closed intersection divides
+  the source cylinder into analytically classified upper/lower regions. A
+  narrow first-party volume-changing operator retains either side and builds
+  a closed three-face body with its own elliptical planar cap, exact-in-form
+  volume, first moments, bounds and certified face-owned mesh. Transactions
+  fail closed with atomic Undo/Redo and independent disk-quadrature tests.
+  This is a cylinder/halfspace contract, **not generalized body/body CSG**.
+  See [v0.38 analytic clipped-cylinder milestone](docs/oblique-imprint-mesh-halfspace-clip.md).
+
+- **v0.37: executable closed oblique cylinder-side imprint.** Converts a verified
+  closed plane/cylinder trace into a true physical spatial elliptical edge,
+  two opposite coedges with independently stored analytical 2D cylinder
+  trims and a two-face partition of the cylindrical wall. One source-bound
+  topology-intent plan is checked before committing; invalid/near-cap cases
+  are Held. The model is atomically validated with monotonic Undo/Redo and
+  unchanged source mass. This is a **shape-preserving imprint**, not a
+  volume-changing Boolean, and the original display mesh does not yet carry
+  the two new face owner IDs. See [v0.37 closed oblique cylinder imprint](docs/closed-oblique-cylinder-imprint.md).
+
+- **v0.36: paired analytic pcurve witnesses for oblique plane/cylinder
+  face intersections.** A physically inclined finite planar face and a
+  finite tilted cylinder yield shared 3D intersection arcs and two
+  reconstructible UV parameter curves. Validated seam crossing does not
+  introduce a physical B-rep vertex; cut endpoints belong to actual face
+  boundaries. Preview-only Boolean region probes are classified; near-grazing
+  trim events remain Held and no general topology delta can commit.
+  See [v0.36 oblique UV intersection contract](docs/oblique-plane-cylinder-pcurves.md).
+
 
 - Build a **connected three-cylinder crossing chain** in one analytic B-rep: the through and deeper blind cutters intersect, and the deeper and shallower blind cutters intersect, while the outside pair stays separated. Source-backed angular events define shared physical line/circle edges, cylinder UV trims, two upward blind floors and one closed genus-one shell. Analytic source mass/centroid are independently checked against union-of-slices quadrature; display triangles reuse shared B-rep edges. Exposed in the `compose_connected_triple` JSON API. See [v0.35 connected triple B-rep](docs/connected-triple-brep.md).
 

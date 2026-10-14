@@ -26,9 +26,14 @@ mod intersections;
 mod trimmed_intersections;
 mod intersection_graph;
 mod topology_delta_plan;
+mod closed_cylinder_imprint;
+mod imprint_mesh;
+mod oblique_halfspace;
+mod oblique_clip_mesh;
 mod brep_arena;
 mod boolean;
 mod boolean_region;
+mod multi_face_region_preview;
 mod through_hole;
 mod blind_hole;
 mod composite_blind;
@@ -74,13 +79,25 @@ pub use intersections::{SurfaceIntersectionEngine, SurfaceIntersection, Intersec
     PlaneCylinderSection, IntersectionContact, IntersectionAmbiguity,
     IntersectionCertificate, IntersectionPair, ALL_INTERSECTION_PAIRS};
 pub use trimmed_intersections::{TrimmedIntersectionEngine, TrimmedIntersection,
-    TrimmedBranch, TrimmedPoint, TrimPosition, TrimContact, TrimAmbiguity};
+    TrimmedBranch, IntersectionPcurve, TrimmedPoint, TrimPosition, TrimContact, TrimAmbiguity};
 pub use intersection_graph::{IntersectionGraphBuilder, IntersectionGraph,
     GraphOperand, GraphNodeId, GraphArcId, GraphFaceSource, GraphBoundarySource,
     GraphTolerance, GraphNodeKind, GraphNode, GraphArc, GraphState};
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};
+pub use closed_cylinder_imprint::{
+    ClosedCylinderImprint, ImprintHold, ImprintCommit, ImprintResult,
+};
+pub use imprint_mesh::{CertifiedImprintDisplay, ImprintMeshCertificate};
+pub use oblique_halfspace::{
+    ObliqueHalfspaceSide, ObliqueCutHold, ObliqueRegionClassification,
+    ObliqueClipCommit, ObliqueClipOutcome, ObliqueHalfspaceEditor,
+    classify_imprinted_cylinder,
+};
+pub use oblique_clip_mesh::{
+    ObliqueClipMeshCertificate, CertifiedObliqueClipDisplay,
+};
 pub use brep_arena::{BrepArena, ArenaHandle, ArenaHandleError, ArenaBinding,
     ArenaRemap, ArenaSnapshot, ArenaCommit, ArenaTransaction, ArenaStep,
     ArenaOutput, ArenaEntityRef};
@@ -88,6 +105,10 @@ pub use boolean::{BooleanKernel, BooleanOperation, BooleanOperand, BooleanFaceSo
     BooleanOutcome, BooleanResult, BooleanError};
 pub use boolean_region::{BooleanRegionClassifier, VolumePosition, GraphRegionState,
     RegionHold, ArcRegionSample, GraphRegionPlan};
+pub use multi_face_region_preview::{
+    MultiFaceRegionPlan, MultiFaceRegionState, MultiFaceRegionHold,
+    FacePairRegionWitness,
+};
 pub use through_hole::{ThroughHoleBrep, ThroughHoleTransaction, HoleParameters};
 pub use blind_hole::{BlindHoleBrep,BlindHoleParameters,BlindHoleTransaction,BlindHoleDisplay};
 pub use composite_blind::CompositeBlindBrep;
@@ -130,7 +151,8 @@ pub use structural_editor::{BrepStructuralEditor, BrepStructuralTransaction,
     StructuralTrimRef, StructuralFaceRef};
 pub use face_region_mesher::{FaceRegionMesher,FaceRegionCertificate,CertifiedDisplayMesh};
 pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterDomain2, Point2Param,
-    Frame3, Line3, Circle3, Curve3, Line2, Circle2, Curve2,
+    Frame3, Line3, Circle3, HarmonicCurve3, Curve3, Line2, Circle2,
+    HarmonicCurve2, CylinderSection2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives, OrientedCircle2,
     Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
 

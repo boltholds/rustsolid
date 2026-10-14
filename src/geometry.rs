@@ -161,16 +161,43 @@ impl Circle3 {
             .add(self.frame.y.scale(self.radius * angle.cos())))
     }
 }
+/// Parametric spatial ellipse with the source-cylinder angular parameter.
+/// The two basis vectors need not be orthogonal: oblique plane sections are
+/// stored analytically, without fitting sampled 3D points.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Curve3 { Line(Line3), Circle(Circle3) }
+pub struct HarmonicCurve3 {
+    pub center:Point3,
+    pub cosine:Point3,
+    pub sine:Point3,
+}
+impl HarmonicCurve3 {
+    pub fn evaluate(self,t:f64)->Result<Point3,GeometryError>{
+        if !t.is_finite(){return Err(invalid_dimension("nonfinite spatial ellipse parameter"));}
+        let (s,c)=t.sin_cos();
+        let p=self.center.add(self.cosine.scale(c)).add(self.sine.scale(s));
+        if !p.is_finite(){return Err(invalid_dimension("spatial ellipse overflow"));}
+        Ok(p)
+    }
+    pub fn derivative(self,t:f64)->Result<Point3,GeometryError>{
+        if !t.is_finite(){return Err(invalid_dimension("nonfinite spatial ellipse parameter"));}
+        let (s,c)=t.sin_cos();
+        let p=self.sine.scale(c).sub(self.cosine.scale(s));
+        if !p.is_finite(){return Err(invalid_dimension("spatial ellipse tangent overflow"));}
+        Ok(p)
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve3 { Line(Line3), Circle(Circle3), Harmonic(HarmonicCurve3) }
 impl Curve3 {
     pub fn evaluate(self, t: f64) -> Result<Point3, GeometryError> {
-        match self { Self::Line(line) => line.evaluate(t), Self::Circle(circle) => circle.evaluate(t) }
+        match self { Self::Line(line) => line.evaluate(t), Self::Circle(circle) => circle.evaluate(t),
+            Self::Harmonic(curve)=>curve.evaluate(t) }
     }
     pub fn derivative(self, t: f64) -> Result<Point3, GeometryError> {
         match self {
             Self::Line(line) => Ok(line.direction),
             Self::Circle(circle) => circle.derivative(t),
+            Self::Harmonic(curve)=>curve.derivative(t),
         }
     }
 }
@@ -227,11 +254,58 @@ impl OrientedCircle2 {
     }
 }
 
+/// Exact trigonometric image of an oblique circular-cylinder intersection
+/// on a planar UV chart, parameterized by the original source-cylinder angle.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Curve2 { Line(Line2), Circle(Circle2), OrientedCircle(OrientedCircle2) }
+pub struct HarmonicCurve2 {
+    pub center:Point2Param,
+    pub cosine:Point2Param,
+    pub sine:Point2Param,
+}
+impl HarmonicCurve2 {
+    pub fn evaluate(self,t:f64)->Result<Point2Param,GeometryError>{
+        if !t.is_finite(){return Err(invalid_dimension("nonfinite harmonic UV parameter"));}
+        let (s,c)=t.sin_cos();
+        Point2Param::new(self.center.u+self.cosine.u*c+self.sine.u*s,
+            self.center.v+self.cosine.v*c+self.sine.v*s)
+    }
+}
+
+/// Cylindrical UV trace of an oblique section. Keeps unwrapped U and allows
+/// reversed coedge use without changing the underlying physical ellipse.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CylinderSection2 {
+    pub angle_offset:f64,
+    pub direction:f64,
+    pub axial_center:f64,
+    pub axial_cosine:f64,
+    pub axial_sine:f64,
+}
+impl CylinderSection2 {
+    pub fn evaluate(self,t:f64)->Result<Point2Param,GeometryError>{
+        if !t.is_finite() || !self.angle_offset.is_finite() ||
+            (self.direction!=1.0 && self.direction!= -1.0) ||
+            ![self.axial_center,self.axial_cosine,self.axial_sine].iter().all(|v|v.is_finite()) {
+            return Err(invalid_dimension("invalid oblique-cylinder UV carrier"));
+        }
+        let angle=self.angle_offset+self.direction*t;
+        let (s,c)=angle.sin_cos();
+        Point2Param::new(angle,self.axial_center+self.axial_cosine*c+self.axial_sine*s)
+    }
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve2 {
+    Line(Line2), Circle(Circle2), OrientedCircle(OrientedCircle2),
+    Harmonic(HarmonicCurve2), CylinderSection(CylinderSection2),
+}
 impl Curve2 {
     pub fn evaluate(self, t: f64) -> Result<Point2Param, GeometryError> {
-        match self { Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t), Self::OrientedCircle(c) => c.evaluate(t) }
+        match self {
+            Self::Line(l) => l.evaluate(t), Self::Circle(c) => c.evaluate(t),
+            Self::OrientedCircle(c) => c.evaluate(t),
+            Self::Harmonic(c) => c.evaluate(t),
+            Self::CylinderSection(c) => c.evaluate(t),
+        }
     }
 }
 

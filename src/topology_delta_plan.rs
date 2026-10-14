@@ -278,6 +278,8 @@ fn edge_parameter(model:&BrepModel,edge:EdgeId,p:Point3,epsilon:f64)
                 .ok_or_else(||invalid("circle parameter falls outside carrier range"))?;
             candidate
         }
+        Curve3::Harmonic(_)=>return Err(invalid(
+            "elliptical boundary splitting needs a dedicated analytic resolver")),
     };
     let fraction=(t-start)/(end-start);
     if !t.is_finite() || !fraction.is_finite() || fraction<0.0 || fraction>1.0 {

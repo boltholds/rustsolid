@@ -33,7 +33,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind, AnalyticObliqueClip }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -325,7 +325,7 @@ impl BrepModel {
             match self.edge_curve(edge.id) {
                 Some(Curve3::Line(_)) => out.straight_edges += 1,
                 Some(Curve3::Circle(_)) => out.circular_edges += 1,
-                None => {},
+                Some(Curve3::Harmonic(_)) | None => {},
             }
             if (edge.coedges[0].0 as usize) < self.coedges.len()
                 && (edge.coedges[1].0 as usize) < self.coedges.len()
@@ -371,7 +371,8 @@ impl BrepModel {
         // local face/edge incidence rather than reusing this producer table.
         for face in &self.faces {
             let reversed=match self.origin {
-                BrepOrigin::Polyhedral | BrepOrigin::AnalyticCylinder=>false,
+                BrepOrigin::Polyhedral | BrepOrigin::AnalyticCylinder |
+                    BrepOrigin::AnalyticObliqueClip=>false,
                 BrepOrigin::AnalyticThroughHole |
                     BrepOrigin::AnalyticMultipleThroughHoles=>face.id.0>=6,
                 BrepOrigin::AnalyticBlindHole=>
@@ -472,8 +473,10 @@ impl BrepModel {
                 || b.twin != a.id || a.reversed == b.reversed {
                 return Err(invalid("invalid opposite coedge incidence"));
             }
-            if edge.start == edge.end && !matches!(self.edge_curve(edge.id), Some(Curve3::Circle(_))) {
-                return Err(invalid("closed edge needs a closed circular geometric carrier"));
+            if edge.start == edge.end &&
+                !matches!(self.edge_curve(edge.id),
+                    Some(Curve3::Circle(_)) | Some(Curve3::Harmonic(_))) {
+                return Err(invalid("closed edge needs a periodic geometric carrier"));
             }
             if a.face == b.face {
                 let face = self.faces.get(a.face.0 as usize).ok_or_else(|| invalid("seam face out of bounds"))?;

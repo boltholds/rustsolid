@@ -102,6 +102,13 @@ fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
                     return Err(invalid("invalid circular edge radius"));
                 }
             }
+            Curve3::Harmonic(curve)=>{
+                if !curve.center.is_finite() || !curve.cosine.is_finite() ||
+                    !curve.sine.is_finite() ||
+                    length(curve.cosine.cross(curve.sine))<=min_radius*min_radius {
+                    return Err(invalid("invalid analytic spatial ellipse carrier"));
+                }
+            }
         }
     }
     for curve in &model.geometry.curves2 {
@@ -125,6 +132,19 @@ fn validate_carrier_forms(model:&BrepModel)->Result<(),GeometryError>{
                     !circle.phase.is_finite() ||
                     (circle.direction!=1.0 && circle.direction!= -1.0) {
                     return Err(invalid("invalid oriented circular UV trim"));
+                }
+            }
+            Curve2::Harmonic(curve)=>{
+                if ![curve.center.u,curve.center.v,curve.cosine.u,curve.cosine.v,
+                    curve.sine.u,curve.sine.v].iter().all(|v|v.is_finite()) {
+                    return Err(invalid("nonfinite planar harmonic UV trim"));
+                }
+            }
+            Curve2::CylinderSection(curve)=>{
+                if ![curve.angle_offset,curve.axial_center,curve.axial_cosine,
+                      curve.axial_sine].iter().all(|v|v.is_finite()) ||
+                    (curve.direction!=1.0 && curve.direction!= -1.0) {
+                    return Err(invalid("invalid cylindrical oblique-section UV trim"));
                 }
             }
         }
@@ -419,7 +439,8 @@ impl BrepCarrierTransaction<'_> {
             let old=model.edge_curve(EdgeId(index as u32))
                 .ok_or_else(||invalid("missing original edge carrier"))?;
             if !matches!((old,curve),(Curve3::Line(_),Curve3::Line(_)) |
-                (Curve3::Circle(_),Curve3::Circle(_))) {
+                (Curve3::Circle(_),Curve3::Circle(_)) |
+                (Curve3::Harmonic(_),Curve3::Harmonic(_))) {
                 return Err(invalid("changing the edge carrier family is not supported"));
             }
             curve.evaluate(lerp(domain,0.5)?)?;
@@ -443,7 +464,9 @@ impl BrepCarrierTransaction<'_> {
                 .ok_or_else(||invalid("missing coedge trim"))?;
             if !matches!((old,curve),(Curve2::Line(_),Curve2::Line(_)) |
                 (Curve2::Circle(_),Curve2::Circle(_)) |
-                (Curve2::OrientedCircle(_),Curve2::OrientedCircle(_))) {
+                (Curve2::OrientedCircle(_),Curve2::OrientedCircle(_)) |
+                (Curve2::Harmonic(_),Curve2::Harmonic(_)) |
+                (Curve2::CylinderSection(_),Curve2::CylinderSection(_))) {
                 return Err(invalid("changing the coedge trim family is not supported"));
             }
             curve.evaluate(lerp(domain,0.5)?)?;
@@ -493,6 +516,10 @@ impl BrepCarrierTransaction<'_> {
                 origin:line.origin.add(line.direction.scale(offset)),
                 direction:line.direction.scale(scale),
             }),
+            Curve3::Harmonic(_)=>{
+                self.failed=true;return Err(invalid(
+                    "spatial harmonic reparameterization requires source-bound editor"));
+            }
             Curve3::Circle(circle)=>{
                 if scale!=1.0 {
                     self.failed=true;
@@ -535,9 +562,10 @@ impl BrepCarrierTransaction<'_> {
                 }
                 Curve2::Circle(circle)
             }
-            Curve2::OrientedCircle(_)=>{
+            Curve2::OrientedCircle(_) | Curve2::Harmonic(_) |
+            Curve2::CylinderSection(_)=>{
                 self.failed=true;
-                return Err(invalid("oriented circle reparameterization requires a source-bound arc transaction"));
+                return Err(invalid("nonlinear trim reparameterization requires a source-bound arc transaction"));
             }
         };
         let domain=match transform_range(geom.domain,scale,offset){
@@ -605,6 +633,17 @@ impl BrepCarrierTransaction<'_> {
                             v:c.center.v-delta.v},
                         radius:c.radius,phase:c.phase,direction:c.direction,
                     }),
+                    Curve2::Harmonic(c)=>Curve2::Harmonic(crate::HarmonicCurve2{
+                        center:Point2Param{u:c.center.u-delta.u,v:c.center.v-delta.v},
+                        ..c
+                    }),
+                    Curve2::CylinderSection(c)=>{
+                        if delta.u!=0.0 {return Err(invalid(
+                            "cylinder harmonic UV chart does not support angular rebasing"));
+                        }
+                        Curve2::CylinderSection(crate::CylinderSection2{
+                            axial_center:c.axial_center-delta.v,..c})
+                    }
                 };
                 let new_id=Curve2Id(u32::try_from(model.geometry.curves2.len())
                     .map_err(|_|invalid("UV curve catalog exhausted"))?);
