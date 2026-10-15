@@ -1,0 +1,75 @@
+name: Package Gefest geometry CLI
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/geometry-cli-package.yml"
+  push:
+    branches:
+      - main
+      - feat/brep-picking-edge-provenance-20261015
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/geometry-cli-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-amd64:
+    name: Build, verify, and archive Linux geometry binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # On PRs, package the source HEAD rather than GitHub's synthetic merge.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Compile against Debian bookworm for runtime libc compatibility
+        run: |
+          set -euo pipefail
+          docker run --rm --platform linux/amd64 \
+            --volume "$PWD:/workspace" \
+            --workdir /workspace \
+            rust:1.99-bookworm \
+            bash -euo pipefail -c '
+              cargo test --locked --test oblique_cylinder_cli
+              cargo build --locked --release --bin gefest-geometry
+            '
+
+      - name: Exercise the actual release binary and native edge provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' '{"operation":"oblique_cylinder_clip","cylinder":{"origin":[0,0,0],"axis":[0,1,0],"radial_x":[1,0,0],"radius":2,"height":5},"plane_height":2.5,"retain":"negative","display_segments":24}' \
+            | target/release/gefest-geometry \
+            | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r["schema_version"]=="geometry.v1" and r["ok"],r; s=r["solid"]; b=s["analytic_brep"]; assert len(s["faces"])==len(s["triangle_face_ids"]) and len(b["pick_edges"])==s["topology"]["edges"]==3,b; assert all(len(e["face_ids"])==2 and len(e["points"])>=2 for e in b["pick_edges"]),b'
+
+      - name: Package executable with source identity and license notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/gefest-geometry-linux-amd64
+          install -m 0755 target/release/gefest-geometry dist/gefest-geometry-linux-amd64/gefest-geometry
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/gefest-geometry-linux-amd64/
+          git rev-parse HEAD > dist/gefest-geometry-linux-amd64/source-commit.sha
+          (cd dist/gefest-geometry-linux-amd64 && sha256sum gefest-geometry > SHA256SUMS)
+          tar -czf dist/gefest-geometry-linux-amd64.tar.gz \
+            -C dist gefest-geometry-linux-amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gefest-geometry-linux-amd64-${{ github.run_id }}
+          path: dist/gefest-geometry-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
