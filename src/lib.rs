@@ -26,6 +26,10 @@ mod operator_contract;
 mod intersections;
 mod trimmed_intersections;
 mod intersection_graph;
+mod multi_face_intersection_graph;
+mod global_vertex_reconciliation;
+mod multi_trace_uv_arrangement;
+mod whole_solid_region_classification;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -86,6 +90,24 @@ pub use trimmed_intersections::{TrimmedIntersectionEngine, TrimmedIntersection,
 pub use intersection_graph::{IntersectionGraphBuilder, IntersectionGraph,
     GraphOperand, GraphNodeId, GraphArcId, GraphFaceSource, GraphBoundarySource,
     GraphTolerance, GraphNodeKind, GraphNode, GraphArc, GraphState};
+pub use multi_face_intersection_graph::{MultiFaceIntersectionGraphBuilder,
+    MultiFaceIntersectionGraph, MultiFaceGraphState, FacePairGraph, FacePairId,
+    GlobalNodeRef, GlobalArcRef};
+pub use global_vertex_reconciliation::{
+    GlobalEventId, GlobalEventKind, ReconciledGlobalEvent,
+    GlobalNodeReconciliationPlan, GlobalNodeReconciliationHold,
+    GlobalNodeReconciliation,
+};
+pub use multi_trace_uv_arrangement::{
+    MultiTraceUvHold, MultiUvBoundaryProvenance, MultiUvBoundarySpan,
+    MultiUvBoundaryCycle, MultiUvFaceCell, MultiUvCut, MultiTraceUvPlan,
+    MultiTraceUvResult,
+};
+pub use whole_solid_region_classification::{
+    ScalarInterval, CertifiedCellLocation, WholeSolidCellCertificate,
+    WholeSolidCellWitness, WholeSolidRegionPlan, WholeSolidRegionHold,
+    WholeSolidRegionResult,
+};
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};

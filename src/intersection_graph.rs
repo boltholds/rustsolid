@@ -17,6 +17,19 @@ fn invalid(msg: impl Into<String>) -> GeometryError { GeometryError::InvalidTopo
 fn length(v: Point3) -> f64 { v.x.hypot(v.y).hypot(v.z) }
 fn distance(a: Point3, b: Point3) -> f64 { length(a.sub(b)) }
 fn extent(model: &BrepModel) -> f64 { length(model.bbox.max.sub(model.bbox.min)) }
+fn bodies_strictly_disjoint(a:&BrepModel,b:&BrepModel,margin:f64)->bool {
+    // Analytic support surfaces may coincide even when two finite bodies
+    // occupy disjoint spatial slabs. If their validated bounding boxes
+    // are separated by more than the uncertainty margin, no face pair
+    // can carry a *trimmed* intersection.
+    let x=a.bbox.max.x<b.bbox.min.x-margin ||
+          b.bbox.max.x<a.bbox.min.x-margin;
+    let y=a.bbox.max.y<b.bbox.min.y-margin ||
+          b.bbox.max.y<a.bbox.min.y-margin;
+    let z=a.bbox.max.z<b.bbox.min.z-margin ||
+          b.bbox.max.z<a.bbox.min.z-margin;
+    x||y||z
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GraphOperand { First, Second }
@@ -370,12 +383,18 @@ impl IntersectionGraphBuilder {
     pub fn intersect_faces(&self,a:&BrepModel,fa:FaceId,b:&BrepModel,fb:FaceId)
         ->Result<IntersectionGraph,GeometryError>
     {
-        let engine=TrimmedIntersectionEngine::new(self.tolerance)?;
-        let intersection=engine.intersect_faces(a,fa,b,fb)?;
         let sources=[face_source(a,fa,GraphOperand::First)?,face_source(b,fb,GraphOperand::Second)?];
         let precision=tolerance_policy(a,fa,b,fb,self.tolerance)?;
         let mut graph=IntersectionGraph{source_faces:sources,state:GraphState::Empty,
             nodes:vec![],arcs:vec![],support_certificate:None,tolerance:precision};
+        if bodies_strictly_disjoint(a,b,precision.evaluation_budget) {
+            // Validate both full models even on this fast no-intersection
+            // path; an invalid shell cannot masquerade as an empty graph.
+            a.validate()?;b.validate()?;
+            return Ok(graph);
+        }
+        let engine=TrimmedIntersectionEngine::new(self.tolerance)?;
+        let intersection=engine.intersect_faces(a,fa,b,fb)?;
         match intersection {
             TrimmedIntersection::Empty=>return Ok(graph),
             TrimmedIntersection::Ambiguous{reason}=>{

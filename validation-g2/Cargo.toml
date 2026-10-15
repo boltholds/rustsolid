@@ -1,0 +1,28 @@
+[package]
+name = "rustsolid"
+version = "0.41.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+autobins = false
+
+[lib]
+path = "../src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+robust = "1.2.0"
+earcutr = "0.5.0"
+
+[[test]]
+name = "multi_trace_uv_arrangement"
+path = "../tests/multi_trace_uv_arrangement.rs"
+
+[[test]]
+name = "global_vertex_reconciliation"
+path = "../tests/global_vertex_reconciliation.rs"
+
+[[test]]
+name = "multi_face_intersection_graph"
+path = "../tests/multi_face_intersection_graph.rs"
