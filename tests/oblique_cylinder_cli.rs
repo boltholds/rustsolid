@@ -57,6 +57,33 @@ fn each_halfspace_returns_true_clipped_brep_with_face_owned_mesh(){
         assert_eq!(owners.iter().filter(|v|**v==1).count(),64);
         assert_eq!(owners.iter().filter(|v|**v==2).count(),128);
         assert_eq!(response["solid"]["analytic_brep"]["facet_segments"],64);
+        let edges=response["solid"]["analytic_brep"]["pick_edges"].as_array()
+            .expect("native edge picking witnesses");
+        assert_eq!(edges.len(),3);
+        let coedges=response["solid"]["analytic_brep"]["coedges"].as_array().unwrap();
+        for (index,edge) in edges.iter().enumerate(){
+            assert_eq!(edge["edge_id"],index as u64);
+            let faces=edge["face_ids"].as_array().unwrap();
+            assert_eq!(faces.len(),2);
+            assert_eq!(coedges.iter().filter(|use_|use_["edge_id"]==index as u64).count(),2);
+            let points=edge["points"].as_array().unwrap();
+            let expected=if edge["curve_kind"]=="line" {2}else{65};
+            assert_eq!(points.len(),expected);
+            for point in points {
+                assert_eq!(point.as_array().unwrap().len(),3);
+                assert!(point.as_array().unwrap().iter()
+                    .all(|coord|coord.as_f64().unwrap().is_finite()));
+            }
+            if edge["curve_kind"]=="circle" || edge["curve_kind"]=="ellipse" {
+                let first=points[0].as_array().unwrap();
+                let last=points.last().unwrap().as_array().unwrap();
+                let distance=(0..3).map(|axis|{
+                    let delta=num(&first[axis])-num(&last[axis]);delta*delta
+                }).sum::<f64>().sqrt();
+                assert!(distance<1e-8,"closed physical edge must close");
+            }
+        }
+
         assert_eq!(response["data"]["mesh_certificate"]
             ["closed_oriented_manifold_certified"],true);
     }
