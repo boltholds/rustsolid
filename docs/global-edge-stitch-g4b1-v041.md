@@ -73,6 +73,37 @@ may atomically commit a revision-bound candidate with Undo/Redo.
 Until every gate is implemented and executed,
 `closed_shell_proven=false` and `can_apply=false`.
 
+## Radial-shell topology preflight
+
+When and only when every original source face has a G4a classification and
+every selected coedge has exactly one opposing radial use, the stitcher
+invokes `certify_radial_shell` from `src/radial_shell_audit.rs`.
+The proof constructs vertices from the **combinatorial equivalence**
+of loop successors and source-supported radial twins, not spatial
+proximity. It independently checks:
+
+- one directed, closed outer loop per selected cell and any inner loops;
+- each halfedge used by exactly one face loop and exactly one radial pair;
+- opposite XYZ endpoints and distinct incident face cells per radial pair;
+- one connected rotation orbit around every vertex (no split/pinched fan);
+- no two distinct, unwelded vertices accidentally coincident in XYZ;
+- Euler characteristic, per-shell connectivity and integer genus, with
+  each inner trim loop counted in the cellular Euler formula.
+
+The result is `RadialTopologyCertificate`, recorded in
+`GlobalEdgeStitchPlan.topology_preflight`. This is an **incidence
+certificate**, *not* a canonical `BrepModel` or an executable Boolean.
+The separate `closed_shell_proven` and `can_apply` flags remain false
+until all surface carriers, canonical IDs and the independent volume
+oracle are constructed and validated. Where source coverage is
+incomplete, `topology_preflight` is `None`.
+
+Five self-contained mathematical/topological regression tests validate
+a true tetrahedral genus-zero manifold, disconnected shells, edge
+corruption, open face cycles and coincident unlinked vertices. Source-backed
+G4b tests independently verify a real cross-operand analytic cut and
+reject forged boundary-carrier evidence.
+
 ## Tests
 
 `tests/global_edge_stitch.rs` covers:
