@@ -130,10 +130,48 @@ fn pcurve_kind(curve:Option<rustsolid::Curve2>)->&'static str{
         None=>"missing",
     }
 }
+/// B-rep edge picking uses sampled physical Curve3 carriers and *real* EdgeId.
+/// These polylines are read-only viewport witnesses; triangles remain render-only.
+/// Same-face seam edges keep their actual two coedge uses.
+fn edge_pick_witnesses(model:&BrepModel,display_segments:usize)
+    ->Result<Vec<Value>,GeometryError>
+{
+    let mut witnesses=Vec::with_capacity(model.edges.len());
+    for edge in &model.edges {
+        let curve=model.edge_curve(edge.id).ok_or_else(||invalid("missing physical pick edge carrier"))?;
+        let geom=model.geometry.edges.get(edge.id.0 as usize)
+            .ok_or_else(||invalid("missing physical pick edge domain"))?;
+        let rustsolid::ParameterRange::Bounded{start,end}=geom.domain else{
+            return Err(invalid("edge picking requires a bounded native curve"));
+        };
+        if !start.is_finite() || !end.is_finite() || start>=end {
+            return Err(invalid("invalid physical edge parameter interval"));
+        }
+        let n=if matches!(curve,rustsolid::Curve3::Line(_)) {1}
+            else {display_segments.clamp(12,128)};
+        let mut points=Vec::with_capacity(n+1);
+        for index in 0..=n {
+            let t=start+(end-start)*(index as f64/n as f64);
+            points.push(curve.evaluate(t)?.array());
+        }
+        let faces=edge.coedges.iter().map(|id|{
+            model.coedges.get(id.0 as usize).map(|use_|use_.face.0)
+                .ok_or_else(||invalid("physical edge references missing coedge"))
+        }).collect::<Result<Vec<_>,_>>()?;
+        witnesses.push(json!({
+            "edge_id":edge.id.0,"curve_kind":edge_kind(Some(curve)),
+            "face_ids":faces,"start_vertex_id":edge.start.0,
+            "end_vertex_id":edge.end.0,"points":points
+        }));
+    }
+    Ok(witnesses)
+}
+
 fn map_solid(model:&BrepModel,mesh:&Mesh,kind:&str,
     segments:usize,history:Value,quality:Value,
-)->SolidResponse{
+)->Result<SolidResponse,GeometryError>{
     let t=model.summary();
+    let pick_edges=edge_pick_witnesses(model,segments)?;
     let coedges=model.coedges.iter().map(|c|{
         let curve=model.geometry.coedges[c.id.0 as usize];
         json!({"id":c.id.0,"edge_id":c.edge.0,"face_id":c.face.0,
@@ -141,7 +179,7 @@ fn map_solid(model:&BrepModel,mesh:&Mesh,kind:&str,
             "next_id":c.next.0,"prev_id":c.prev.0,"reversed":c.reversed,
             "pcurve_id":curve.pcurve.0,"pcurve_kind":pcurve_kind(model.coedge_pcurve(c.id))})
     }).collect::<Vec<_>>();
-    SolidResponse{
+    Ok(SolidResponse{
         vertices:mesh.vertices.iter().map(|p|p.array()).collect(),
         faces:mesh.triangles.clone(),
         triangle_face_ids:mesh.triangle_faces.iter().map(|face|face.0).collect(),
@@ -164,12 +202,13 @@ fn map_solid(model:&BrepModel,mesh:&Mesh,kind:&str,
             "edge_carrier_kinds":model.edges.iter()
                 .map(|e|edge_kind(model.edge_curve(e.id))).collect::<Vec<_>>(),
             "coedges":coedges,
+            "pick_edges":pick_edges,
             "new_elliptic_edge":if kind=="oblique_halfspace_clipped_cylinder" {Some(1)}else{Some(4)},
             "facet_segments":segments,
             "mesh_quality":quality,
         })),
         brep:None,
-    }
+    })
 }
 
 pub(super) fn evaluate(
@@ -262,7 +301,7 @@ pub(super) fn evaluate(
         let state=if applied {"committed"}else{"imprinted_after_undo"};
         let kind=if applied {"oblique_halfspace_clipped_cylinder"}
             else {"imprinted_cylinder"};
-        let solid=map_solid(clip.model(),&mesh,kind,display_segments,history.clone(),quality.clone());
+        let solid=map_solid(clip.model(),&mesh,kind,display_segments,history.clone(),quality.clone())?;
         Ok(Response{schema_version:"geometry.v1",ok:true,solid:Some(solid),
             error:None,data:Some(json!({
                 "kind":"oblique_cylinder_clip","state":state,
