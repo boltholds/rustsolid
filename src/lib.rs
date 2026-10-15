@@ -31,6 +31,8 @@ mod global_vertex_reconciliation;
 mod multi_trace_uv_arrangement;
 mod whole_solid_region_classification;
 mod face_patch_assembly;
+mod global_edge_stitch;
+mod radial_shell_audit;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -113,6 +115,12 @@ pub use face_patch_assembly::{
     FacePatchDraftUse, FacePatchDraftLoop, FacePatchCutPair,
     FacePatchAssemblyHold, FacePatchAssemblyPlan, FacePatchAssemblyResult,
 };
+pub use global_edge_stitch::{
+    StitchFaceOwner, StitchUseRef, StitchPatchInput, StitchedEdgeOrigin,
+    StitchedEdgeDraft, OpenStitchReason, OpenStitchUse, GlobalStitchHold,
+    GlobalEdgeStitchPlan, GlobalEdgeStitchResult,
+};
+pub use radial_shell_audit::{RadialTopologyCertificate, RadialTopologyHold};
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};

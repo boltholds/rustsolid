@@ -6,7 +6,7 @@
 //! Tangencies, missing cut intervals, overlapping traces, and ambiguous chart
 //! events fail closed. This DOES NOT commit topology or classify solid volume.
 use crate::{
-    BrepModel, CoedgeId, Curve2, EdgeId, FaceId, FacePairGraph, FacePairId,
+    BrepModel, CoedgeId, Curve2, Curve3, EdgeId, FaceId, FacePairGraph, FacePairId,
     GeometryError, GeometryTolerance, GlobalArcRef, GraphOperand, GraphState,
     IntersectionCurve, LoopId, LoopRole, MultiFaceGraphState,
     MultiFaceIntersectionGraph, ParameterRange, Point2Param, Surface3,
@@ -1006,6 +1006,58 @@ fn arrange_planar(
     }))
 }
 
+/// A face-pair intersection which lives wholly on an *existing physical
+/// boundary coedge* is not a new interior face split. G2 may skip it only
+/// after original node witnesses agree on ONE CoedgeId and the entire
+/// 3D segment is inside that coedge's bounded analytic line carrier.
+/// A tangent circle, an interior coincident segment, or a synthetic chart
+/// seam is never silently dropped by this gate.
+fn certified_original_boundary_overlap(
+    model:&BrepModel,
+    source_face:FaceId,
+    source_operand:GraphOperand,
+    graph:&crate::IntersectionGraph,
+    arc:&crate::GraphArc,
+    eps:f64,
+)->Result<bool,GeometryError>{
+    if arc.closed || arc.contact!=TrimContact::BoundaryOverlap {
+        return Ok(false);
+    }
+    let Some(start)=graph.nodes.get(arc.from.0 as usize)
+        .filter(|node|node.id==arc.from) else{return Ok(false)};
+    let Some(end)=graph.nodes.get(arc.to.0 as usize)
+        .filter(|node|node.id==arc.to) else{return Ok(false)};
+    for source in start.boundary_sources.iter().filter(|w|
+        w.operand==source_operand && w.face==source_face) {
+        if !end.boundary_sources.contains(source) {continue;}
+        let Some(coedge)=model.coedges.get(source.coedge.0 as usize)
+            .filter(|coedge|coedge.id==source.coedge &&
+                coedge.edge==source.edge &&
+                coedge.face==source_face) else{continue};
+        let _=coedge;
+        let Some(Curve3::Line(line))=model.edge_curve(source.edge) else{continue};
+        let Some(edge)=model.geometry.edges.get(source.edge.0 as usize) else{continue};
+        let ParameterRange::Bounded{start:lo,end:hi}=edge.domain else{continue};
+        let speed_squared=line.direction.length_squared();
+        if !speed_squared.is_finite()||speed_squared<=0.0 {continue;}
+        let slack=eps/speed_squared.sqrt();
+        let mut valid=true;
+        for fraction in [0.0,0.125,0.25,0.5,0.75,0.875,1.0] {
+            let point=arc.evaluate(fraction)?;
+            let parameter=point.sub(line.origin).dot(line.direction)/speed_squared;
+            if !parameter.is_finite()||parameter<lo-slack||
+                parameter>hi+slack ||
+                point.sub(line.evaluate(parameter)?).length_squared().sqrt()>eps
+            {
+                valid=false;
+                break;
+            }
+        }
+        if valid{return Ok(true);}
+    }
+    Ok(false)
+}
+
 impl MultiTraceUvPlan {
     pub fn validate_against(
         &self, first:&BrepModel, second:&BrepModel,
@@ -1076,12 +1128,19 @@ impl MultiTraceUvPlan {
                     MultiTraceUvHold::UpstreamAmbiguity));
             }
             if pair.graph.state==GraphState::Empty {continue;}
-            pair_ids.push(pair.id);
             if pair.graph.arcs.is_empty() {
                 return Ok(MultiTraceUvResult::Held(
                     MultiTraceUvHold::MissingTransverseCut));
             }
+            let mut has_real_cut=false;
             for arc in &pair.graph.arcs {
+                if certified_original_boundary_overlap(
+                    model,face_id,operand,&pair.graph,arc,eps)?
+                {
+                    // The original physical boundary is preserved by G4's
+                    // source-edge pairing, never treated as a new UV cut.
+                    continue;
+                }
                 if arc.closed||arc.contact!=TrimContact::Crossing {
                     return Ok(MultiTraceUvResult::Held(
                         MultiTraceUvHold::TangencyOrVertexEvent));
@@ -1152,7 +1211,9 @@ impl MultiTraceUvPlan {
                     start:ta.min(tb),end:ta.max(tb),
                     source:GlobalArcRef {pair:pair.id,local:arc.id},
                 });
+                has_real_cut=true;
             }
+            if has_real_cut {pair_ids.push(pair.id);}
         }
         pair_ids.sort();
         arrange_planar(model,face_id,operand,pair_ids,lines,eps)
