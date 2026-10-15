@@ -177,7 +177,9 @@ fn switching_operation_or_source_body_rejects_old_patch_preview(){
     let (pairs,uv,g3)=plans(&a,&b,GraphOperand::First,BooleanOperation::Difference);
     let plan=prepared(&a,&b,&pairs,&uv,&g3);
     let mut wrong=plan.clone();
-    wrong.operation=BooleanOperation::Union;
+    // Union and Difference select the *same* first-operand outside patches.
+    // Intersection changes this face's retained region and must invalidate it.
+    wrong.operation=BooleanOperation::Intersection;
     assert!(wrong.validate_against(&a,&b,&pairs,tol()).is_err());
 
     let shifted=BrepBody::from(
