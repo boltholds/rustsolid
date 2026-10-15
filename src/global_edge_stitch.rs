@@ -7,13 +7,15 @@
 //! than inventing a closed Boolean B-rep. No persistent IDs are allocated.
 
 use crate::{
-    BrepBody, BrepModel, BooleanOperation, CoedgeId, EdgeId,
-    FaceId, FacePatchAssemblyPlan, FacePairGraph, GeometryError,
+    BrepBody, BooleanOperation, CoedgeId, EdgeId, FaceId,
+    FacePatchAssemblyPlan, FacePairGraph, GeometryError,
     GeometryTolerance, GraphArc, GraphNodeKind, GraphOperand,
     IntersectionCurve, MultiUvBoundaryProvenance, MultiUvBoundarySpan,
-    Point3, Surface3,
+    Point3, Surface3, UvCycleKind, RadialTopologyCertificate,
+    RadialTopologyHold,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use crate::radial_shell_audit::{certify_radial_shell,RadialHalfedge,RadialLoop};
 
 const MAX_STITCH_PATCHES: usize = 512;
 const MAX_STITCH_USES: usize = 32_768;
@@ -87,6 +89,7 @@ pub enum GlobalStitchHold {
     UncertifiedCutEndpoint,
     UncertifiedIntermediateCutSplit,
     SameDirectionUses,
+    InvalidRadialShell(RadialTopologyHold),
 }
 #[derive(Debug, Clone, PartialEq)]
 pub struct GlobalEdgeStitchPlan {
@@ -99,6 +102,8 @@ pub struct GlobalEdgeStitchPlan {
     pub selected_coedge_uses: usize,
     pub verified_loops: usize,
     pub radially_paired: bool,
+    /// Source-verified incidence certification, only after full face coverage.
+    pub topology_preflight: Option<RadialTopologyCertificate>,
     /// Even a two-use radial graph is not a certified B-rep shell:
     /// vertex-fan continuity, all face domains and an independent volume
     /// proof must be established before G4 can claim a candidate.
@@ -165,6 +170,59 @@ fn pair_geometry(
     // Source-normal and Boolean orientation are reflected in these
     // directed endpoints. Never pair same-direction coedges.
     within(a.start, b.end, eps) && within(a.end, b.start, eps)
+}
+
+/// Radial vertex classes are formed only from verified twins and loop
+/// successors. Coordinates are compared AFTER that topological construction,
+/// never used as authority to weld unrelated material vertices.
+fn certify_complete_topology(
+    input:&[StitchPatchInput<'_>],
+    edges:&[StitchedEdgeDraft],eps:f64,
+)->Result<RadialTopologyCertificate,RadialTopologyHold>{
+    let mut cells=BTreeMap::<(usize,usize),usize>::new();
+    let mut halfedges=Vec::<RadialHalfedge>::new();
+    let mut refs=BTreeMap::<StitchUseRef,usize>::new();
+    let mut loops=Vec::<RadialLoop>::new();
+    for (patch,entry) in input.iter().enumerate(){
+        for lp in &entry.plan.retained_loops {
+            let key=(patch,lp.cell_index);
+            let face=if let Some(existing)=cells.get(&key){*existing}else{
+                let face=cells.len();
+                cells.insert(key,face);
+                face
+            };
+            let mut uses=Vec::new();
+            for &at in &lp.uses{
+                let id=StitchUseRef{patch,use_index:at};
+                let Some(original)=entry.plan.uses.get(at) else {
+                    return Err(RadialTopologyHold::MissingLoop);
+                };
+                if refs.contains_key(&id){
+                    return Err(RadialTopologyHold::MissingLoop);
+                }
+                let next=halfedges.len();
+                halfedges.push(RadialHalfedge{
+                    start:original.start,end:original.end,face,
+                });
+                refs.insert(id,next);
+                uses.push(next);
+            }
+            loops.push(RadialLoop {
+                face,uses,inner:lp.kind==UvCycleKind::Inner,
+            });
+        }
+    }
+    let mut twins=Vec::new();
+    for edge in edges {
+        let Some(a)=refs.get(&edge.radial_uses[0]) else {
+            return Err(RadialTopologyHold::UnpairedEdge);
+        };
+        let Some(b)=refs.get(&edge.radial_uses[1]) else {
+            return Err(RadialTopologyHold::UnpairedEdge);
+        };
+        twins.push([*a,*b]);
+    }
+    certify_radial_shell(&halfedges,&loops,&twins,cells.len(),eps)
 }
 
 /// A G4a plan is a source-checked **single face**, with global pairs
@@ -423,10 +481,20 @@ impl GlobalEdgeStitchPlan {
             return Ok(GlobalEdgeStitchResult::Held(GlobalStitchHold::NonManifoldIncidence));
         }
         let radially_paired=open.is_empty();
+        let topology_preflight=if radially_paired && missing.is_empty() {
+            let ea=a.bbox.max.sub(a.bbox.min).length_squared().sqrt();
+            let eb=b.bbox.max.sub(b.bbox.min).length_squared().sqrt();
+            let eps=tolerance.length_at(ea.max(eb).max(1.0))*16.0;
+            match certify_complete_topology(input,&edges,eps) {
+                Ok(proof)=>Some(proof),
+                Err(reason)=>return Ok(GlobalEdgeStitchResult::Held(
+                    GlobalStitchHold::InvalidRadialShell(reason))),
+            }
+        }else{None};
         Ok(GlobalEdgeStitchResult::Preview(Self {
             operation,edges,open_uses:open,missing_source_faces:missing,
             source_patch_count:input.len(),selected_coedge_uses:selected,
-            verified_loops,radially_paired,
+            verified_loops,radially_paired,topology_preflight,
             closed_shell_proven:false,can_apply:false,
         }))
     }
