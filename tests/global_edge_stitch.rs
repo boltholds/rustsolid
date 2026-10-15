@@ -148,14 +148,6 @@ fn two_full_crossing_planar_source_faces_can_pair_only_their_true_cut(){
     let bm=b.shared().unwrap();
     let af=face_in_plane(&am,1,0.);
     let bf=face_in_plane(&bm,0,0.);
-    for p in source_pairs(&am,&bm,GraphOperand::First,af) {
-        eprintln!("G4b diagnostic A pair {:?}/{:?}: state {:?}; arcs {:?}",p.first_face,p.second_face,p.graph.state,
-            p.graph.arcs.iter().map(|arc| (arc.id,arc.contact,arc.closed)).collect::<Vec<_>>());
-    }
-    for p in source_pairs(&am,&bm,GraphOperand::Second,bf) {
-        eprintln!("G4b diagnostic B pair {:?}/{:?}: state {:?}; arcs {:?}",p.first_face,p.second_face,p.graph.state,
-            p.graph.arcs.iter().map(|arc| (arc.id,arc.contact,arc.closed)).collect::<Vec<_>>());
-    }
     let (apairs,apatch)=prepared(
         &a,&b,GraphOperand::First,af,BooleanOperation::Difference);
     let (bpairs,bpatch)=prepared(
