@@ -108,3 +108,22 @@ The verification checkout used the same `06ea004cb8e63bb6f53e6aeaeec83b5806258cf
 AI Workbench's own `cargo_test` tool still reports a permissions error opening its mounted Cargo manifest, so this pass is specifically attributed to the copied checkout's real Rust 1.88 Linux test execution.
 
 G4 topology reconstruction and G5 atomic Boolean commit remain future work. `can_apply` is still false on the G3 result.
+
+
+## G4a implementation checkpoint (2026-10-15)
+
+- Added a **read-only, face-local** `FacePatchAssemblyPlan` with source
+  coedge provenance, analytic 3D graph line witnesses, directed retained
+  loops, and source-/cross-operand cut references.
+- Selected G3 material cells are required to retain precisely one side
+  of each local cut; the two G2 uses are **not** assigned as physical
+  B-rep radial twins. Source trims are independently reconstructed from
+  their original 2D pcurves.
+- The effective outward shell orientation combines original face sense
+  with the reversed subtractor patches used for Difference.
+- Regression suite: `tests/face_patch_assembly.rs`; design and
+  limitations: `docs/face-patch-assembly-g4a-v041.md`.
+- **G4 is not complete.** External face-to-face coedge pairing, complete
+  solid-face scheduling, temporary manifold shell construction,
+  independent volume oracle and G5 atomic commit/Undo/Redo remain.
+  The G4a `can_apply` flag is always false.

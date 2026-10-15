@@ -30,6 +30,7 @@ mod multi_face_intersection_graph;
 mod global_vertex_reconciliation;
 mod multi_trace_uv_arrangement;
 mod whole_solid_region_classification;
+mod face_patch_assembly;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -107,6 +108,10 @@ pub use whole_solid_region_classification::{
     ScalarInterval, CertifiedCellLocation, WholeSolidCellCertificate,
     WholeSolidCellWitness, WholeSolidRegionPlan, WholeSolidRegionHold,
     WholeSolidRegionResult,
+};
+pub use face_patch_assembly::{
+    FacePatchDraftUse, FacePatchDraftLoop, FacePatchCutPair,
+    FacePatchAssemblyHold, FacePatchAssemblyPlan, FacePatchAssemblyResult,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
