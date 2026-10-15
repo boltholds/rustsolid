@@ -157,6 +157,11 @@ fn two_full_crossing_planar_source_faces_can_pair_only_their_true_cut(){
         StitchPatchInput{plan:&bpatch,pairs:&bpairs},
     ];
     let plan=verify_plan(&a,&b,&inputs);
+    assert!(plan.topology_preflight.is_none(),
+        "partial source-face coverage must not gain a radial shell certificate");
+    assert!(plan.edges.iter().all(|edge|
+        matches!(edge.source,StitchedEdgeOrigin::Cut{..})),
+        "coincident edges from different operands are not original-edge twins");
     let cross:Vec<_>=plan.edges.iter().filter(|edge|
         matches!(edge.source,StitchedEdgeOrigin::Cut{..})).collect();
     assert_eq!(cross.len(),1,"one real bounded transverse cross-face cut");
@@ -177,4 +182,23 @@ fn empty_patch_set_refuses_to_declare_a_closed_shell(){
         GlobalEdgeStitchPlan::build(&a,&b,&[],tol()).unwrap(),
         GlobalEdgeStitchResult::Held(GlobalStitchHold::BudgetExceeded)
     );
+}
+
+#[test]
+fn forged_original_boundary_witness_cannot_be_silently_discarded_by_g2(){
+    let a=as_box(p(-2.,0.,-2.),4.,4.,4.);
+    let b=as_box(p(0.,-2.,-2.),4.,4.,4.);
+    let am=a.shared().unwrap();
+    let bm=b.shared().unwrap();
+    let face=face_in_plane(&am,1,0.);
+    let mut pairs=source_pairs(&am,&bm,GraphOperand::First,face);
+    let witness=pairs.iter_mut().find(|pair|pair.graph.arcs.iter().any(|arc|
+        arc.contact==rustsolid::TrimContact::BoundaryOverlap)).unwrap();
+    let node=witness.graph.nodes.iter_mut()
+        .find(|node|!node.boundary_sources.is_empty())
+        .expect("real physical overlap must have source boundary witnesses");
+    node.boundary_sources.clear();
+    assert!(MultiTraceUvPlan::build_selected(
+        &am,&bm,&pairs,GraphOperand::First,face,tol()).is_err(),
+        "forged boundary overlap cannot pass the source graph check");
 }
