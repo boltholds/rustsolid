@@ -10,6 +10,9 @@ use rustsolid::{
 };
 
 fn p(x:f64,y:f64,z:f64)->Point3{Point3{x,y,z}}
+fn dist2(a:Point3,b:Point3)->f64 {
+    (a.x-b.x).powi(2)+(a.y-b.y).powi(2)+(a.z-b.z).powi(2)
+}
 fn tol()->GeometryTolerance{GeometryTolerance::default()}
 fn source()->BrepBody{
     let base=Solid::block(p(-3.,0.,-3.),6.,5.,6.).unwrap();
@@ -102,8 +105,7 @@ fn first_operand_difference_keeps_only_material_exterior_patches_and_real_cut_us
         assert!(!discarded.kept);
         assert!(matches!(selected.provenance,MultiUvBoundaryProvenance::Cut{..}));
         assert_eq!(selected.provenance,discarded.provenance);
-        let delta=selected.start.sub(discarded.end);
-        assert!(delta.length_squared()<1e-12,
+        assert!(dist2(selected.start,discarded.end)<1e-12,
             "opposite G2 uses must meet on the same analytic 3D cut");
     }
     let selected_source=plan.uses.iter().filter(|u|u.kept &&
@@ -135,11 +137,11 @@ fn second_operand_difference_reverses_selected_patch_normal_and_loop_order(){
     for cycle in &plan.retained_loops {
         let first=&plan.uses[*cycle.uses.first().unwrap()];
         let last=&plan.uses[*cycle.uses.last().unwrap()];
-        assert!(first.start.sub(last.end).length_squared()<1e-12);
+        assert!(dist2(first.start,last.end)<1e-12);
         for win in cycle.uses.windows(2) {
             let a=&plan.uses[win[0]];
             let b=&plan.uses[win[1]];
-            assert!(a.end.sub(b.start).length_squared()<1e-12,
+            assert!(dist2(a.end,b.start)<1e-12,
                 "reversed shell loops must remain directed and closed");
         }
     }
