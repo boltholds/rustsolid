@@ -127,3 +127,36 @@ G4 topology reconstruction and G5 atomic Boolean commit remain future work. `can
   solid-face scheduling, temporary manifold shell construction,
   independent volume oracle and G5 atomic commit/Undo/Redo remain.
   The G4a `can_apply` flag is always false.
+
+## G4b1 implementation checkpoint (2026-10-15)
+
+- `src/global_edge_stitch.rs` pairs selected source-backed G4a coedges
+  from multiple faces by actual original coedge twins or by the same
+  certified A/B face-pair analytic graph arc. Its temporary edge IDs
+  are never assigned as persistent `EdgeId`.
+- Physical intersection twins must be on different source operands,
+  have opposing 3D directions, identical original bounded graph arc
+  provenance and physical endpoint witnesses. Missing or incompatible
+  uses are recorded or Held; no synthetic shell faces are invented.
+- G2 now ignores a `BoundaryOverlap` as an interior cut **only** when
+  both endpoint graph witnesses refer to the same original source
+  coedge AND every checked point is on the bounded 3D line carrier.
+  Actual tangencies and fabricated source evidence still fail closed.
+- `src/radial_shell_audit.rs` proves closed **combinatorial** radial
+  incidence, oriented vertex fans and integer Euler/genus for source-
+  complete candidate patch sets. Synthetic tetrahedra and disjoint
+  shells exercise the positive audit; open loops, self-paired edges
+  and coincident unlinked vertices are rejected.
+- Current real G4a fixture builds and source-validates a physical
+  cross-operand edge using distinct planar source faces. Their many
+  other unchanged/partially trimmed faces are not yet G4a-classifiable,
+  so `missing_source_faces` remains nonempty, the radial shell audit
+  does **not** claim closure, and `can_apply=false`.
+- Next G4b2: retained original/unchanged face scheduling, global
+  cut-vertex reconciliation and canonical closed `BrepModel` candidate.
+  G4c/G5 volume oracle and atomic transaction remain outstanding.
+
+Tests: `tests/global_edge_stitch.rs` (6 source-backed integration
+cases), plus five `radial_shell_audit` unit checks. See
+`docs/global-edge-stitch-g4b1-v041.md`. The CI suite succeeds on
+`feat/g4b-cross-face-edge-stitch-20261015` without modifying `main`.
