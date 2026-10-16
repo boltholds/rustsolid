@@ -31,6 +31,14 @@ of those real closed candidates. This is not arbitrary B-rep Boolean.
   must contain one true closed analytic arc and one *virtual* periodic
   chart anchor. Such anchors are not welded across different face pairs
   into fictitious physical material vertices.
+- Persist the independently derived, source-owned
+  `AnalyticSourcePcurvePair` for each closed face-pair graph. These store
+  a `Curve2::Harmonic` on the original box cap and a
+  `Curve2::CylinderSection` on the original cutter's periodic wall, with
+  their source graph parameter interval. Both curves re-evaluate to
+  the same 3D arc at multiple certified parameter values, even when
+  the cutter's original angular UV frame is rotated. These are
+  provenance witnesses, not newly allocated coedges.
 - Verify the generated physical lower and upper circular edges
   (`EdgeId(12)`, `EdgeId(13)`) against the source cylinder radius and
   correct source cap or newly constructed blind floor plane. On each
@@ -96,8 +104,8 @@ two arbitrary solids or multiple intersecting cylinders.
 ## Verification
 
 `tests/analytic_bore_candidate.rs` covers full-height and strict
-partial-depth cutters, true circle carriers, both face-specific
-pcurves, source graph evidence, complete original face lineage, a
+partial-depth cutters, true circle carriers, both result-face and
+original-source independent pcurves, source graph evidence, complete original face lineage, a
 nonmaterial periodic seam, off-center mass and centroid, UV frame
 rotation, failures for tangent/unsupported cuts, and stale source
 or tolerance policies.
