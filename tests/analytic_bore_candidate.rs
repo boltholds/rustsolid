@@ -127,7 +127,7 @@ fn periodic_cylinder_seam_has_two_distinct_uv_charts_but_one_physical_edge(){
         assert_eq!(seam.source_cylinder_face,FaceId(2));
         assert_eq!(seam.result_edge,EdgeId(14));
         assert_eq!(seam.uses,[CoedgeId(28),CoedgeId(29)]);
-        assert!((seam.uv_u[0]-seam.uv_u[1]).abs()-TAU<1e-8);
+        assert!(((seam.uv_u[0]-seam.uv_u[1]).abs()-TAU).abs()<1e-8);
         let edge=&m.edges[seam.result_edge.0 as usize];
         assert_ne!(edge.start,edge.end);
         assert_eq!(m.coedges[28].face,FaceId(6));
@@ -135,6 +135,43 @@ fn periodic_cylinder_seam_has_two_distinct_uv_charts_but_one_physical_edge(){
         assert_eq!(m.coedges[28].twin,CoedgeId(29));
         assert_eq!(m.coedges[29].twin,CoedgeId(28));
         assert!(!c.can_apply());
+    }
+}
+
+#[test]
+fn two_independent_source_curves_map_into_one_closed_3d_circle(){
+    for (a,b) in [through(),blind()] {
+        let source_a=a.shared().unwrap();
+        let source_b=b.shared().unwrap();
+        let candidate=ready(build(&a,&b));
+        assert_eq!(candidate.source_pcurves().len(),candidate.circle_graphs().len());
+        for (pair,graph) in candidate.source_pcurves()
+            .iter().zip(candidate.circle_graphs()) {
+            assert!(pair.virtual_periodic_anchor);
+            assert_eq!(pair.source_box_face,graph.source_faces[0].face);
+            assert_eq!(pair.source_cylinder_face,FaceId(2));
+            assert!(matches!(pair.planar,Curve2::Harmonic(_)));
+            assert!(matches!(pair.cylinder,Curve2::CylinderSection(_)));
+            let Some(Surface3::Plane(plane))=
+                source_a.face_surface(pair.source_box_face) else {panic!("box cap")};
+            let Some(Surface3::Cylinder(cyl))=
+                source_b.face_surface(FaceId(2)) else {panic!("cylinder wall")};
+            let rustsolid::ParameterRange::Bounded{start,end}=pair.graph_interval else{
+                panic!("closed graph cannot be unbounded");
+            };
+            for fraction in [0.0_f64,0.13,0.29,0.51,0.77,0.93,1.0]{
+                let param=start+(end-start)*fraction;
+                let planar=pair.planar.evaluate(param).unwrap();
+                let cylindrical=pair.cylinder.evaluate(param).unwrap();
+                let q=plane.frame.position(planar.u,planar.v).unwrap();
+                let w=Surface3::Cylinder(cyl).evaluate(cylindrical.u,cylindrical.v)
+                    .unwrap().point;
+                close((q.x-w.x).hypot(q.y-w.y).hypot(q.z-w.z),0.);
+                let original=graph.arcs[0].evaluate(fraction).unwrap();
+                close((q.x-original.x).hypot(q.y-original.y)
+                    .hypot(q.z-original.z),0.);
+            }
+        }
     }
 }
 
