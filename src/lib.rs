@@ -36,6 +36,7 @@ mod radial_shell_audit;
 mod canonical_box_candidate;
 mod analytic_bore_candidate;
 mod global_analytic_cut_registry;
+mod analytic_source_edge_split;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -133,6 +134,11 @@ pub use analytic_bore_candidate::{
 pub use global_analytic_cut_registry::{
     GlobalAnalyticCutPlan, GlobalAnalyticCutResult, AnalyticCutRegistryHold,
     SourceCertifiedCutArc,
+};
+pub use analytic_source_edge_split::{
+    GlobalAnalyticEdgeSplitPlan,GlobalAnalyticEdgeSplitResult,
+    AnalyticSourceEdgeSplitHold,AnalyticSourceEdgeSplit,SourceEdgePiece,
+    AnalyticSplitEventBinding,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
