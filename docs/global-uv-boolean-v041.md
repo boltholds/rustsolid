@@ -160,3 +160,41 @@ Tests: `tests/global_edge_stitch.rs` (6 source-backed integration
 cases), plus five `radial_shell_audit` unit checks. See
 `docs/global-edge-stitch-g4b1-v041.md`. The CI suite succeeds on
 `feat/g4b-cross-face-edge-stitch-20261015` without modifying `main`.
+
+## G4b2a implementation checkpoint (2026-10-16)
+
+- Added `src/canonical_box_candidate.rs`: an actual immutable
+  `BrepModel` candidate for the deliberately limited **two exact
+  axis-aligned box** Boolean class. The existing source-certified
+  `BooleanKernel::apply_solids` performs the planar arrangement and
+  actual coedge construction; G4b2a independently audits its result.
+- Every one of the twelve original source faces is partitioned on
+  both source boxes' EXACT supporting-plane grid, classified by
+  Boolean occupancy on both sides of every tile, and matched to
+  exactly one result `FaceId` when exposed. The face coverage ledger
+  distinguishes untouched, discarded and partitioned faces with
+  conservative surface area accounting and right-Difference senses.
+- Every resulting `VertexId` is tied to a unique triple of exact
+  original XYZ plane indices, without proximity welding. The actual
+  B-rep's coedges are independently traversed by the G4b radial
+  vertex-fan, Euler and genus auditor. Source revision and tolerance
+  are bound to preview validation.
+- A tiny box-specific inclusion/exclusion cross-check verifies
+  volume against the original bounds; it is not a general curved
+  G4c mass oracle.
+- This is the first **real validated closed canonical candidate**
+  within this strict class: `closed_shell_proven=true` only for
+  a single genus-zero AABB-CSG shell, but `can_apply=false`.
+- Unlike the new source-independent G4b1 edge-matching interface,
+  this specialized path does not yet schedule/cut arbitrary NURBS
+  or cylindrical surface patches. It **reuses** the existing planar
+  Boolean engine rather than claiming G1/G2/G3 generality.
+- Remaining: source-bound global carrier assembly for arbitrary
+  planes/cylinders, periodic edge reconciliation and robust 3D
+  cut-vertex identity, independent curved mass oracle, then G5
+  revision-bound atomic commit with Undo/Redo.
+
+Tests: `tests/canonical_box_candidate.rs` and
+`docs/canonical-box-candidate-g4b2a-v041.md`. This is an experimental
+feature branch; do not label v0.41 complete or merge to stable CAD
+until general G4/G5 are implemented and reviewed.
