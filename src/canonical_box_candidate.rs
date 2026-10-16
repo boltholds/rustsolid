@@ -85,7 +85,6 @@ pub enum CanonicalBoxCandidateHold{
     EmptyResult,
     UnsupportedResultTopology,
     MissingSourceFaceCoverage,
-    IncorrectSourceFaceOrientation,
     InvalidExactVertexLattice,
     InvalidRadialTopology(RadialTopologyHold),
     InvalidAnalyticBoxMass,
@@ -97,6 +96,8 @@ pub struct CanonicalBoxCandidate {
     /// planar box CSG implementation and then re-audited here.
     model:BrepModel,
     operation:BooleanOperation,
+    source_revisions:[u64;2],
+    construction_tolerance:GeometryTolerance,
     face_sources:Vec<BooleanFaceSource>,
     source_faces:Vec<SourceFaceCoverage>,
     vertices:Vec<CandidateVertexLattice>,
@@ -114,6 +115,8 @@ pub enum CanonicalBoxCandidateResult {
 impl CanonicalBoxCandidate{
     pub fn brep(&self)->&BrepModel{&self.model}
     pub fn operation(&self)->BooleanOperation{self.operation}
+    pub fn source_revisions(&self)->[u64;2]{self.source_revisions}
+    pub fn construction_tolerance(&self)->GeometryTolerance{self.construction_tolerance}
     pub fn source_faces(&self)->&[SourceFaceCoverage]{&self.source_faces}
     pub fn face_provenance(&self)->&[BooleanFaceSource]{&self.face_sources}
     pub fn vertices(&self)->&[CandidateVertexLattice]{&self.vertices}
@@ -127,11 +130,22 @@ impl CanonicalBoxCandidate{
         &self,left:&BrepBody,right:&BrepBody,
         tolerance:GeometryTolerance,
     )->Result<(),GeometryError>{
+        if self.construction_tolerance != tolerance {
+            return Err(invalid("G4b2 source tolerance changed since candidate construction"));
+        }
+        let (BrepBody::Polyhedral(a),BrepBody::Polyhedral(b))=(left,right) else{
+            return Err(invalid("G4b2 original input representation changed"));
+        };
+        if self.source_revisions != [a.revision,b.revision] {
+            return Err(invalid("G4b2 original source revision is stale"));
+        }
         let CanonicalBoxCandidateResult::Ready(rebuilt)=
             Self::build(left,right,self.operation,tolerance)? else{
             return Err(invalid("G4b2 original solids no longer yield candidate"));
         };
-        if self.source_faces!=rebuilt.source_faces ||
+        if self.source_revisions!=rebuilt.source_revisions ||
+           self.construction_tolerance!=rebuilt.construction_tolerance ||
+           self.source_faces!=rebuilt.source_faces ||
            self.face_sources!=rebuilt.face_sources ||
            self.vertices!=rebuilt.vertices ||
            self.radial!=rebuilt.radial ||
@@ -254,7 +268,9 @@ impl CanonicalBoxCandidate{
                     RadialTopologyHold::InvalidEulerOrGenus)));
         }
         Ok(CanonicalBoxCandidateResult::Ready(Self {
-            model,operation,face_sources:generated.face_sources,
+            model,operation,source_revisions:[a.revision,b.revision],
+            construction_tolerance:tolerance,
+            face_sources:generated.face_sources,
             source_faces:coverage,vertices:vertex_plan,radial,
             closed_shell_proven:true,can_apply:false,
         }))
@@ -330,7 +346,9 @@ fn certify_source_faces(
     if generated.faces.len()!=provenance.len(){return Ok(None);}
     let originals=[(a,aa),(b,bb)];
     let mut emitted=BTreeMap::<TileKey,EmittedTile>::new();
+    let mut seen_result_faces=BTreeSet::new();
     for entry in provenance {
+        if !seen_result_faces.insert(entry.result_face) {return Ok(None);}
         let (operand,source_bounds)=match entry.operand {
             BooleanOperand::Left=>(0usize,aa),
             BooleanOperand::Right=>(1usize,bb),
@@ -454,6 +472,7 @@ fn certify_source_faces(
         }
     }
     if visited.len()!=emitted.len() ||
+        seen_result_faces.len()!=generated.faces.len() ||
         (overall_area-generated.mass.surface_area).abs()>
         overall_area.max(1.0)*1e-9
     {
