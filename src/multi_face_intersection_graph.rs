@@ -17,7 +17,7 @@ pub struct GlobalNodeRef {
     pub pair: FacePairId,
     pub local: GraphNodeId,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GlobalArcRef {
     pub pair: FacePairId,
     pub local: GraphArcId,

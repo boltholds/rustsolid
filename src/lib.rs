@@ -37,6 +37,7 @@ mod canonical_box_candidate;
 mod analytic_bore_candidate;
 mod global_analytic_cut_registry;
 mod analytic_source_edge_split;
+mod analytic_face_patch_partition;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -139,6 +140,11 @@ pub use analytic_source_edge_split::{
     GlobalAnalyticEdgeSplitPlan,GlobalAnalyticEdgeSplitResult,
     AnalyticSourceEdgeSplitHold,AnalyticSourceEdgeSplit,SourceEdgePiece,
     AnalyticSplitEventBinding,
+};
+pub use analytic_face_patch_partition::{
+    AnalyticFacePatchPartitionPlan, AnalyticFacePatchPartitionResult,
+    AnalyticFacePatchHold, AnalyticPatchFaceSource, AnalyticCornerPatch,
+    AnalyticMaterialSideWitness,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
