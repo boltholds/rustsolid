@@ -157,8 +157,11 @@ fn source_or_tolerance_change_invalidates_built_geometry_candidate(){
         relative_length:1e-10,
         angular:1e-8,
     };
-    // Accuracy policy changes do not necessarily change the exact
-    // emitted geometry; strict builder remains source-valid.
+    // The same exact geometry remains buildable under a new tolerance,
+    // but the older source-bound candidate cannot be silently reused.
+    assert!(plan.validate_against(&a,&b,stricter).is_err());
+    assert_eq!(plan.construction_tolerance(),GeometryTolerance::default());
+    assert_eq!(plan.source_revisions(),[0,0]);
     let fresh=CanonicalBoxCandidate::build(
         &a,&b,BooleanOperation::Union,stricter).unwrap();
     assert!(matches!(fresh,CanonicalBoxCandidateResult::Ready(_)));
