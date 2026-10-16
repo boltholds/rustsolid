@@ -14,7 +14,7 @@ use crate::{
     BooleanOutcome, BrepBody, BrepModel, BrepOrigin, CoedgeId, Curve2, Curve3,
     EdgeId, FaceId, FaceSense, Frame3, GeometryError, GeometryTolerance,
     GraphNodeKind, GraphOperand, GraphState, IntersectionGraph,
-    IntersectionGraphBuilder, LoopRole, Point3, Surface3, TrimContact,
+    IntersectionGraphBuilder, Point3, Surface3, TrimContact,
 };
 use std::f64::consts::{PI,TAU};
 use std::collections::BTreeSet;
@@ -252,7 +252,7 @@ impl AnalyticBoreCandidate {
         // Compare original 12 physical box edges, 24 coedges and six outer
         // plane carriers against their actual source, not its loose bbox.
         for i in 0..12 {
-            let edge=EdgeId(i);
+            let edge=EdgeId(i as u32);
             let original=&source_a.edges[i];let generated=&model.edges[i];
             if original.id!=generated.id || original.start!=generated.start ||
                 original.end!=generated.end ||
@@ -360,8 +360,8 @@ fn certify_lineage(
     }
     let mut out=Vec::with_capacity(9);
     for i in 0..6{
-        let face=FaceId(i);
-        let cut=(i==1 || (i==0 && kind==AnalyticBoreKind::Through));
+        let face=FaceId(i as u32);
+        let cut=i==1 || (i==0 && kind==AnalyticBoreKind::Through);
         let mface=m.faces.get(i)?;
         if mface.id!=face || mface.loops.len()!=if cut{2}else{1}{
             return None;
@@ -374,7 +374,7 @@ fn certify_lineage(
         });
     }
     for i in 0..3{
-        let face=FaceId(i);
+        let face=FaceId(i as u32);
         let use_kind=match i{
             0 if kind==AnalyticBoreKind::Blind=>AnalyticBoreFaceUse::BoreFloorFromCutterCap,
             2=>AnalyticBoreFaceUse::BoreWallInverted,
