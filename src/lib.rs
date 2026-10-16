@@ -127,7 +127,7 @@ pub use canonical_box_candidate::{CanonicalBoxCandidate,CanonicalBoxCandidateRes
 pub use analytic_bore_candidate::{
     AnalyticBoreCandidate, AnalyticBoreCandidateResult, AnalyticBoreKind,
     AnalyticBoreHold, AnalyticBoreFaceUse, AnalyticBoreFaceCoverage,
-    AnalyticRingWitness, AnalyticSeamWitness,
+    AnalyticRingWitness, AnalyticSeamWitness, AnalyticSourcePcurvePair,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
