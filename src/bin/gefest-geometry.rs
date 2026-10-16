@@ -426,6 +426,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
                 BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
                 BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
+                BrepOrigin::AnalyticPartialBoxCylinderDifference=>"analytic_partial_box_cylinder_difference",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1425,6 +1426,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticMixedThroughBlindRegions=>"analytic_mixed_through_blind_regions",
                 BrepOrigin::AnalyticCrossingThroughBlind=>"analytic_crossing_through_blind",
                 BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
+                BrepOrigin::AnalyticPartialBoxCylinderDifference=>"analytic_partial_box_cylinder_difference",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
