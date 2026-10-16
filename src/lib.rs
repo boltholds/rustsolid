@@ -33,6 +33,7 @@ mod whole_solid_region_classification;
 mod face_patch_assembly;
 mod global_edge_stitch;
 mod radial_shell_audit;
+mod canonical_box_candidate;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -121,6 +122,7 @@ pub use global_edge_stitch::{
     GlobalEdgeStitchPlan, GlobalEdgeStitchResult,
 };
 pub use radial_shell_audit::{RadialTopologyCertificate, RadialTopologyHold};
+pub use canonical_box_candidate::{CanonicalBoxCandidate,CanonicalBoxCandidateResult,CanonicalBoxCandidateHold,SourceFaceCoverage,SourceFaceDisposition,CandidateVertexLattice};
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};
