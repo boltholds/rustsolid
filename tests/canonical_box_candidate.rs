@@ -162,6 +162,12 @@ fn source_or_tolerance_change_invalidates_built_geometry_candidate(){
     assert!(plan.validate_against(&a,&b,stricter).is_err());
     assert_eq!(plan.construction_tolerance(),GeometryTolerance::default());
     assert_eq!(plan.source_revisions(),[0,0]);
+    let mut stale=b.clone();
+    if let BrepBody::Polyhedral(ref mut solid)=stale {
+        solid.revision+=1;
+    }
+    assert!(plan.validate_against(&a,&stale,GeometryTolerance::default()).is_err(),
+        "same geometry with a changed edit revision cannot reuse this preview");
     let fresh=CanonicalBoxCandidate::build(
         &a,&b,BooleanOperation::Union,stricter).unwrap();
     assert!(matches!(fresh,CanonicalBoxCandidateResult::Ready(_)));
