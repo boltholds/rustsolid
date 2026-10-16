@@ -34,6 +34,8 @@ mod face_patch_assembly;
 mod global_edge_stitch;
 mod radial_shell_audit;
 mod canonical_box_candidate;
+mod analytic_bore_candidate;
+mod global_analytic_cut_registry;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -123,6 +125,15 @@ pub use global_edge_stitch::{
 };
 pub use radial_shell_audit::{RadialTopologyCertificate, RadialTopologyHold};
 pub use canonical_box_candidate::{CanonicalBoxCandidate,CanonicalBoxCandidateResult,CanonicalBoxCandidateHold,SourceFaceCoverage,SourceFaceDisposition,CandidateVertexLattice};
+pub use analytic_bore_candidate::{
+    AnalyticBoreCandidate, AnalyticBoreCandidateResult, AnalyticBoreKind,
+    AnalyticBoreHold, AnalyticBoreFaceUse, AnalyticBoreFaceCoverage,
+    AnalyticRingWitness, AnalyticSeamWitness, AnalyticSourcePcurvePair,
+};
+pub use global_analytic_cut_registry::{
+    GlobalAnalyticCutPlan, GlobalAnalyticCutResult, AnalyticCutRegistryHold,
+    SourceCertifiedCutArc,
+};
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
     PlannedArc, PlannedFaceChange};

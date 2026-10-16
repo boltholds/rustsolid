@@ -198,3 +198,46 @@ Tests: `tests/canonical_box_candidate.rs` and
 `docs/canonical-box-candidate-g4b2a-v041.md`. This is an experimental
 feature branch; do not label v0.41 complete or merge to stable CAD
 until general G4/G5 are implemented and reviewed.
+
+## G4b2b source-certified analytic carrier checkpoint (2026-10-16)
+
+The bounded curved source-preview and full graph carrier layers are now
+composable, but this is **NOT yet a general solid/solid Boolean**.
+
+- `AnalyticBoreCandidate` independently certifies the existing
+  **true closed** through-hole (genus 1) and blind-bore (genus 0)
+  source constructors for a strict box minus an upright cylindrical
+  cutter. It verifies both physical circular rim coedges, the
+  period-`2π` same-face seam, all nine original source-face
+  dispositions, original box carriers, cut-floor ownership,
+  and correct material normals; every cap-to-cylinder closed graph
+  retains a virtual, nonmaterial periodic anchor.
+- `AnalyticSourcePcurvePair` preserves the independent original
+  **plane Harmonic Curve2** and **cylinder CylinderSection Curve2**
+  for each closed source graph and validates that they map to the
+  same 3D analytic curve, even under cutter-frame rotation.
+- `GlobalAnalyticCutPlan` consumes ALL source face-pair graphs,
+  validates the G1 global event clustering against physical source
+  edges/vertices, and publishes every transverse source-owned
+  analytic arc with two UV carriers and source-checked global endpoint
+  event identities. It works for the actual **partially intersecting
+  box/cylinder** fixture spanning multiple source faces. Local
+  `GlobalArcRef` remains pair-scoped; periodic anchors never
+  become physical vertices.
+- The through/blind results have real canonical closed B-rep
+  topology and strict source-specific analytic mass checks. The
+  partial multi-face registry has only verified **cut curves and
+  endpoint identities**, **not** material-region coverage or a
+  closed B-rep. Unsupported tangencies and insufficient sources
+  return Held; `can_apply=false` across the G4b2b previews.
+- Next G4b2b3: use these source-derived analytic curves and
+  G1 events to split the *real* affected source trims globally,
+  assemble oriented multi-face B-rep regions, reconcile periodic
+  coedges, and certify every radial vertex fan with the curved
+  shell/genus checks. Only then can general G4c volume and G5
+  source-revision atomic commit/Undo/Redo be claimed.
+
+Tests: `tests/analytic_bore_candidate.rs` (9 integration),
+`tests/global_analytic_cut_registry.rs` (5 integration),
+`docs/analytic-bore-candidate-g4b2b-v041.md`, and
+`docs/global-analytic-cut-registry-g4b2b-v041.md`.
