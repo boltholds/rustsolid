@@ -33,7 +33,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind, AnalyticObliqueClip }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind, AnalyticObliqueClip, AnalyticPartialBoxCylinderDifference }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -333,7 +333,7 @@ impl BrepModel {
                 out.seam_edges += 1;
             }
         }
-        let deficit = 2 - out.euler_characteristic;
+        let deficit = 2 * out.shells as isize - out.euler_characteristic;
         if deficit >= 0 && deficit % 2 == 0 { out.genus = (deficit / 2) as usize; }
         out
     }
@@ -344,7 +344,9 @@ impl BrepModel {
     /// for arbitrary curves, surface self-intersections or Boolean validity.
     pub fn validate(&self) -> Result<(), GeometryError> {
         self.tolerance.validate()?;
-        if self.vertices.is_empty() || self.edges.is_empty() || self.faces.is_empty() || self.shells.len() != 1 {
+        let multi_shell = self.origin == BrepOrigin::AnalyticPartialBoxCylinderDifference;
+        if self.vertices.is_empty() || self.edges.is_empty() || self.faces.is_empty()
+            || self.shells.is_empty() || (!multi_shell && self.shells.len() != 1) {
             return Err(invalid("expected one nonempty closed B-rep shell"));
         }
         if self.geometry.edges.len() != self.edges.len()
@@ -382,22 +384,27 @@ impl BrepModel {
                 BrepOrigin::AnalyticCompoundBlindRegions=>face.id.0>=6,
                 BrepOrigin::AnalyticMixedThroughBlindRegions |
                     BrepOrigin::AnalyticCrossingThroughBlind=>face.id.0>=6,
+                BrepOrigin::AnalyticPartialBoxCylinderDifference=>
+                    matches!(self.face_surface(face.id),Some(Surface3::Cylinder(_))),
             };
             let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};
             if face.sense!=expected {
                 return Err(invalid("canonical source face has inconsistent material orientation"));
             }
         }
-        let shell = &self.shells[0];
-        if shell.id.0 != 0 || !shell.closed || shell.faces.len() != self.faces.len() {
-            return Err(invalid("expected one closed shell owning every face"));
-        }
         let mut face_owners = vec![0usize; self.faces.len()];
-        for id in &shell.faces {
-            let Some(value) = face_owners.get_mut(id.0 as usize) else {
-                return Err(invalid("shell contains invalid face"));
-            };
-            *value += 1;
+        let mut face_to_shell = vec![usize::MAX; self.faces.len()];
+        for (shell_index,shell) in self.shells.iter().enumerate() {
+            if shell.id.0 as usize != shell_index || !shell.closed || shell.faces.is_empty() {
+                return Err(invalid("invalid or open B-rep shell"));
+            }
+            for &id in &shell.faces {
+                let Some(value) = face_owners.get_mut(id.0 as usize) else {
+                    return Err(invalid("shell contains invalid face"));
+                };
+                *value += 1;
+                face_to_shell[id.0 as usize] = shell_index;
+            }
         }
         if face_owners.iter().any(|&n| n != 1) {
             return Err(invalid("shell face ownership is duplicated or incomplete"));
@@ -499,16 +506,70 @@ impl BrepModel {
                 face_adjacency[b.face.0 as usize].insert(a.face);
             }
         }
-        let mut connected = BTreeSet::new();
-        let mut pending = vec![FaceId(0)];
-        while let Some(face) = pending.pop() {
-            if !connected.insert(face) { continue; }
-            for &other in &face_adjacency[face.0 as usize] { pending.push(other); }
+        // Every shell must have its own connected, oriented face graph.
+        // Cross-shell radial coedges and disconnected pieces inside a shell
+        // are invalid even when the global Euler characteristic looks valid.
+        for shell in &self.shells {
+            let expected: BTreeSet<FaceId> = shell.faces.iter().copied().collect();
+            let mut connected = BTreeSet::new();
+            let mut pending = vec![shell.faces[0]];
+            while let Some(face) = pending.pop() {
+                if !expected.contains(&face) {
+                    return Err(invalid("radial edge connects two different shells"));
+                }
+                if !connected.insert(face) { continue; }
+                for &other in &face_adjacency[face.0 as usize] { pending.push(other); }
+            }
+            if connected != expected {
+                return Err(invalid("closed shell is not face-connected"));
+            }
         }
-        if connected.len() != self.faces.len() { return Err(invalid("closed shell is not face-connected")); }
         let chi = self.euler_characteristic();
-        if chi > 2 || (2-chi) % 2 != 0 {
-            return Err(invalid("orientable connected shell has invalid Euler characteristic"));
+        let deficit = 2 * self.shells.len() as isize - chi;
+        if deficit < 0 || deficit % 2 != 0 {
+            return Err(invalid("orientable closed shells have invalid Euler characteristic"));
+        }
+        if multi_shell {
+            let mut seen_edges = BTreeSet::new();
+            let mut seen_vertices = BTreeSet::new();
+            let mut calculated_chi = 0isize;
+            for shell in &self.shells {
+                let mut shell_edges = BTreeSet::new();
+                let mut shell_vertices = BTreeSet::new();
+                let mut holes = 0usize;
+                for &fid in &shell.faces {
+                    for &lid in &self.faces[fid.0 as usize].loops {
+                        let lp=&self.loops[lid.0 as usize];
+                        holes+=usize::from(lp.role==crate::LoopRole::Inner);
+                        let mut at=lp.first_coedge;
+                        loop {
+                            let co=&self.coedges[at.0 as usize];
+                            let edge=&self.edges[co.edge.0 as usize];
+                            shell_edges.insert(edge.id);
+                            shell_vertices.insert(edge.start);
+                            shell_vertices.insert(edge.end);
+                            at=co.next;
+                            if at==lp.first_coedge {break;}
+                        }
+                    }
+                }
+                if !shell_edges.is_disjoint(&seen_edges)
+                    || !shell_vertices.is_disjoint(&seen_vertices) {
+                    return Err(invalid("disconnected shells share a material edge or vertex"));
+                }
+                seen_edges.extend(shell_edges.iter().copied());
+                seen_vertices.extend(shell_vertices.iter().copied());
+                let shell_chi=shell_vertices.len() as isize-shell_edges.len() as isize
+                    +shell.faces.len() as isize-holes as isize;
+                if shell_chi>2 || (2-shell_chi)%2!=0 {
+                    return Err(invalid("one disconnected shell has invalid Euler/genus"));
+                }
+                calculated_chi+=shell_chi;
+            }
+            if calculated_chi!=chi || seen_edges.len()!=self.edges.len()
+                || seen_vertices.len()!=self.vertices.len() {
+                return Err(invalid("disconnected shell material incidence is incomplete"));
+            }
         }
         let mut edge_usage_counts = vec![0usize; self.edges.len()];
         for (i,coedge) in self.coedges.iter().enumerate() {
