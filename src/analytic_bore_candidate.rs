@@ -93,6 +93,17 @@ pub struct AnalyticSeamWitness {
     /// Separate, unwrapped U coordinates on the same periodic face.
     pub uv_u:[f64;2],
 }
+/// Two different source-face UV charts for the SAME closed 3D graph arc.
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub struct AnalyticSourcePcurvePair {
+    pub source_box_face:FaceId,
+    pub source_cylinder_face:FaceId,
+    pub planar:Curve2,
+    pub cylinder:Curve2,
+    pub graph_interval:crate::ParameterRange,
+    /// The source graph's single periodic anchor is not a material vertex.
+    pub virtual_periodic_anchor:bool,
+}
 #[derive(Debug,Clone)]
 pub struct AnalyticBoreCandidate {
     model:BrepModel,
@@ -102,6 +113,7 @@ pub struct AnalyticBoreCandidate {
     source_faces:Vec<BooleanFaceSource>,
     rings:[AnalyticRingWitness;2],
     source_circle_graphs:Vec<IntersectionGraph>,
+    source_pcurves:Vec<AnalyticSourcePcurvePair>,
     seam:AnalyticSeamWitness,
     source_revision:u64,
     input_cylinder_frame:Frame3,
@@ -122,6 +134,7 @@ impl AnalyticBoreCandidate {
     pub fn face_coverage(&self)->&[AnalyticBoreFaceCoverage]{&self.lineage}
     pub fn face_provenance(&self)->&[BooleanFaceSource]{&self.source_faces}
     pub fn circle_graphs(&self)->&[IntersectionGraph]{&self.source_circle_graphs}
+    pub fn source_pcurves(&self)->&[AnalyticSourcePcurvePair]{&self.source_pcurves}
     pub fn rings(&self)->&[AnalyticRingWitness;2]{&self.rings}
     pub fn seam(&self)->AnalyticSeamWitness{self.seam}
     pub fn source_revision(&self)->u64{self.source_revision}
@@ -151,6 +164,7 @@ impl AnalyticBoreCandidate {
             self.rings!=expected.rings ||
             self.seam!=expected.seam ||
             self.source_circle_graphs!=expected.source_circle_graphs ||
+            self.source_pcurves!=expected.source_pcurves ||
             format!("{:?}",self.model)!=format!("{:?}",expected.model)
         {return Err(invalid("analytic bore carrier/topology differs from recomputed source"));}
         self.model.validate()
@@ -209,6 +223,7 @@ impl AnalyticBoreCandidate {
         let source_a=left.shared()?;
         let source_b=right.shared()?;
         let mut closed_graphs=Vec::<IntersectionGraph>::new();
+        let mut closed_pcurves=Vec::<AnalyticSourcePcurvePair>::new();
         // The *two* face pairs for a through-hole are independently built:
         // bottom box/cylinder-wall and top box/cylinder-wall.
         // A blind hole has only the top opening; the floor comes directly
@@ -232,6 +247,40 @@ impl AnalyticBoreCandidate {
                 return Ok(AnalyticBoreCandidateResult::Held(
                     AnalyticBoreHold::IncompleteClosedIntersectionGraph));
             }
+            // The source plane and source cylinder have different UV
+            // parameter charts. Reconstruct BOTH source-owned analytic
+            // curves on their original support surfaces, at the original
+            // closed-arc parameter values.
+            let arc=graph.arcs[0];
+            let [on_plane,on_cylinder]=arc.pcurves(&source_a,&source_b)?;
+            let [a_curve,b_curve]=[on_plane.to_curve2()?,on_cylinder.to_curve2()?];
+            let Some(plane)=source_a.face_surface(face) else {
+                return Err(invalid("analytic source cap face missing"));
+            };
+            let Some(side)=source_b.face_surface(FaceId(2)) else {
+                return Err(invalid("analytic source cutter wall missing"));
+            };
+            let eps=precision(source_a.bbox.min,source_a.bbox.max,
+                cylinder.frame.origin,tolerance)*16.0;
+            for fraction in [0.0_f64,0.125,0.25,0.375,0.5,0.625,0.75,0.875,1.0] {
+                let parameter=arc.parameter_start+
+                    (arc.parameter_end-arc.parameter_start)*fraction;
+                let xyz=arc.evaluate(fraction)?;
+                let uv0=a_curve.evaluate(parameter)?;
+                let uv1=b_curve.evaluate(parameter)?;
+                if distance(plane.evaluate(uv0.u,uv0.v)?.point,xyz)>eps ||
+                   distance(side.evaluate(uv1.u,uv1.v)?.point,xyz)>eps {
+                    return Ok(AnalyticBoreCandidateResult::Held(
+                        AnalyticBoreHold::MissingIndependentPcurve));
+                }
+            }
+            closed_pcurves.push(AnalyticSourcePcurvePair{
+                source_box_face:face,source_cylinder_face:FaceId(2),
+                planar:a_curve,cylinder:b_curve,
+                graph_interval:crate::ParameterRange::bounded(
+                    arc.parameter_start,arc.parameter_end)?,
+                virtual_periodic_anchor:true,
+            });
             closed_graphs.push(graph);
         }
         let expected_faces=if kind==AnalyticBoreKind::Through{7}else{8};
@@ -327,7 +376,8 @@ impl AnalyticBoreCandidate {
         }
         Ok(AnalyticBoreCandidateResult::Ready(Self{
             model,operation,kind,lineage,source_faces:result.face_sources,
-            rings,source_circle_graphs:closed_graphs,seam,
+            rings,source_circle_graphs:closed_graphs,
+            source_pcurves:closed_pcurves,seam,
             source_revision:block.revision,
             input_cylinder_frame:cylinder.frame,
             input_cylinder_radius:cylinder.radius,
