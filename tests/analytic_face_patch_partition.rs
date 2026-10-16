@@ -42,6 +42,7 @@ fn strict_partial_box_cylinder_builds_four_closed_independent_genus_zero_shells(
     assert!(plan.closed_shell_proven&&!plan.can_apply);
     assert_eq!(brep.shells.len(),4);
     assert_eq!(plan.corners.len(),4);
+    assert_eq!(plan.material_witnesses.len(),20);
     assert_eq!(brep.vertices.len(),24);
     assert_eq!(brep.edges.len(),36);
     assert_eq!(brep.coedges.len(),72);
@@ -217,4 +218,37 @@ fn near_tangent_corner_moved_cylinder_and_unsupported_operation_hold(){
     let no_intersection=cutter(p(10.,0.,0.),1.0,5.0);
     assert!(matches!(result(&a,&no_intersection),
         AnalyticFacePatchPartitionResult::Held(_)));
+}
+
+
+#[test]
+fn every_material_patch_has_two_strict_source_membership_side_witnesses(){
+    let (a,b)=(square(),cylinder());
+    let plan=ready(&a,&b);
+    let source=a.shared().unwrap();
+    let bounds=source.bbox;
+    let r=2.0_f64;
+    let center=p(0.,0.,0.);
+    let contains=|point:Point3|->bool {
+        point.x>bounds.min.x&&point.x<bounds.max.x
+            &&point.y>bounds.min.y&&point.y<bounds.max.y
+            &&point.z>bounds.min.z&&point.z<bounds.max.z
+            &&(point.x-center.x).hypot(point.z-center.z)>r
+    };
+    let mut unique=BTreeSet::new();
+    for witness in &plan.material_witnesses {
+        assert!(unique.insert(witness.face));
+        assert!(contains(witness.retained_point));
+        assert!(!contains(witness.removed_point));
+        let signed=|point:Point3| {
+            (point.x-witness.boundary_sample.x)*witness.outward.x
+            +(point.y-witness.boundary_sample.y)*witness.outward.y
+            +(point.z-witness.boundary_sample.z)*witness.outward.z
+        };
+        assert!((signed(witness.retained_point)+signed(witness.removed_point)).abs()<1e-10);
+    }
+    assert_eq!(unique.len(),plan.brep().faces.len());
+    let mut tampered=plan.clone();
+    tampered.material_witnesses[0].retained_point.x+=0.4;
+    assert!(tampered.validate_against(&a,&b,tol()).is_err());
 }

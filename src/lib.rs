@@ -144,6 +144,7 @@ pub use analytic_source_edge_split::{
 pub use analytic_face_patch_partition::{
     AnalyticFacePatchPartitionPlan, AnalyticFacePatchPartitionResult,
     AnalyticFacePatchHold, AnalyticPatchFaceSource, AnalyticCornerPatch,
+    AnalyticMaterialSideWitness,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,

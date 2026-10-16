@@ -393,7 +393,6 @@ impl BrepModel {
             }
         }
         let mut face_owners = vec![0usize; self.faces.len()];
-        let mut face_to_shell = vec![usize::MAX; self.faces.len()];
         for (shell_index,shell) in self.shells.iter().enumerate() {
             if shell.id.0 as usize != shell_index || !shell.closed || shell.faces.is_empty() {
                 return Err(invalid("invalid or open B-rep shell"));
@@ -403,7 +402,6 @@ impl BrepModel {
                     return Err(invalid("shell contains invalid face"));
                 };
                 *value += 1;
-                face_to_shell[id.0 as usize] = shell_index;
             }
         }
         if face_owners.iter().any(|&n| n != 1) {

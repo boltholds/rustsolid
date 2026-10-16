@@ -48,11 +48,6 @@ fn uv(a:Point2Param,b:Point2Param)->Curve2{
     })
 }
 fn finite(v:f64)->bool{v.is_finite()}
-fn unit_normal(v:Point3)->Result<Point3,GeometryError>{
-    let norm=v.length_squared().sqrt();
-    if !norm.is_finite()||norm<=0.0 {return Err(invalid("invalid face normal"));}
-    Ok(v.scale(1.0/norm))
-}
 
 #[derive(Debug,Clone,Copy,PartialEq,Eq)]
 pub enum AnalyticFacePatchHold {
@@ -63,6 +58,7 @@ pub enum AnalyticFacePatchHold {
     NonUprightCylinder,
     NoFourSeparateCorners,
     AmbiguousCutGeometry,
+    AmbiguousMaterialSide,
     MissingOriginalMaterialEdge,
     MissingSourceCutArc,
     DuplicateOrExtraCutArc,
@@ -98,11 +94,23 @@ pub struct AnalyticCornerPatch {
     pub exact_area_xy: f64,
     pub exact_volume: f64,
 }
+/// Source-specific, strict signed-side witness of each retained material
+/// patch. This is an independent bounded-family G3 check, not a general
+/// arbitrary-cylinder region classifier.
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub struct AnalyticMaterialSideWitness {
+    pub face:FaceId,
+    pub boundary_sample:Point3,
+    pub retained_point:Point3,
+    pub removed_point:Point3,
+    pub outward:Point3,
+}
 #[derive(Debug,Clone)]
 pub struct AnalyticFacePatchPartitionPlan {
     model: BrepModel,
     pub corners: Vec<AnalyticCornerPatch>,
     pub source_faces: Vec<AnalyticPatchFaceSource>,
+    pub material_witnesses: Vec<AnalyticMaterialSideWitness>,
     pub radial: RadialTopologyCertificate,
     pub edge_splits: GlobalAnalyticEdgeSplitPlan,
     /// Strict source-validated curved shell closure, not a general Boolean.
@@ -128,6 +136,7 @@ impl AnalyticFacePatchPartitionPlan {
             };
         if self.corners!=rebuilt.corners
             ||self.source_faces!=rebuilt.source_faces
+            ||self.material_witnesses!=rebuilt.material_witnesses
             ||self.radial!=rebuilt.radial
             ||self.closed_shell_proven!=rebuilt.closed_shell_proven
             ||self.can_apply!=rebuilt.can_apply
@@ -202,6 +211,7 @@ impl AnalyticFacePatchPartitionPlan {
         let mut builder=PatchBuilder::new(box_bounds,tolerance,source_box.units);
         let mut corners=Vec::new();
         let mut sources=Vec::new();
+        let mut material_witnesses=Vec::new();
         let mut used_cut_arcs=BTreeSet::<GlobalArcRef>::new();
         let mut original_edge_uses=BTreeSet::<EdgeId>::new();
         let mut event_vertices=BTreeMap::<GlobalEventId,VertexId>::new();
@@ -350,6 +360,63 @@ impl AnalyticFacePatchPartitionPlan {
                         flipped_for_difference:face_index==4,
                     });
                 }
+                // Prove the two material sides of every retained source
+                // patch with strictly resolved analytical source membership.
+                let ycenter=0.5*(ymin+ymax);
+                let arc_mid=p(xc+r*mid.cos(),ycenter,zc-r*mid.sin());
+                let center_x=0.5*(xlim+arc_mid.x);
+                let center_z=0.5*(zlim+arc_mid.z);
+                let samples=[
+                    p(center_x,ymin,center_z),
+                    p(center_x,ymax,center_z),
+                    p(xlim,ycenter,0.5*(zlim+a0.z)),
+                    p(0.5*(xlim+b0.x),ycenter,zlim),
+                    arc_mid,
+                ];
+                let normals=[
+                    p(0.,-1.,0.),p(0.,1.,0.),
+                    p(f64::from(sx),0.,0.),
+                    p(0.,0.,f64::from(sz)),
+                    radial.scale(-1.),
+                ];
+                let step=eps*32.0;
+                if (a-u0).min(b-v0)<=step*8.0 {
+                    return Ok(AnalyticFacePatchPartitionResult::Held(
+                        AnalyticFacePatchHold::AmbiguousMaterialSide));
+                }
+                for face_index in 0..5 {
+                    let sample=samples[face_index];
+                    let normal=normals[face_index];
+                    let material=sample.sub(normal.scale(step));
+                    let removed=sample.add(normal.scale(step));
+                    let surface=builder.model.face_surface(out.faces[face_index])
+                        .ok_or_else(||invalid("missing certified patch support surface"))?;
+                    let on_support=match surface{
+                        Surface3::Plane(plane)=>{
+                            let param=plane.frame.project(sample)?;
+                            plane.frame.position(param.u,param.v)?
+                        },
+                        Surface3::Cylinder(cylinder)=>{
+                            cylinder.frame.origin
+                                .add(cylinder.frame.x.scale(r*mid.cos()))
+                                .add(cylinder.frame.y.scale(r*mid.sin()))
+                                .add(cylinder.frame.normal.scale(ycenter-frame.origin.y))
+                        },
+                        _=>return Err(invalid("unsupported retained material surface")),
+                    };
+                    if distance(on_support,sample)>eps
+                        ||strict_material(material,box_bounds,xc,zc,r,eps)!=Some(true)
+                        ||strict_material(removed,box_bounds,xc,zc,r,eps)!=Some(false)
+                    {
+                        return Ok(AnalyticFacePatchPartitionResult::Held(
+                            AnalyticFacePatchHold::AmbiguousMaterialSide));
+                    }
+                    material_witnesses.push(AnalyticMaterialSideWitness {
+                        face:out.faces[face_index],boundary_sample:sample,
+                        retained_point:material,removed_point:removed,
+                        outward:normal,
+                    });
+                }
                 let component_volume=area*height;
                 mass_area+=component_volume;
                 area3+=surface_area;
@@ -400,12 +467,32 @@ impl AnalyticFacePatchPartitionPlan {
                 AnalyticFacePatchHold::InvalidComponentTopology));
         }
         Ok(AnalyticFacePatchPartitionResult::Ready(Self {
-            model:built,corners,source_faces:sources,radial,
-            edge_splits:split,closed_shell_proven:true,can_apply:false,
+            model:built,corners,source_faces:sources,material_witnesses,
+            radial,edge_splits:split,closed_shell_proven:true,can_apply:false,
         }))
     }
 }
 
+/// Three-state predicate: near material/void boundaries is undecidable,
+/// never rounded into a retained patch.
+fn strict_material(
+    point:Point3,bounds:BoundingBox,cx:f64,cz:f64,r:f64,eps:f64,
+)->Option<bool>{
+    let margins=[
+        point.x-bounds.min.x,bounds.max.x-point.x,
+        point.y-bounds.min.y,bounds.max.y-point.y,
+        point.z-bounds.min.z,bounds.max.z-point.z,
+    ];
+    if !point.is_finite() {return None;}
+    let radius=(point.x-cx).hypot(point.z-cz);
+    if margins.iter().any(|d|*d < -eps) ||radius<r-eps{
+        return Some(false);
+    }
+    if margins.iter().all(|d|*d>eps) &&radius>r+eps{
+        return Some(true);
+    }
+    None
+}
 fn find_source_plane(
     model:&BrepModel,axis:u8,coordinate:f64,normal_sign:f64,eps:f64,
 )->Option<FaceId>{
