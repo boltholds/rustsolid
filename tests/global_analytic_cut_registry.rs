@@ -4,7 +4,7 @@
 use rustsolid::{
     AnalyticCutRegistryHold,BrepBody,CylindricalBrep,GeometryTolerance,
     GlobalAnalyticCutPlan,GlobalAnalyticCutResult,GlobalEventKind,
-    GraphOperand,Point3,Solid,Curve2,Curve3,
+    Point3,Solid,Curve2,Curve3,
 };
 
 fn p(x:f64,y:f64,z:f64)->Point3 {Point3{x,y,z}}
@@ -49,19 +49,15 @@ fn partial_cylinder_and_box_reuse_real_g1_shared_vertex_events(){
     for arc in &plan.arcs{
         assert!(!arc.virtual_periodic_anchor || arc.physical_endpoints.is_none());
         assert!(matches!(arc.carrier,Curve3::Line(_)|Curve3::Harmonic(_)));
-        for (face,surface) in [
-            (arc.first_face,am.face_surface(arc.first_face).unwrap()),
-            (arc.second_face,bm.face_surface(arc.second_face).unwrap())
-        ] {
-            let _=face;
+        for (idx,surface) in [
+            am.face_surface(arc.first_face).unwrap(),
+            bm.face_surface(arc.second_face).unwrap(),
+        ].into_iter().enumerate() {
             for fraction in [0.0_f64,0.1,0.25,0.5,0.75,0.9,1.0] {
                 let rustsolid::ParameterRange::Bounded{start,end}=arc.parameter_domain
                     else{panic!("graph arc must have bounded carrier")};
                 let t=start+(end-start)*fraction;
-                let c2=if surface==am.face_surface(arc.first_face).unwrap(){
-                    arc.face_pcurves[0]
-                }else{arc.face_pcurves[1]};
-                let uv=c2.evaluate(t).unwrap();
+                let uv=arc.face_pcurves[idx].evaluate(t).unwrap();
                 let from_pcurve=surface.evaluate(uv.u,uv.v).unwrap().point;
                 let from_carrier=arc.carrier.evaluate(t).unwrap();
                 assert!(dist(from_pcurve,from_carrier)<1e-7);
