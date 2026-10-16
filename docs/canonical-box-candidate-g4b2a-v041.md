@@ -59,8 +59,11 @@ true for this **restricted planar fixture only**.
 
 `can_apply=false`: neither the user's document nor the original
 operands, revision/identity incarnation, or Undo/Redo stack is touched.
-`validate_against` regenerates the full candidate from the current
-sources and rejects changed result geometry, provenance or classification.
+`validate_against` binds both source edit revisions and the construction
+tolerance, then regenerates the full candidate and rejects any changed
+geometry, topology, source-face ownership or classification. The revision
+guard is source-local; it is not yet a persistent document-incarnation or G5
+transaction token.
 
 ## Source face dispositions
 
