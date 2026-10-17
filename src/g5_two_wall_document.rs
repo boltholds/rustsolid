@@ -441,3 +441,281 @@ impl G5TwoWallDocument {
         }))
     }
 }
+
+
+// G6d persistent format is version 2 and explicitly NOT the original G5b
+// four-corner archive schema 1. Both are source-rebuilt and fail-closed.
+use serde::{Serialize,Deserialize};
+use std::path::Path;
+use std::fs::{self,File,OpenOptions};
+use std::io::{Read,Write};
+use crate::{G5ProjectSource,G5FeatureNode,G5FeatureGraph,G5GraphBinding};
+const G6_ARCHIVE_SCHEMA:u32=2;
+const G6_ARCHIVE_BYTES:usize=1024*1024;
+const G6_HISTORY_CAP:usize=64;
+static NEXT_G6_FILE:AtomicU64=AtomicU64::new(1);
+
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct G5TwoWallVolumeStamp {
+    pub mass_volume:f64,
+    pub component_volumes:[f64;2],
+    pub source_lower:f64,
+    pub source_upper:f64,
+    pub flux_volume:f64,
+}
+impl G5TwoWallVolumeStamp{
+    fn from_accepted(a:&Accepted)->Result<Self,GeometryError>{
+        if a.candidate.components.len()!=2 {
+            return Err(invalid("G6d archive accepts precisely two components"));
+        }
+        Ok(Self{
+            mass_volume:a.candidate.brep().mass.volume,
+            component_volumes:[
+                a.candidate.components[0].analytic_volume,
+                a.candidate.components[1].analytic_volume,
+            ],
+            source_lower:a.oracle.source_total.lower,
+            source_upper:a.oracle.source_total.upper,
+            flux_volume:a.oracle.boundary_total,
+        })
+    }
+    fn valid(&self)->bool{
+        self.mass_volume.is_finite()&&self.mass_volume>0.
+            &&self.component_volumes.iter().all(|x|x.is_finite()&&*x>0.)
+            &&self.source_lower.is_finite()&&self.source_lower>0.
+            &&self.source_upper.is_finite()&&self.source_upper>self.source_lower
+            &&self.flux_volume.is_finite()&&self.flux_volume>0.
+    }
+}
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct G5TwoWallArchiveState {
+    pub sources:[G5ProjectSource;2],
+    pub result:Option<G5TwoWallVolumeStamp>,
+}
+impl G5TwoWallArchiveState{
+    fn from_state(s:&State)->Result<Self,GeometryError>{
+        if let BrepBody::Polyhedral(first)=&s.inputs[0]{
+            if first.revision!=0{
+                return Err(invalid("G6d does not yet persist nonzero source-solid revisions"));
+            }
+        }
+        Ok(Self{
+            sources:[
+                G5ProjectSource::from_body(&s.inputs[0])?,
+                G5ProjectSource::from_body(&s.inputs[1])?,
+            ],
+            result:s.accepted.as_ref()
+                .map(G5TwoWallVolumeStamp::from_accepted)
+                .transpose()?,
+        })
+    }
+    fn rebuild(&self,tol:GeometryTolerance)->Result<State,GeometryError>{
+        let inputs=[self.sources[0].to_body()?,self.sources[1].to_body()?];
+        let accepted=if let Some(record)=&self.result {
+            if !record.valid(){
+                return Err(invalid("G6d invalid stored mass certificate"));
+            }
+            let candidate=match AnalyticTwoWallPartitionPlan::build(
+                &inputs[0],&inputs[1],BooleanOperation::Difference,tol)?
+            {
+                AnalyticTwoWallPartitionResult::Ready(x)=>x,
+                AnalyticTwoWallPartitionResult::Held(_)=>
+                    return Err(invalid("G6d archived two-wall geometry no longer certifies")),
+            };
+            let oracle=match AnalyticTwoWallVolumeOracle::build(
+                &inputs[0],&inputs[1],&candidate,tol)?
+            {
+                AnalyticTwoWallVolumeResult::Ready(x)=>x,
+                AnalyticTwoWallVolumeResult::Held(_)=>
+                    return Err(invalid("G6d archived independent mass no longer certifies")),
+            };
+            let next=Accepted{candidate,oracle};
+            let certified=G5TwoWallVolumeStamp::from_accepted(&next)?;
+            if certified!=*record{
+                return Err(invalid("G6d archived mass differs from reconstructed B-rep"));
+            }
+            Some(next)
+        }else{None};
+        let state=State{inputs,accepted};
+        state.validate(tol)?;
+        Ok(state)
+    }
+}
+#[derive(Debug,Clone,Serialize,Deserialize,PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct G5TwoWallProjectArchive{
+    pub schema_version:u32,
+    pub feature_key:String,
+    pub document_revision:u64,
+    pub tolerance:GeometryTolerance,
+    pub graph:G5FeatureGraph,
+    pub current:G5TwoWallArchiveState,
+    pub undo:Vec<G5TwoWallArchiveState>,
+    pub redo:Vec<G5TwoWallArchiveState>,
+}
+impl G5TwoWallProjectArchive{
+    fn graph_for(
+        document:&G5TwoWallDocument,
+    )->Result<G5FeatureGraph,GeometryError>{
+        let accepted=document.state.accepted.iter()
+            .chain(document.undo.iter().filter_map(|s|s.accepted.as_ref()))
+            .chain(document.redo.iter().filter_map(|s|s.accepted.as_ref()))
+            .next();
+        let names=Registry::names(
+            accepted.map(|a|&a.candidate),&document.feature_key)?;
+        if !names.is_empty()&&names.len()!=115 {
+            return Err(invalid("G6d partial semantic graph not supported"));
+        }
+        let mut bindings=names.into_values().map(|name|
+            G5GraphBinding{topology_name:name,producing_node:"difference".into()}
+        ).collect::<Vec<_>>();
+        bindings.sort_by(|a,b|a.topology_name.cmp(&b.topology_name));
+        Ok(G5FeatureGraph{
+            nodes:vec![
+                G5FeatureNode::Source{id:"source_a".into(),operand_index:0},
+                G5FeatureNode::Source{id:"source_b".into(),operand_index:1},
+                G5FeatureNode::Difference{
+                    id:"difference".into(),left:"source_a".into(),
+                    right:"source_b".into(),
+                    output_scope:format!("{}/difference",document.feature_key),
+                },
+            ],
+            output_bindings:bindings,
+        })
+    }
+    pub fn from_document(doc:&G5TwoWallDocument)
+        ->Result<Self,GeometryError>{
+        doc.validate()?;
+        if doc.undo.len()+doc.redo.len()>G6_HISTORY_CAP{
+            return Err(invalid("G6d persistent history exceeds 64 states"));
+        }
+        let archive=Self {
+            schema_version:G6_ARCHIVE_SCHEMA,
+            feature_key:doc.feature_key.clone(),
+            document_revision:doc.revision,
+            tolerance:doc.tolerance,
+            graph:Self::graph_for(doc)?,
+            current:G5TwoWallArchiveState::from_state(&doc.state)?,
+            undo:doc.undo.iter().map(G5TwoWallArchiveState::from_state)
+                .collect::<Result<Vec<_>,_>>()?,
+            redo:doc.redo.iter().map(G5TwoWallArchiveState::from_state)
+                .collect::<Result<Vec<_>,_>>()?,
+        };
+        let _=archive.to_json()?;
+        Ok(archive)
+    }
+    pub fn reopen(&self)->Result<G5TwoWallDocument,GeometryError>{
+        if self.schema_version!=G6_ARCHIVE_SCHEMA
+            ||!valid_key(&self.feature_key)
+            ||self.document_revision==u64::MAX
+            ||self.document_revision < self.undo.len() as u64
+            ||self.undo.len()+self.redo.len()>G6_HISTORY_CAP{
+            return Err(invalid("G6d archive version/history does not match policy"));
+        }
+        self.tolerance.validate()?;
+        let current=self.current.rebuild(self.tolerance)?;
+        let undo=self.undo.iter()
+            .map(|s|s.rebuild(self.tolerance))
+            .collect::<Result<Vec<_>,_>>()?;
+        let redo=self.redo.iter()
+            .map(|s|s.rebuild(self.tolerance))
+            .collect::<Result<Vec<_>,_>>()?;
+        let mut temporal=undo.iter().collect::<Vec<_>>();
+        temporal.push(&current);
+        temporal.extend(redo.iter().rev());
+        for pair in temporal.windows(2){
+            if pair[0].accepted.is_some()&&pair[1].accepted.is_some(){
+                return Err(invalid("G6d archived graph skips required source edit"));
+            }
+        }
+        let token=fresh()?;
+        let registry=Registry::from_candidate(
+            current.accepted.as_ref().map(|a|&a.candidate),
+            &self.feature_key,token)?;
+        let document=G5TwoWallDocument{
+            token,feature_key:self.feature_key.clone(),
+            revision:self.document_revision,tolerance:self.tolerance,
+            state:current,registry,undo,redo,
+        };
+        document.validate()?;
+        if Self::graph_for(&document)?!=self.graph{
+            return Err(invalid("G6d archived producer graph/topology names differ"));
+        }
+        Ok(document)
+    }
+    pub fn to_json(&self)->Result<String,GeometryError>{
+        if self.schema_version!=G6_ARCHIVE_SCHEMA{
+            return Err(invalid("G6d only schema version 2 can be serialized"));
+        }
+        let data=serde_json::to_string_pretty(self)
+            .map_err(|e|invalid(format!("G6d serialize: {e}")))?;
+        if data.len()>G6_ARCHIVE_BYTES{
+            return Err(invalid("G6d archive exceeds one MiB"));
+        }
+        Ok(data)
+    }
+    pub fn from_json(raw:&str)->Result<Self,GeometryError>{
+        if raw.len()>G6_ARCHIVE_BYTES{
+            return Err(invalid("G6d archive exceeds one MiB"));
+        }
+        let archive:Self=serde_json::from_str(raw)
+            .map_err(|e|invalid(format!("G6d invalid project document: {e}")))?;
+        // Never trust stored material or names.
+        let _=archive.reopen()?;
+        Ok(archive)
+    }
+    pub fn save_atomic(&self,path:impl AsRef<Path>)
+        ->Result<(),GeometryError>{
+        let body=self.to_json()?;
+        let _=self.reopen()?;
+        let dest=path.as_ref();
+        let parent=dest.parent().filter(|p|!p.as_os_str().is_empty())
+            .unwrap_or_else(||Path::new("."));
+        if !parent.is_dir(){
+            return Err(invalid("G6d missing destination directory"));
+        }
+        let name=dest.file_name().ok_or_else(||
+            invalid("G6d missing destination name"))?;
+        let ordinal=NEXT_G6_FILE.fetch_add(1,Ordering::Relaxed);
+        if ordinal==0||ordinal==u64::MAX{
+            return Err(invalid("G6d temp file counter exhausted"));
+        }
+        let candidate=parent.join(format!(
+            ".{}.g6d-{}-{}.tmp",
+            name.to_string_lossy(),std::process::id(),ordinal
+        ));
+        let result=(||->Result<(),GeometryError>{
+            let mut f=OpenOptions::new()
+                .create_new(true).write(true).open(&candidate)
+                .map_err(|e|invalid(format!("G6d open temp: {e}")))?;
+            f.write_all(body.as_bytes())
+                .map_err(|e|invalid(format!("G6d write temp: {e}")))?;
+            f.sync_all()
+                .map_err(|e|invalid(format!("G6d flush temp: {e}")))?;
+            drop(f);
+            fs::rename(&candidate,dest)
+                .map_err(|e|invalid(format!("G6d rename: {e}")))?;
+            Ok(())
+        })();
+        if result.is_err(){let _=fs::remove_file(&candidate);}
+        result?;
+        let _=File::open(parent).and_then(|folder|folder.sync_all());
+        Ok(())
+    }
+    pub fn load_file(path:impl AsRef<Path>)->Result<Self,GeometryError>{
+        let mut f=File::open(path)
+            .map_err(|e|invalid(format!("G6d open project: {e}")))?;
+        let mut bounded=(&mut f).take((G6_ARCHIVE_BYTES+1) as u64);
+        let mut bytes=Vec::new();
+        bounded.read_to_end(&mut bytes)
+            .map_err(|e|invalid(format!("G6d read project: {e}")))?;
+        if bytes.len()>G6_ARCHIVE_BYTES{
+            return Err(invalid("G6d project exceeds one MiB"));
+        }
+        let text=std::str::from_utf8(&bytes)
+            .map_err(|_|invalid("G6d project is not UTF-8"))?;
+        Self::from_json(text)
+    }
+}

@@ -179,7 +179,8 @@ pub use g5_two_wall_document::{
     G5TwoWallDocument,G5TwoWallPrepared,G5TwoWallPrepareResult,
     G5TwoWallHold,G5TwoWallCommit,G5TwoWallTransition,
     G5TwoWallOperand,G5TwoWallHandle,G5TwoWallHandleError,
-    G5TwoWallBinding,
+    G5TwoWallBinding,G5TwoWallVolumeStamp,G5TwoWallArchiveState,
+    G5TwoWallProjectArchive,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
