@@ -586,3 +586,166 @@ impl G5BooleanDocument {
         }))
     }
 }
+
+
+// G5b: private, version-agnostic recovery interface. The serializer lives
+// in g5_project_archive; no raw B-rep, live handle or process token is stored.
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub(crate) struct G5RecoveryStamp {
+    pub mass_volume:f64,
+    pub component_volumes:[f64;4],
+    pub source_lower:f64,
+    pub source_upper:f64,
+    pub flux_volume:f64,
+}
+impl G5RecoveryStamp {
+    fn from_accepted(accepted:&AcceptedBoolean)->Result<Self,GeometryError>{
+        let corner=&accepted.candidate.corners;
+        if corner.len()!=4{return Err(invalid("G5b source has unsupported component count"));}
+        Ok(Self{
+            mass_volume:accepted.candidate.brep().mass.volume,
+            component_volumes:[corner[0].exact_volume,corner[1].exact_volume,
+                corner[2].exact_volume,corner[3].exact_volume],
+            source_lower:accepted.volume.source_total.lower,
+            source_upper:accepted.volume.source_total.upper,
+            flux_volume:accepted.volume.result_flux_total,
+        })
+    }
+    fn is_valid(self)->bool{
+        self.mass_volume.is_finite()&&self.mass_volume>0.0
+            &&self.component_volumes.iter().all(|x|x.is_finite()&&*x>0.0)
+            &&self.source_lower.is_finite()&&self.source_lower>0.0
+            &&self.source_upper.is_finite()&&self.source_upper>self.source_lower
+            &&self.flux_volume.is_finite()&&self.flux_volume>0.0
+    }
+}
+#[derive(Debug,Clone)]
+pub(crate) struct G5RecoveryState {
+    pub inputs:[BrepBody;2],
+    pub accepted:Option<G5RecoveryStamp>,
+}
+#[derive(Debug,Clone)]
+pub(crate) struct G5RecoveryHistory {
+    pub feature_key:String,
+    pub tolerance:GeometryTolerance,
+    pub revision:u64,
+    pub current:G5RecoveryState,
+    pub undo:Vec<G5RecoveryState>,
+    pub redo:Vec<G5RecoveryState>,
+}
+impl G5BooleanDocument {
+    fn export_state(state:&DocumentState)->Result<G5RecoveryState,GeometryError>{
+        Ok(G5RecoveryState {
+            inputs:state.inputs.clone(),
+            accepted:state.accepted.as_ref()
+                .map(G5RecoveryStamp::from_accepted).transpose()?,
+        })
+    }
+    /// G5b exports values, never internal mutable references or live handles.
+    pub(crate) fn export_recovery(&self)->Result<G5RecoveryHistory,GeometryError>{
+        self.validate()?;
+        Ok(G5RecoveryHistory {
+            feature_key:self.feature_key.clone(),
+            tolerance:self.tolerance,
+            revision:self.revision,
+            current:Self::export_state(&self.state)?,
+            undo:self.undo.iter().map(Self::export_state)
+                .collect::<Result<Vec<_>,_>>()?,
+            redo:self.redo.iter().map(Self::export_state)
+                .collect::<Result<Vec<_>,_>>()?,
+        })
+    }
+    fn rebuild_recovery(
+        record:G5RecoveryState,tolerance:GeometryTolerance,
+    )->Result<DocumentState,GeometryError>{
+        record.inputs[0].validate()?;
+        record.inputs[1].validate()?;
+        let accepted=if let Some(stamp)=record.accepted {
+            if !stamp.is_valid(){return Err(invalid("G5b archive mass stamp invalid"));}
+            let candidate=match AnalyticFacePatchPartitionPlan::build(
+                &record.inputs[0],&record.inputs[1],
+                BooleanOperation::Difference,tolerance)?
+            {
+                AnalyticFacePatchPartitionResult::Ready(x)=>x,
+                AnalyticFacePatchPartitionResult::Held(_)=>
+                    return Err(invalid("G5b archived Boolean no longer constructs")),
+            };
+            let volume=match IndependentVolumeOraclePlan::build(
+                &record.inputs[0],&record.inputs[1],&candidate,tolerance)?
+            {
+                IndependentVolumeOracleResult::Ready(x)=>x,
+                IndependentVolumeOracleResult::Held(_)=>
+                    return Err(invalid("G5b archived Boolean no longer certifies volume")),
+            };
+            let actual=G5RecoveryStamp::from_accepted(&AcceptedBoolean{
+                candidate:candidate.clone(),volume:volume.clone(),
+            })?;
+            if stamp!=actual{
+                return Err(invalid("G5b archived mass certificate differs from rebuilt sources"));
+            }
+            Some(AcceptedBoolean{candidate,volume})
+        }else{None};
+        let restored=DocumentState{inputs:record.inputs,accepted};
+        restored.validate(tolerance)?;
+        Ok(restored)
+    }
+    /// Restores all past/current/future states before publication. Topology
+    /// handles are freshly minted; feature names are re-derived from sources.
+    pub(crate) fn restore_recovery(
+        saved:G5RecoveryHistory,
+    )->Result<Self,GeometryError>{
+        const MAX_HISTORY:usize=64;
+        if !valid_feature(&saved.feature_key)
+            ||saved.undo.len()+saved.redo.len()>MAX_HISTORY
+            ||saved.revision < saved.undo.len() as u64
+            ||saved.revision == u64::MAX {
+            return Err(invalid("G5b invalid project history or revision policy"));
+        }
+        saved.tolerance.validate()?;
+        let current=Self::rebuild_recovery(saved.current,saved.tolerance)?;
+        let undo=saved.undo.into_iter()
+            .map(|s|Self::rebuild_recovery(s,saved.tolerance))
+            .collect::<Result<Vec<_>,_>>()?;
+        let redo=saved.redo.into_iter()
+            .map(|s|Self::rebuild_recovery(s,saved.tolerance))
+            .collect::<Result<Vec<_>,_>>()?;
+        // Check adjacent undo/current/redo snapshots against the limited
+        // G5a transition semantics. A state cannot persist an unrelated
+        // arbitrary history graph with two different accepted results.
+        let mut path=undo.iter().collect::<Vec<_>>();
+        path.push(&current);
+        path.extend(redo.iter().rev());
+        for pair in path.windows(2) {
+            let left=pair[0];
+            let right=pair[1];
+            if left.accepted.is_some()&&right.accepted.is_some(){
+                return Err(invalid("G5b consecutive committed states require an intermediate source edit"));
+            }
+        }
+        let token=fresh()?;
+        let registry=NamedRegistry::from_candidate(
+            current.accepted.as_ref().map(|x|&x.candidate),
+            &saved.feature_key,token,
+        )?;
+        let doc=Self{
+            token,feature_key:saved.feature_key,
+            revision:saved.revision,tolerance:saved.tolerance,
+            state:current,registry,undo,redo,
+        };
+        doc.validate()?;
+        Ok(doc)
+    }
+    /// Names in archived accepted states can be attached to the feature DAG
+    /// even when the active document is currently between Undo and Redo.
+    pub(crate) fn archived_output_names(&self)
+        ->Result<Vec<TopologyName>,GeometryError>{
+        let accepted=self.state.accepted.iter()
+            .chain(self.undo.iter().filter_map(|s|s.accepted.as_ref()))
+            .chain(self.redo.iter().filter_map(|s|s.accepted.as_ref()))
+            .next();
+        let Some(accepted)=accepted else{return Ok(Vec::new())};
+        let names=NamedRegistry::semantic_names(
+            Some(&accepted.candidate),&self.feature_key)?;
+        Ok(names.into_values().collect())
+    }
+}

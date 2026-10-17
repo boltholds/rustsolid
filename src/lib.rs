@@ -40,6 +40,7 @@ mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
 mod independent_curved_volume_oracle;
 mod atomic_boolean_document;
+mod g5_project_archive;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -157,6 +158,10 @@ pub use atomic_boolean_document::{
     G5BooleanDocument,G5PreparedBoolean,G5PrepareResult,G5Hold,
     G5DocumentOperand,G5Commit,G5Transition,G5DocumentSnapshot,
     G5TopologyHandle,G5TopologyHandleError,G5TopologyBinding,
+};
+pub use g5_project_archive::{
+    G5ProjectArchive,G5FeatureGraph,G5FeatureNode,G5GraphBinding,
+    G5ArchiveState,G5ResultStamp,G5ProjectSource,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
