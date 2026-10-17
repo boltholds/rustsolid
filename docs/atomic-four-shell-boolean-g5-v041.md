@@ -48,6 +48,9 @@ four signed corners, and its semantic role:
 - coedge: each edge role plus the distinct owning face role;
 - face, loop, shell, and body get equally scoped names.
 
+Read-only validation derives the expected logical names without consuming
+new handle-generation IDs or mutating the document registry.
+
 All 177 result entities are covered (1 body, 24 vertices, 36 edges,
 72 coedges, 20 loops, 20 faces, 4 shells). The names are independent
 of the current dense array index and can serve as logical document
@@ -99,6 +102,7 @@ Run: cargo test --test atomic_boolean_document
 Then: cargo test --all-targets
 
 Tests cover committed four-shell B-rep and all 177 semantic names,
+read-only validation purity and stable roles across different dimensions,
 successful Undo/Redo, stale handle invalidation, source edits and
 revision conflicts (including identical-geometry ABA replacement),
 tampered G4/G4c evidence, rejecting damaged inputs without changes,

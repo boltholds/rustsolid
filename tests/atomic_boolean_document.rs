@@ -269,3 +269,42 @@ fn unsupported_sources_fail_closed_during_prepare_without_document_changes(){
     assert_eq!(format!("{:?}",doc.snapshot()),before);
     invariant(&doc);
 }
+
+
+#[test]
+fn read_only_validation_and_snapshot_do_not_change_active_handle_bindings(){
+    let mut doc=new_doc("pure_validation");
+    doc.commit(prepare(&doc)).unwrap();
+    let original_snapshot=format!("{:?}",doc.snapshot());
+    let original_bindings=doc.bindings();
+    let original_revision=doc.revision();
+    for _ in 0..8 {
+        doc.validate().unwrap();
+        let _=doc.snapshot();
+        assert_eq!(doc.bindings(),original_bindings);
+        assert_eq!(doc.revision(),original_revision);
+    }
+    assert_eq!(format!("{:?}",doc.snapshot()),original_snapshot);
+}
+#[test]
+fn stable_semantic_names_are_independent_of_specific_corner_dimensions(){
+    let mut symmetric=new_doc("part_family");
+    symmetric.commit(prepare(&symmetric)).unwrap();
+    let a=BrepBody::from(Solid::block(p(2.,6.,-8.),4.5,2.5,3.5).unwrap());
+    let b=BrepBody::from(CylindricalBrep::upright(
+        p(4.,1.,-6.2),2.55,10.,tol()).unwrap());
+    let mut asymmetric=G5BooleanDocument::new("part_family",a,b,tol()).unwrap();
+    asymmetric.commit(prepare(&asymmetric)).unwrap();
+    let semantic_symmetric=symmetric.bindings().iter()
+        .map(|x|x.name.clone()).collect::<BTreeSet<_>>();
+    let semantic_asymmetric=asymmetric.bindings().iter()
+        .map(|x|x.name.clone()).collect::<BTreeSet<_>>();
+    assert_eq!(semantic_symmetric,semantic_asymmetric);
+    assert_ne!(symmetric.model().unwrap().mass.volume,
+        asymmetric.model().unwrap().mass.volume);
+    // Names are stable logical roles, but process-local handles are not
+    // portable across two distinct documents.
+    assert!(matches!(symmetric.resolve_handle(asymmetric.bindings()[0].handle),
+        Err(G5TopologyHandleError::ForeignDocument)));
+    invariant(&symmetric);invariant(&asymmetric);
+}

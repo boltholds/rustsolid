@@ -128,11 +128,13 @@ impl NamedRegistry {
         Self{token,by_name:BTreeMap::new(),by_entity:BTreeMap::new(),
             by_slot:Vec::new()}
     }
-    fn from_candidate(
+    // Pure derivation. Validating a document must never consume process-wide
+    // generation IDs or create unused handles.
+    fn semantic_names(
         candidate:Option<&AnalyticFacePatchPartitionPlan>,
-        feature_key:&str,token:u64,
-    )->Result<Self,GeometryError>{
-        let Some(candidate)=candidate else{return Ok(Self::empty(token))};
+        feature_key:&str,
+    )->Result<BTreeMap<TopologyEntity,TopologyName>,GeometryError>{
+        let Some(candidate)=candidate else{return Ok(BTreeMap::new())};
         let m=candidate.brep();
         m.validate()?;
         if !candidate.closed_shell_proven||candidate.can_apply
@@ -237,6 +239,15 @@ impl NamedRegistry {
         if semantic.len()!=expected {
             return Err(invalid("G5 source topology has unnamed entities"));
         }
+        Ok(semantic)
+    }
+    fn from_candidate(
+        candidate:Option<&AnalyticFacePatchPartitionPlan>,
+        feature_key:&str,token:u64,
+    )->Result<Self,GeometryError>{
+        let semantic=Self::semantic_names(candidate,feature_key)?;
+        let Some(candidate)=candidate else{return Ok(Self::empty(token))};
+        let m=candidate.brep();
         let mut out=Self::empty(token);
         out.by_slot.try_reserve(semantic.len())
             .map_err(|_|invalid("G5 unable to allocate identity registry"))?;
@@ -401,11 +412,11 @@ impl G5BooleanDocument {
     pub fn validate(&self)->Result<(),GeometryError>{
         self.tolerance.validate()?;
         self.state.validate(self.tolerance)?;
-        let expected=NamedRegistry::from_candidate(
+        let expected=NamedRegistry::semantic_names(
             self.state.accepted.as_ref().map(|a|&a.candidate),
-            &self.feature_key,self.token,
+            &self.feature_key,
         )?;
-        if self.registry.by_entity!=expected.by_entity {
+        if self.registry.by_entity!=expected {
             return Err(invalid("G5 live semantic names differ from the proven B-rep"));
         }
         if let Some(m)=self.model(){
