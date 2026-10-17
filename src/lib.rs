@@ -39,6 +39,7 @@ mod global_analytic_cut_registry;
 mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
 mod independent_curved_volume_oracle;
+mod atomic_boolean_document;
 mod topology_delta_plan;
 mod closed_cylinder_imprint;
 mod imprint_mesh;
@@ -151,6 +152,11 @@ pub use independent_curved_volume_oracle::{
     IndependentVolumeHold, IndependentVolumeComponent,
     IndependentVolumeOraclePlan, IndependentVolumeOracleResult,
     SourceVolumeBracket, ShellFluxWitness,
+};
+pub use atomic_boolean_document::{
+    G5BooleanDocument,G5PreparedBoolean,G5PrepareResult,G5Hold,
+    G5DocumentOperand,G5Commit,G5Transition,G5DocumentSnapshot,
+    G5TopologyHandle,G5TopologyHandleError,G5TopologyBinding,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
