@@ -38,7 +38,7 @@ fn four_corner_shells_have_independent_positive_source_and_flux_volume(){
     assert_eq!(candidate.brep().shells.len(),4);
     assert!((proof.original_box_volume-27.).abs()<1e-11);
     if let BrepBody::Polyhedral(ref original)=a {
-        assert_eq!(proof.source_revisions[0],original.revision);
+        assert_eq!(proof.source_revisions[0],Some(original.revision));
     }
     assert!(proof.source_total.integration_panels>4);
     assert!(proof.source_total.numerical_guard>0.);

@@ -55,7 +55,8 @@ pub struct IndependentVolumeOraclePlan {
     pub original_box_volume:f64,
     /// Only intersection WITHIN the box; not the entire cutter's volume.
     pub removed_volume_bounds:[f64;2],
-    pub source_revisions:[u64;2],
+    /// Cylinder has no revision counter; candidate revalidation checks its full geometry.
+    pub source_revisions:[Option<u64>;2],
     pub construction_tolerance:GeometryTolerance,
     pub volume_certified:bool,
     pub can_apply:bool,
@@ -413,7 +414,7 @@ impl IndependentVolumeOraclePlan{
             components,source_total:total,result_flux_total:flux_total.sum,
             candidate_mass_volume:m.mass.volume,original_box_volume:box_volume,
             removed_volume_bounds:removed,
-            source_revisions:[a.revision,b.revision()],
+            source_revisions:[Some(a.revision),None],
             construction_tolerance:tol,volume_certified:true,can_apply:false,
         }))
     }
