@@ -39,6 +39,7 @@ mod global_analytic_cut_registry;
 mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
 mod analytic_two_wall_partition;
+mod independent_two_wall_volume;
 mod independent_curved_volume_oracle;
 mod atomic_boolean_document;
 mod g5_project_archive;
@@ -168,6 +169,10 @@ pub use analytic_two_wall_partition::{
     AnalyticTwoWallHold,AnalyticTwoWallPartitionPlan,
     AnalyticTwoWallPartitionResult,TwoWallComponent,
     TwoWallFaceSource,TwoWallMaterialSide,
+};
+pub use independent_two_wall_volume::{
+    AnalyticTwoWallVolumeOracle,AnalyticTwoWallVolumeResult,
+    TwoWallVolumeHold,TwoWallVolumeComponent,TwoWallFluxWitness,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,

@@ -30,8 +30,28 @@ cylinders, boundary tangencies, multiple cutters and intersection/union
 remain deliberately held. can_apply=false.
 
 Tests: cargo test --test analytic_two_wall_partition.
-The next certified operation should independently bracket volumes via
-original material quadrature and compute the divergence-theorem flux
-from actual oriented curved B-rep faces, then connect it to a typed,
-versioned G5 document path without weakening the four-corner G5b
-persistence contract.
+## G6b independent volume certification
+
+AnalyticTwoWallVolumeOracle verifies both components without consulting
+the candidate mass formula for either independent computation:
+
+- Source-space integration of the surviving material strip
+  width(z)=b-sqrt(radius^2-x^2) in a rectangular cross-section.
+  Since the integrand is convex, midpoint integration is a lower
+  estimate and trapezoid integration is an upper estimate with adaptive
+  subdivision and an explicit floating-point budget.
+- Oriented RESULT B-rep boundary-flux integration using F=(0,0,z-cz)
+  and div F=1. The source-owned outer Z wall contributes its physical
+  XY polygon area; the reversed cylinder contributes the analytic
+  integral of -radius^2*sin(theta)^2 over each true circular trim.
+- The per-shell bracket, B-rep flux, candidate analytic mass and total
+  source-box balance must agree. Unsupported/tangent/numerically
+  unresolved shapes remain Held. G6b is not directed-rounding interval
+  arithmetic for general NURBS surfaces.
+
+G6a/B build previews both keep can_apply=false. A separately audited
+G5 operation and versioned persistent document schema are required
+before new Boolean material can be committed.
+
+Tests: cargo test --test independent_two_wall_volume.
+
