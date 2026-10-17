@@ -493,7 +493,7 @@ fn strict_material(
     }
     None
 }
-fn find_source_plane(
+pub(crate) fn find_source_plane(
     model:&BrepModel,axis:u8,coordinate:f64,normal_sign:f64,eps:f64,
 )->Option<FaceId>{
     let mut matches=Vec::new();
@@ -511,7 +511,7 @@ fn find_source_plane(
     }
     if matches.len()==1{Some(matches[0])}else{None}
 }
-fn certify_original_material_edge(
+pub(crate) fn certify_original_material_edge(
     source:&BrepModel,result:&Edge,vertices:&[Vertex],
     faces:[FaceId;2],eps:f64,used:&mut BTreeSet<EdgeId>,
 )->bool{
@@ -535,7 +535,7 @@ fn certify_original_material_edge(
     used.insert(matching[0]);
     true
 }
-fn certify_new_cut(
+pub(crate) fn certify_new_cut(
     registry:&GlobalAnalyticCutPlan,first_face:FaceId,second_face:FaceId,
     curve:Curve3,domain:ParameterRange,
     endpoints:[Point3;2],vertices:[VertexId;2],eps:f64,
@@ -587,16 +587,16 @@ fn certify_new_cut(
     Ok(Some((source,events)))
 }
 
-struct FaceSpec {
-    local:Vec<usize>,
-    source:FaceId,
-    operand:GraphOperand,
-    normal:Point3,
+pub(crate) struct FaceSpec {
+    pub(crate) local:Vec<usize>,
+    pub(crate) source:FaceId,
+    pub(crate) operand:GraphOperand,
+    pub(crate) normal:Point3,
 }
 struct AddedCorner{faces:[FaceId;5],edges:[EdgeId;9]}
-struct PatchBuilder{model:BrepModel,tolerance:GeometryTolerance}
+pub(crate) struct PatchBuilder{pub(crate) model:BrepModel,pub(crate) tolerance:GeometryTolerance}
 impl PatchBuilder{
-    fn new(bbox:BoundingBox,tolerance:GeometryTolerance,units:crate::ModelUnits)->Self{
+    pub(crate) fn new(bbox:BoundingBox,tolerance:GeometryTolerance,units:crate::ModelUnits)->Self{
         Self {model:BrepModel{
             origin:BrepOrigin::AnalyticPartialBoxCylinderDifference,
             vertices:Vec::new(),edges:Vec::new(),coedges:Vec::new(),
@@ -609,7 +609,7 @@ impl PatchBuilder{
             bbox,tolerance,units,
         },tolerance}
     }
-    fn add_edge(
+    pub(crate) fn add_edge(
         &mut self,start:VertexId,end:VertexId,
         curve:Option<(Circle3,ParameterRange)>,
     )->Result<EdgeId,GeometryError>{
@@ -832,12 +832,12 @@ impl PatchBuilder{
             edges:edge_ids,
         })
     }
-    fn finish(self)->Result<BrepModel,GeometryError>{
+    pub(crate) fn finish(self)->Result<BrepModel,GeometryError>{
         self.model.validate()?;
         Ok(self.model)
     }
 }
-fn radial_certificate(
+pub(crate) fn radial_certificate(
     body:&BrepModel,eps:f64,
 )->Result<RadialTopologyCertificate,RadialTopologyHold>{
     let uses=body.coedges.iter().map(|co|{
