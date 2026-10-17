@@ -161,7 +161,7 @@ fn source_specific_result_volume_matches_independent_numerical_integral(){
 }
 #[test]
 fn shifted_asymmetric_rectangular_box_still_has_real_analytic_components(){
-    let a=BrepBody::from(Solid::block(q(1.,2.,-5.),3.,4.,8.).unwrap());
+    let a=BrepBody::from(Solid::block(q(1.,2.,-5.),3.,4.,9.).unwrap());
     let b=BrepBody::from(CylindricalBrep::upright(
         q(2.4,0.,-1.),1.8,8.,tolerance()).unwrap());
     let plan=ready(&a,&b);
