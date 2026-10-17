@@ -22,6 +22,7 @@ mod composed_crossing_cli;
 mod connected_triple_cli;
 mod multi_cut_regions_cli;
 mod oblique_cylinder_cli;
+mod g5_project_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -62,6 +63,16 @@ enum GeometryRequest {
         #[serde(default)] samples:Option<usize> },
     ArenaTransaction { source:BrepInput, batches:Vec<Vec<ArenaCommandInput>>,
         #[serde(default)] undo:usize, #[serde(default)] redo:usize },
+    /// G5b source-backed persistence; archive is one self-contained v1 JSON
+    /// project value that can be passed back into the next stateless call.
+    G5Project {
+        #[serde(default)] archive:Option<Value>,
+        #[serde(default)] feature_key:Option<String>,
+        #[serde(default)] left:Option<BrepInput>,
+        #[serde(default)] right:Option<BrepInput>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] actions:Vec<g5_project_cli::G5ProjectAction>,
+    },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
     ComposeIntersectingBlind {source:SolidSource,holes:Vec<BlindHoleInput>,
@@ -2085,6 +2096,10 @@ fn process(input: &str) -> Response {
             return evaluate_topology_delta_plan(first,second,tolerance.unwrap_or_default(),samples.unwrap_or(9)),
         Ok(GeometryRequest::ArenaTransaction{source,batches,undo,redo}) =>
             return evaluate_arena_transaction(source,batches,undo,redo),
+        Ok(GeometryRequest::G5Project {
+            archive,feature_key,left,right,tolerance,actions,
+        })=>return g5_project_cli::evaluate(
+            archive,feature_key,left,right,tolerance,actions),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),
         Ok(GeometryRequest::ComposeBlind{source,holes}) =>
