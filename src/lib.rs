@@ -38,6 +38,9 @@ mod analytic_bore_candidate;
 mod global_analytic_cut_registry;
 mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
+mod analytic_two_wall_partition;
+mod independent_two_wall_volume;
+mod g5_two_wall_document;
 mod independent_curved_volume_oracle;
 mod atomic_boolean_document;
 mod g5_project_archive;
@@ -162,6 +165,22 @@ pub use atomic_boolean_document::{
 pub use g5_project_archive::{
     G5ProjectArchive,G5FeatureGraph,G5FeatureNode,G5GraphBinding,
     G5ArchiveState,G5ResultStamp,G5ProjectSource,
+};
+pub use analytic_two_wall_partition::{
+    AnalyticTwoWallHold,AnalyticTwoWallPartitionPlan,
+    AnalyticTwoWallPartitionResult,TwoWallComponent,
+    TwoWallFaceSource,TwoWallMaterialSide,
+};
+pub use independent_two_wall_volume::{
+    AnalyticTwoWallVolumeOracle,AnalyticTwoWallVolumeResult,
+    TwoWallVolumeHold,TwoWallVolumeComponent,TwoWallFluxWitness,
+};
+pub use g5_two_wall_document::{
+    G5TwoWallDocument,G5TwoWallPrepared,G5TwoWallPrepareResult,
+    G5TwoWallHold,G5TwoWallCommit,G5TwoWallTransition,
+    G5TwoWallOperand,G5TwoWallHandle,G5TwoWallHandleError,
+    G5TwoWallBinding,G5TwoWallVolumeStamp,G5TwoWallArchiveState,
+    G5TwoWallProjectArchive,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,

@@ -33,7 +33,7 @@ fn parameter(range: ParameterRange, fraction: f64) -> Result<f64, GeometryError>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind, AnalyticObliqueClip, AnalyticPartialBoxCylinderDifference }
+pub enum BrepOrigin { Polyhedral, AnalyticCylinder, AnalyticThroughHole, AnalyticMultipleThroughHoles, AnalyticBlindHole, AnalyticMultipleBlindHoles, AnalyticIntersectingBlindHoles, AnalyticCompoundBlindRegions, AnalyticMixedThroughBlindRegions, AnalyticCrossingThroughBlind, AnalyticObliqueClip, AnalyticPartialBoxCylinderDifference, AnalyticTwoWallCylinderDifference }
 
 /// Generic face: surface identity and trim loops, with no polygonal vertex-ring
 /// requirement. Closed circle loops can consist of a single directed coedge.
@@ -344,7 +344,13 @@ impl BrepModel {
     /// for arbitrary curves, surface self-intersections or Boolean validity.
     pub fn validate(&self) -> Result<(), GeometryError> {
         self.tolerance.validate()?;
-        let multi_shell = self.origin == BrepOrigin::AnalyticPartialBoxCylinderDifference;
+        let multi_shell = matches!(self.origin,
+            BrepOrigin::AnalyticPartialBoxCylinderDifference |
+            BrepOrigin::AnalyticTwoWallCylinderDifference);
+        if self.origin==BrepOrigin::AnalyticTwoWallCylinderDifference
+            &&self.shells.len()!=2 {
+            return Err(invalid("G6a requires exactly two closed material components"));
+        }
         if self.vertices.is_empty() || self.edges.is_empty() || self.faces.is_empty()
             || self.shells.is_empty() || (!multi_shell && self.shells.len() != 1) {
             return Err(invalid("expected one nonempty closed B-rep shell"));
@@ -384,7 +390,8 @@ impl BrepModel {
                 BrepOrigin::AnalyticCompoundBlindRegions=>face.id.0>=6,
                 BrepOrigin::AnalyticMixedThroughBlindRegions |
                     BrepOrigin::AnalyticCrossingThroughBlind=>face.id.0>=6,
-                BrepOrigin::AnalyticPartialBoxCylinderDifference=>
+                BrepOrigin::AnalyticPartialBoxCylinderDifference |
+                BrepOrigin::AnalyticTwoWallCylinderDifference=>
                     matches!(self.face_surface(face.id),Some(Surface3::Cylinder(_))),
             };
             let expected=if reversed {FaceSense::Reversed}else{FaceSense::Forward};

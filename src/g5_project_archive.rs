@@ -42,7 +42,7 @@ pub enum G5ProjectSource {
     },
 }
 impl G5ProjectSource {
-    fn from_body(body:&BrepBody)->Result<Self,GeometryError>{
+    pub(crate) fn from_body(body:&BrepBody)->Result<Self,GeometryError>{
         body.validate()?;
         match body {
             BrepBody::Polyhedral(s)=>{
@@ -76,7 +76,7 @@ impl G5ProjectSource {
             _=>Err(invalid("G5b archive supports only original AABB/cylinder sources")),
         }
     }
-    fn to_body(&self)->Result<BrepBody,GeometryError>{
+    pub(crate) fn to_body(&self)->Result<BrepBody,GeometryError>{
         let result=match *self{
             Self::Block{origin,width,height,depth,tolerance}=>
                 BrepBody::from(Solid::block_with_tolerance(
