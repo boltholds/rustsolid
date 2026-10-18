@@ -80,8 +80,7 @@ fn g8a_tilted_x_axis_certifies_four_source_arcs_two_major_ellipses_and_one_physi
     for section in [plan.bottom,plan.top]{
         assert!(section.retained_major_span>std::f64::consts::PI);
         assert!(section.retained_major_span<std::f64::consts::TAU);
-        assert!(section.wall_points[0].z<section.wall_points[1].z ||
-                section.wall_points[1].z<section.wall_points[0].z);
+        assert!((section.wall_points[0].z-section.wall_points[1].z).abs()>0.1);
     }
     let b_sections=plan.source_cuts.arcs.iter().filter(|arc|
         arc.first_face==plan.box_bottom||arc.first_face==plan.box_top
@@ -153,11 +152,11 @@ fn g8a_conservative_rejections_preserve_g7_and_only_preview_eligible_tilts(){
         BooleanOperation::Difference,tol()).unwrap(),
         AnalyticOneWallResult::Ready(_)));
     let short_frame=Frame3::from_axes(
-        p(0.,0.9,0.),
+        p(0.,1.4,0.),
         p(0.04_f64.cos(),-0.04_f64.sin(),0.),
         p(0.,0.,-1.),tol()).unwrap();
     let short=BrepBody::from(CylindricalBrep::new(
-        short_frame,1.5,3.3,tol()).unwrap());
+        short_frame,1.5,2.7,tol()).unwrap());
     assert!(matches!(TiltedOneWallSourcePlan::build(&a,&short,
         BooleanOperation::Difference,tol()).unwrap(),
         TiltedOneWallSourceResult::Held(TiltedOneWallHold::CutterCapsReachBox)));
