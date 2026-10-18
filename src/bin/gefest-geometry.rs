@@ -24,6 +24,7 @@ mod multi_cut_regions_cli;
 mod oblique_cylinder_cli;
 mod g5_project_cli;
 mod g6_project_cli;
+mod g7_project_cli;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, Read};
@@ -82,6 +83,15 @@ enum GeometryRequest {
         #[serde(default)] right:Option<BrepInput>,
         #[serde(default)] tolerance:Option<GeometryTolerance>,
         #[serde(default)] actions:Vec<g6_project_cli::G6Action>,
+    },
+    /// Source-rebuilt, single-notch analytical Boolean archive schema v3.
+    G7Project {
+        #[serde(default)] archive:Option<Value>,
+        #[serde(default)] feature_key:Option<String>,
+        #[serde(default)] left:Option<BrepInput>,
+        #[serde(default)] right:Option<BrepInput>,
+        #[serde(default)] tolerance:Option<GeometryTolerance>,
+        #[serde(default)] actions:Vec<g7_project_cli::G7Action>,
     },
     Boolean {left:BrepInput, right:BrepInput, mode:BooleanOperation},
     ComposeBlind {source:SolidSource, holes:Vec<BlindHoleInput>},
@@ -2117,6 +2127,10 @@ fn process(input: &str) -> Response {
         Ok(GeometryRequest::G6Project {
             archive,feature_key,left,right,tolerance,actions,
         })=>return g6_project_cli::evaluate(
+            archive,feature_key,left,right,tolerance,actions),
+        Ok(GeometryRequest::G7Project {
+            archive,feature_key,left,right,tolerance,actions,
+        })=>return g7_project_cli::evaluate(
             archive,feature_key,left,right,tolerance,actions),
         Ok(GeometryRequest::Boolean{left,right,mode}) =>
             return evaluate_boolean(left,right,mode),

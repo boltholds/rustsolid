@@ -98,3 +98,89 @@ A G5 document executor/persistent schema must be added and separately
 verified before this new family becomes directly editable in Gefest.
 
 Tests: `cargo test --test independent_one_wall_volume`.
+
+
+## G7c — revision-atomic G5 document for one-wall Boolean
+
+G7BooleanDocument is an independently owned, exclusively mutable G5
+document for this bounded source-backed Boolean. prepare() stages one
+G7a B-rep plus G7b independent volume witness. commit() verifies the
+document incarnation, expected revision and both exact in-process source
+stamps, then reconstructs all source G1/G7a topology and G7b source/
+flux volume evidence immediately before publishing. All fallible work,
+identity construction and undo checkpoint reservations precede the
+publication barrier. Recoverable errors cannot partially change the
+source, result, revision, handles or history.
+
+The new result creates exactly **84** stable semantic names: 1 body,
+1 closed shell, 12 vertices, 18 physical edges, 36 coedges, 8 faces
+and 8 loops. The roles distinguish both independently retained planar
+pieces of the same original MIN-X wall, the major circular arc and its
+two generators. In-process G7Handle values are scoped by document token,
+slot and generation; Undo/Redo and source replacements retire old handle
+incarnations, while the source-derived TopologyName remains stable.
+Invalid/transverse/unsupported source changes are Held before any commit.
+
+The original four-shell G5BooleanDocument and G6 two-strip G5TwoWallDocument
+remain unchanged. G7a and G7b generic previews continue to expose
+can_apply=false; the narrowly audited G7 document alone may commit.
+
+Tests: cargo test --test g7_one_wall_document
+
+## G7d — source-only persistent archive schema v3
+
+G7ProjectArchive exports a distinct schema_version=3 for the one-wall
+feature family. It stores only canonical original source primitive
+descriptors, exact stored G7b mass/bracket/flux/angular evidence,
+the source_a/source_b/difference feature DAG with 84 semantic output
+bindings, tolerance, document revision and all Undo/Redo states. It
+never serializes process-local handles, mutable B-rep arrays or a display
+mesh as source-of-truth geometry.
+
+When reopening a project, every current/historical state is rebuilt
+from its original sources with fresh G1/G7a/G7b independent validation
+and compared to each saved volume witness. The feature graph and every
+logical name are reconstructed and checked before the result becomes
+visible. Source solids whose internal revision cannot be persisted
+losslessly are rejected at export. Incorrect archive schemas v1 or v2,
+tampered graphs, altered mass or flux evidence, unsupported source
+shapes and oversized histories fail closed.
+
+A bounded 1 MiB UTF-8 JSON format, at most 64 history checkpoints
+and same-directory temporary-file + fsync + rename save are provided.
+Atomic rename/crash durability remain filesystem dependent; this does
+not claim database ACID or network-distributed transactions.
+
+A new stateless geometry.v1 operation, g7_project, supports new source
+inputs or a saved archive with commit, undo, redo, replace_source and
+reopen commands. Old g5_project/v1 and g6_project/v2 behavior is
+regression-tested unchanged.
+
+Example request:
+
+~~~json
+{
+  "operation": "g7_project",
+  "feature_key": "notch_01",
+  "left": {
+    "kind": "block", "origin": [-1, 1, -3],
+    "width": 4, "height": 3, "depth": 6
+  },
+  "right": {
+    "kind": "analytic_cylinder", "origin": [0, 0, 0],
+    "radius": 1.5, "height": 5
+  },
+  "actions": [{"kind": "commit"}]
+}
+~~~
+
+Tests: cargo test --test g7_project_archive
+and cargo test --test g7_project_cli_json.
+
+**Deployment boundary:** The separate Gefest-CAD integration PR #38 is
+currently pinned to RustSolid G6d/schema2, and its CI remained blocked
+before any steps. G7 schema3 is a native RustSolid contract only, until
+a separately reviewed Gefest backend/frontend protocol upgrade. This
+family also does NOT establish arbitrary NURBS surface Boolean, a
+general UV-tracing executor, tilted cylinder intersections or multi-
+cutter physical edge provenance.
