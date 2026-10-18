@@ -449,6 +449,7 @@ fn inspect_brep(input:BrepInput) -> Response {
                 BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
                 BrepOrigin::AnalyticPartialBoxCylinderDifference=>"analytic_partial_box_cylinder_difference",
                 BrepOrigin::AnalyticTwoWallCylinderDifference=>"analytic_two_wall_cylinder_difference",
+                BrepOrigin::AnalyticOneWallCylinderDifference=>"analytic_one_wall_cylinder_difference",
             },
             "topology":{
                 "vertices":stats.vertices,"edges":stats.edges,"coedges":stats.coedges,
@@ -1450,6 +1451,7 @@ fn evaluate_structural_transaction(
                 BrepOrigin::AnalyticObliqueClip=>"analytic_oblique_halfspace_clip",
                 BrepOrigin::AnalyticPartialBoxCylinderDifference=>"analytic_partial_box_cylinder_difference",
                 BrepOrigin::AnalyticTwoWallCylinderDifference=>"analytic_two_wall_cylinder_difference",
+                BrepOrigin::AnalyticOneWallCylinderDifference=>"analytic_one_wall_cylinder_difference",
             },
             "revision":editor.revision(),
             "editor_token":editor.editor_token(),
