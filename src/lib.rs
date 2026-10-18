@@ -41,6 +41,7 @@ mod analytic_face_patch_partition;
 mod analytic_two_wall_partition;
 mod analytic_one_wall_notch;
 mod independent_one_wall_volume;
+mod g7_one_wall_document;
 mod independent_two_wall_volume;
 mod g5_two_wall_document;
 mod independent_curved_volume_oracle;
@@ -191,6 +192,11 @@ pub use analytic_one_wall_notch::{
 pub use independent_one_wall_volume::{
     AnalyticOneWallVolumeOracle,AnalyticOneWallVolumeResult,
     OneWallVolumeHold,OneWallFluxWitness,
+};
+pub use g7_one_wall_document::{
+    G7BooleanDocument,G7PreparedBoolean,G7PrepareResult,G7Hold,
+    G7Operand,G7Commit,G7Transition,G7Handle,G7HandleError,
+    G7TopologyBinding,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
