@@ -40,6 +40,7 @@ mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
 mod analytic_two_wall_partition;
 mod analytic_one_wall_notch;
+mod tilted_one_wall_source;
 mod independent_one_wall_volume;
 mod g7_one_wall_document;
 mod g7_project_archive;
@@ -189,6 +190,10 @@ pub use g5_two_wall_document::{
 pub use analytic_one_wall_notch::{
     AnalyticOneWallPlan,AnalyticOneWallResult,AnalyticOneWallHold,
     OneWallComponent,OneWallPatchSource,OneWallMaterialWitness,
+};
+pub use tilted_one_wall_source::{
+    TiltedOneWallHold,TiltedOneWallSection,TiltedOneWallSourcePlan,
+    TiltedOneWallSourceResult,
 };
 pub use independent_one_wall_volume::{
     AnalyticOneWallVolumeOracle,AnalyticOneWallVolumeResult,
