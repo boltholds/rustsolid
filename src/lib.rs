@@ -41,6 +41,7 @@ mod analytic_face_patch_partition;
 mod analytic_two_wall_partition;
 mod analytic_one_wall_notch;
 mod tilted_one_wall_source;
+mod independent_tilted_volume;
 mod independent_one_wall_volume;
 mod g7_one_wall_document;
 mod g7_project_archive;
@@ -194,6 +195,10 @@ pub use analytic_one_wall_notch::{
 pub use tilted_one_wall_source::{
     TiltedOneWallHold,TiltedOneWallSection,TiltedOneWallSourcePlan,
     TiltedOneWallSourceResult,
+};
+pub use independent_tilted_volume::{
+    IndependentTiltedVolumeOracle,IndependentTiltedVolumeResult,
+    TiltedSectionAreaBracket,TiltedVolumeHold,
 };
 pub use independent_one_wall_volume::{
     AnalyticOneWallVolumeOracle,AnalyticOneWallVolumeResult,
