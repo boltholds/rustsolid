@@ -39,6 +39,10 @@ mod global_analytic_cut_registry;
 mod analytic_source_edge_split;
 mod analytic_face_patch_partition;
 mod analytic_two_wall_partition;
+mod analytic_one_wall_notch;
+mod independent_one_wall_volume;
+mod g7_one_wall_document;
+mod g7_project_archive;
 mod independent_two_wall_volume;
 mod g5_two_wall_document;
 mod independent_curved_volume_oracle;
@@ -181,6 +185,22 @@ pub use g5_two_wall_document::{
     G5TwoWallOperand,G5TwoWallHandle,G5TwoWallHandleError,
     G5TwoWallBinding,G5TwoWallVolumeStamp,G5TwoWallArchiveState,
     G5TwoWallProjectArchive,
+};
+pub use analytic_one_wall_notch::{
+    AnalyticOneWallPlan,AnalyticOneWallResult,AnalyticOneWallHold,
+    OneWallComponent,OneWallPatchSource,OneWallMaterialWitness,
+};
+pub use independent_one_wall_volume::{
+    AnalyticOneWallVolumeOracle,AnalyticOneWallVolumeResult,
+    OneWallVolumeHold,OneWallFluxWitness,
+};
+pub use g7_one_wall_document::{
+    G7BooleanDocument,G7PreparedBoolean,G7PrepareResult,G7Hold,
+    G7Operand,G7Commit,G7Transition,G7Handle,G7HandleError,
+    G7TopologyBinding,
+};
+pub use g7_project_archive::{
+    G7ProjectArchive,G7ArchiveState,G7VolumeStamp,
 };
 pub use topology_delta_plan::{TopologyDeltaPlanner, TopologyDeltaPlan, PlanState,
     PlanRequirement, PlanArcRole, PlanFaceEffect, PlanVertexPlacement, PlannedVertex,
