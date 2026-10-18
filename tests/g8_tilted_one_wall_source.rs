@@ -8,7 +8,8 @@ use rustsolid::{
 fn p(x:f64,y:f64,z:f64)->Point3{Point3{x,y,z}}
 fn tol()->GeometryTolerance{GeometryTolerance::default()}
 fn distance(a:Point3,b:Point3)->f64{
-    let d=a.sub(b);d.x.hypot(d.y).hypot(d.z)
+    let dx=a.x-b.x;let dy=a.y-b.y;let dz=a.z-b.z;
+    dx.hypot(dy).hypot(dz)
 }
 fn body()->BrepBody{
     BrepBody::from(Solid::block(p(-1.,1.,-3.),4.,3.,6.).unwrap())
@@ -106,8 +107,10 @@ fn g8a_ellipse_implicit_distance_and_face_events_independent_of_g1(){
         for i in 0..=64 {
             let u=std::f64::consts::TAU*(i as f64)/64.;
             let v=section.evaluate(u).unwrap();
-            let delta=v.sub(origin);
-            let radial=delta.sub(axis.scale(delta.dot(axis)));
+            let delta=p(v.x-origin.x,v.y-origin.y,v.z-origin.z);
+            let axial=delta.dot(axis);
+            let radial=p(delta.x-axis.x*axial,
+                delta.y-axis.y*axial,delta.z-axis.z*axial);
             assert!((radial.length_squared()-cyl.radius*cyl.radius).abs()<1e-10);
             assert!((v.y-section.height_y).abs()<1e-10);
         }
