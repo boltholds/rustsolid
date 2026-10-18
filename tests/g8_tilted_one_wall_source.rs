@@ -108,10 +108,10 @@ fn g8a_ellipse_implicit_distance_and_face_events_independent_of_g1(){
             let u=std::f64::consts::TAU*(i as f64)/64.;
             let v=section.evaluate(u).unwrap();
             let delta=p(v.x-origin.x,v.y-origin.y,v.z-origin.z);
-            let axial=delta.dot(axis);
+            let axial=delta.x*axis.x+delta.y*axis.y+delta.z*axis.z;
             let radial=p(delta.x-axis.x*axial,
                 delta.y-axis.y*axial,delta.z-axis.z*axial);
-            assert!((radial.length_squared()-cyl.radius*cyl.radius).abs()<1e-10);
+            assert!(((radial.x*radial.x+radial.y*radial.y+radial.z*radial.z)-cyl.radius*cyl.radius).abs()<1e-10);
             assert!((v.y-section.height_y).abs()<1e-10);
         }
         for &v in &section.wall_points{
