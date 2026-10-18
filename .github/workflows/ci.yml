@@ -17,6 +17,8 @@ jobs:
         run: cargo test --all-targets
       - name: G8a tilted one-wall source geometry and physical G1 contracts
         run: cargo test --test g8_tilted_one_wall_source
+      - name: G8b independent tilted one-wall source volume brackets
+        run: cargo test --test independent_tilted_volume
       - name: Independent source-controlled regression cases
         run: cargo test --test regression_corpus
       - name: Mandatory operator contract gate (analytic, metamorphic, boundaries)
