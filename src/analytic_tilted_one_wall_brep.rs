@@ -10,6 +10,8 @@ use crate::{
     CoedgeGeometry,CoedgeId,Curve2,Curve2Id,Curve3,Curve3Id,
     Edge,EdgeGeometry,EdgeId,FaceGeometry,FaceId,FaceSense,GeometryError,
     GeometryTolerance,GlobalArcRef,GlobalEventId,GraphOperand,
+    GlobalAnalyticEdgeSplitPlan,GlobalAnalyticEdgeSplitResult,
+    AnalyticSourceEdgeSplitHold,
     HarmonicCurve2,IndependentTiltedVolumeOracle,IndependentTiltedVolumeResult,
     Line2,Line3,Loop,LoopId,LoopRole,MassProperties,ParameterDomain2,
     ParameterRange,Point2Param,Point3,RadialTopologyCertificate,
@@ -110,6 +112,7 @@ pub enum TiltedShellHold{
     MissingPhysicalG1Arc,DuplicatePhysicalG1Arc,UncertainPhysicalEvent,
     MissingSourceFace,SourceCurveMismatch,InvalidUvChart,
     InvalidMaterialSide,InvalidRadialTopology,UnexpectedShellStructure,
+    UpstreamEdgeSplit(AnalyticSourceEdgeSplitHold),
 }
 #[derive(Debug,Clone,Copy,PartialEq,Eq)]
 pub struct TiltedCutBinding{
@@ -320,6 +323,16 @@ impl TiltedOneWallShellPlan{
             });
             result_edges[index]=id;
         }
+        // Original MIN-X cap-wall edges are physically split at G1
+        // boundary endpoints. Compare against the source-derived *split*
+        // BrepModel, never against the unsplit AABB edge carrier.
+        let edge_splits=match GlobalAnalyticEdgeSplitPlan::build(
+            first,second,tol)? {
+            GlobalAnalyticEdgeSplitResult::Ready(x)=>x,
+            GlobalAnalyticEdgeSplitResult::Held(reason)=>
+                return Ok(TiltedOneWallShellResult::Held(
+                    Hold::UpstreamEdgeSplit(reason))),
+        };
         let originals=[
             (0,[faces_src[0],faces_src[2]]),
             (1,[faces_src[0],faces_src[3]]),
@@ -338,7 +351,7 @@ impl TiltedOneWallShellPlan{
         ];
         let mut used=BTreeSet::<EdgeId>::new();
         for (idx,source_faces) in originals{
-            if !certify_original_material_edge(&a,
+            if !certify_original_material_edge(&edge_splits.split_sources[0],
                 &builder.model.edges[idx],&builder.model.vertices,
                 source_faces,eps,&mut used){
                 return Ok(TiltedOneWallShellResult::Held(
