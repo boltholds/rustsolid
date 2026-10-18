@@ -64,3 +64,37 @@ then a versioned G5 executor/persistent artifact before exposing this
 family as an executable Boolean. Tilted cylinder and general UV
 arrangement should follow once their independent curvature and region
 classifiers prove closure and mass.
+
+## G7b independent source mass/volume oracle
+
+G7b uses two mathematically independent calculations rather than the
+G7a source circular-segment antiderivative:
+
+1. From the original cylinder radius and the wall clipping plane,
+   construct both a polygonal chord approximation **inside** the
+   retained right-hand disk segment and a tangent-intersection polygon
+   **outside** it. Their actual shoelace areas bound source material
+   volume from below and above after subtracting from the original box.
+   Dyadic angular subdivision continues to the source-relative numeric
+   budget. The G7a analytic mass formula is never used for this path.
+2. Integrate the signed flux F=(x-cx,0,0), div F=1, across the actual
+   B-rep outer X wall, both retained pieces of the X-min source wall
+   and the reversed cylinder. Actual YZ polygon areas come from
+   physical edge/coedge loops; the cylindrical contribution integrates
+   -radius^2 cos²(theta) from the two true major-arc Edge3 carriers.
+
+The independently bracketed source material, actual RESULT boundary
+flux, candidate component mass and total retained+removed box volume
+must agree. Boundary orientation and source revisions are revalidated
+before issuing `volume_certified=true`.
+
+As in G4c/G6b, the convex geometric enclosures are exact in real
+arithmetic, with practical compensated floating point and explicit
+f64 error margin; this is **not** directed-rounding interval proof
+for arbitrary IEEE-754 NURBS. Numerically unresolved input is Held.
+
+The G7b oracle itself is read-only and maintains `can_apply=false`.
+A G5 document executor/persistent schema must be added and separately
+verified before this new family becomes directly editable in Gefest.
+
+Tests: `cargo test --test independent_one_wall_volume`.
