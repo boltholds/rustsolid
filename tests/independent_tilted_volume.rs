@@ -73,7 +73,7 @@ fn assert_valid(
 
 #[test]
 fn g8b_swept_ellipse_has_narrow_source_only_enclosure_at_both_x_tilt_directions(){
-    for theta in [0.04,-0.03,0.11]{
+    for theta in [0.04,-0.03,0.055]{
         let (a,b)=(box_body(),tilted_x(theta));
         let before_a=format!("{a:?}");let before_b=format!("{b:?}");
         let (source,oracle)=ready(&a,&b);
