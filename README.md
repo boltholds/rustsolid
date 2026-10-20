@@ -15,9 +15,10 @@ contracts rather than retaining permanent compatibility shims.
 | `rustsolid-foundation` | Point types, numerical tolerances, errors |
 | `rustsolid-predicates` | Adaptive orientation and plane predicates |
 | `rustsolid-geometry` | Analytic curves/surfaces and parameter domains |
+| `rustsolid-source` | Immutable, versioned SourceSpec/SourceSnapshot and BooleanIntent |
 | `rustsolid-uv` | Explicitly polygonal UV processing via `geo` |
 | `rustsolid-intersect` | Untrimmed surface intersections and certified witnesses |
-| `rustsolid-topology` | B-rep incidence records, IDs, and atomic face/coedge assembly |
+| `rustsolid-topology` | Incidence and checked canonical analytic BrepModel (no mesh/mass) |
 | `rustsolid` | Transitional Boolean/document/meshing implementation and CLI |
 
 Each low-level crate must compile and test **without the monolithic `rustsolid`
@@ -27,12 +28,14 @@ runs separately against the integrated kernel.
 ```sh
 python3 tests/check_workspace_boundaries.py
 cargo test -p rustsolid-geometry --all-targets
+cargo test -p rustsolid-source --all-targets
 cargo test -p rustsolid-topology --all-targets
+cargo test --test canonical_model_port
 cargo test -p rustsolid-intersect --all-targets
 cargo test --workspace --all-targets
 ```
 
-See [RFC 0003 — core SourceSpec/BrepModel/TopologyLineage/CertifiedCandidate contracts](docs/architecture/kernel-contracts-v1.md), [the machine-readable contract states](docs/architecture/kernel-contracts-v1.json), and [RFC 0002 — complete target crate architecture](docs/architecture/kernel-crate-blueprint-v1.md), its [machine-readable ownership plan](docs/architecture/kernel-crate-plan-v1.json), and [RFC 0001 — current workspace boundaries](docs/workspace-boundaries.md).
+See [PR #43 — source snapshots and canonical B-rep](https://github.com/boltholds/rustsolid/pull/43), [RFC 0003 — core SourceSpec/BrepModel/TopologyLineage/CertifiedCandidate contracts](docs/architecture/kernel-contracts-v1.md), [the machine-readable contract states](docs/architecture/kernel-contracts-v1.json), and [RFC 0002 — complete target crate architecture](docs/architecture/kernel-crate-blueprint-v1.md), its [machine-readable ownership plan](docs/architecture/kernel-crate-plan-v1.json), and [RFC 0001 — current workspace boundaries](docs/workspace-boundaries.md).
 The `geo` adapter provides **polygonal** operations, not certified analytic
 B-rep reconstruction; it must not replace canonical circular, elliptical or
 other source curves without explicit geometric reconciliation.

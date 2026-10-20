@@ -2,7 +2,7 @@
 
 **Status:** TARGET DESIGN ONLY; implementation NOT complete. **Baseline:** `53d8a8e3385e4b67076536465706e2bb34c3cc0f` (G8c / PR #41).
 
-The current code includes 6 partially extracted crates and a transitional root `rustsolid` package. This RFC defines 20 eventual workspace packages (19 library crates and the `gefest-geometry` app) and maps every baseline 89 `src/**/*.rs` module. See `kernel-crate-plan-v1.json` for machine-readable ownership, dependency limits and mandatory splits.
+The current implementation branch includes 7 partially extracted crates and a transitional root `rustsolid` package. This RFC defines 20 eventual workspace packages (19 library crates and the `gefest-geometry` app) and maps every baseline 89 `src/**/*.rs` module. See `kernel-crate-plan-v1.json` for machine-readable ownership, dependency limits and mandatory splits.
 
 ## Why design precedes extraction
 
@@ -22,7 +22,7 @@ The dependency lists are **allowed boundaries**, not requirements to eagerly add
 | `rustsolid-uv` | partial | Source-neutral analytic UV arrangement and polygon-only geo adapter | `rustsolid-geometry`, `rustsolid-predicates` |
 | `rustsolid-intersect` | partial | Untrimmed curve/surface and surface/surface intersections | `rustsolid-foundation`, `rustsolid-geometry`, `rustsolid-predicates` |
 | `rustsolid-topology` | partial | Canonical B-rep graph, geometry attachments, scoped IDs and invariants | `rustsolid-foundation`, `rustsolid-geometry`, `rustsolid-predicates` |
-| `rustsolid-source` | planned | Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep | `rustsolid-foundation`, `rustsolid-geometry` |
+| `rustsolid-source` | partial | Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep | `rustsolid-foundation`, `rustsolid-geometry` |
 | `rustsolid-construct` | planned | Source primitive B-rep builders (box/cylinder/extrude, bores); source parameters live in rustsolid-source | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-predicates`, `rustsolid-source` |
 | `rustsolid-imprint` | planned | Trimmed source-face intersections, G1 graph and provenance | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |
 | `rustsolid-classification` | planned | G2/G3 cell and whole-solid material classification | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |

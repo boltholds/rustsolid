@@ -159,7 +159,16 @@ def evaluate_design(s: dict) -> Result:
 
 def check_declarations(contract: dict, blueprint: dict, rfc: str) -> None:
     assert contract["schema"] == "rustsolid.kernel_contracts.v1"
-    assert contract["status"] == "design_only_no_new_crates"
+    assert contract["status"] in {"design_only_no_new_crates", "partial_implementation"}
+    if contract["status"] == "partial_implementation":
+        impl = contract["implementation"]
+        assert set(impl) == set(EXPECTED_OWNERS)
+        for name in ("SourceSpec", "BrepModel"):
+            entry = impl[name]
+            assert entry["status"] == "implemented_separately_not_integrated"
+            assert (ROOT / entry["rust_file"]).is_file(), f"missing Rust implementation: {name}"
+        for name in ("TopologyLineage", "CertifiedCandidate"):
+            assert impl[name]["status"] == "design_only"
     assert set(contract["contracts"]) == set(EXPECTED_OWNERS)
     assert len(contract["flow"]) == 6
     assert contract["flow"][-1]["from"] == "CertifiedCandidate"

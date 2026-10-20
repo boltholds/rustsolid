@@ -1,6 +1,6 @@
 # RFC 0003 — RustSolid G4–G8 cross-crate contracts v1
 
-**Status:** PARTIAL IMPLEMENTATION. SourceSpec/SourceSnapshot implemented as a new crate in the stacked implementation PR; the remaining contracts are not yet production-integrated.  
+**Status:** PARTIAL IMPLEMENTATION. SourceSpec/SourceSnapshot and mesh-/mass-free BrepDraft/BrepModel exist in independent crates; legacy G7/G8 production consumers are not migrated, and TopologyLineage/CertifiedCandidate remain design-only.  
 **Parent architecture:** [RFC 0002](kernel-crate-blueprint-v1.md) and [source ownership ledger](kernel-crate-plan-v1.json).  
 **Base implementation investigated:** G5, G7 and G8c on PR #41, head before this RFC \`45d9fee\`.  
 **Machine-readable agreement:** [kernel-contracts-v1.json](kernel-contracts-v1.json).  
@@ -244,3 +244,11 @@ Deferred for implementation: exact binary canonical hashing layout/golden vector
 ## Implementation note — initial source slice
 
 The new `rustsolid-source` package implements validated immutable AxisAlignedBlock and FiniteCylinder sources, explicit monotonic versions, functional snapshots and canonical *full byte* SourceStamp values. The stamp is collision-free by complete encoding, not a cryptographic digest; a future compact digest requires separate golden-vector verification. This first slice does not yet implement Extrusion, source-based builders, GeometryKind extensibility or document commit. Existing G7/G8 operations still run through the transitional model pending adoption.
+
+## Implementation evidence — PR #43 (stacked on #41)
+
+- rustsolid-source/src/lib.rs: validated immutable AxisAlignedBlock and FiniteCylinder sources, nonzero stable SourceId, monotonic SourceRevision, functional SourceSnapshot::with_replacement, canonical byte SourceStamp, version- and unit-bound BooleanIntent. Extrusion and imported B-rep remain deferred, with no misleading fallback.
+- rustsolid-topology/src/canonical.rs: new analytic BrepDraft -> checked BrepModel with PRIVATE checked-model fields. Only topological/coedge and sampled geometric binding consistency is claimed; global material correctness, collision detection, nesting and volume are intentionally left to independent validation. The model owns no display Mesh, MassProperties, bbox cache, or algorithm-origin tag.
+- tests/canonical_model_port.rs: TEST-ONLY migration qualification of a box, a periodic closed cylinder, G7 one-wall and G8c tilted source-owned analytic shells. Physical edge parameter to per-face Curve2 mapping is derived and independently checked at multiple points. This is not a production compatibility adapter.
+- New source and topology crates compile/test independently; full legacy G4–G8 integrated regression remains mandatory. Actual G7/G8 producers still use the old monolithic BrepModel until migrated; no production Boolean/Document graph was replaced.
+- SourceStamp is a full canonical byte encoding (no hashing collisions) for the present source primitives, not an authenticated document signature. A compact digest and persistent archive codec require a separate versioned format/review.

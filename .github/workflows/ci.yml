@@ -42,6 +42,8 @@ jobs:
         run: python3 tests/check_workspace_boundaries.py
       - name: Test library, integration tests and CLI
         run: cargo test --workspace --all-targets
+      - name: New canonical analytic B-rep accepts original source, G7 and G8 shells
+        run: cargo test --test canonical_model_port
       - name: G8a tilted one-wall source geometry and physical G1 contracts
         run: cargo test --test g8_tilted_one_wall_source
       - name: G8b independent tilted one-wall source volume brackets
