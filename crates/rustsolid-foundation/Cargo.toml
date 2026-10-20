@@ -1,0 +1,9 @@
+[package]
+name = "rustsolid-foundation"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Coordinate, tolerance and basic error types for RustSolid"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

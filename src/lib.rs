@@ -6,10 +6,8 @@
 //! The source is original and does not incorporate decompiled proprietary code.
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 mod brep;
-mod tolerance;
 mod edit;
 mod identity;
 mod journal;
@@ -87,7 +85,7 @@ mod multi_through_hole;
 mod structural_editor;
 mod face_region_mesher;
 pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
-pub use tolerance::GeometryTolerance;
+pub use rustsolid_foundation::{GeometryError, GeometryTolerance, Point2, Point3};
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
 pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, TopologyIdentity};
 pub use journal::JournalStats;
@@ -303,67 +301,6 @@ pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterD
     HarmonicCurve2, CylinderSection2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives, OrientedCircle2,
     Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GeometryError {
-    InvalidProfile(&'static str),
-    InvalidDimension(&'static str),
-    InvalidTopology(String),
-    InvalidTolerance(&'static str),
-    InvalidEdit(String),
-    TriangulationFailed,
-}
-
-impl fmt::Display for GeometryError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidProfile(reason) => write!(f, "invalid extrusion profile: {reason}"),
-            Self::InvalidDimension(reason) => write!(f, "invalid dimension: {reason}"),
-            Self::InvalidTopology(reason) => write!(f, "invalid topology: {reason}"),
-            Self::InvalidTolerance(reason) => write!(f, "invalid tolerance: {reason}"),
-            Self::InvalidEdit(reason) => write!(f, "invalid edit: {reason}"),
-            Self::TriangulationFailed => write!(f, "polygon triangulation failed"),
-        }
-    }
-}
-
-impl std::error::Error for GeometryError {}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Point2 {
-    pub x: f64,
-    pub z: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Point3 {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
-
-impl Point3 {
-    pub fn array(self) -> [f64; 3] { [self.x, self.y, self.z] }
-    pub fn is_finite(self) -> bool { self.x.is_finite() && self.y.is_finite() && self.z.is_finite() }
-    pub(crate) fn add(self, v: Point3) -> Self {
-        Self { x: self.x + v.x, y: self.y + v.y, z: self.z + v.z }
-    }
-    pub(crate) fn sub(self, v: Point3) -> Self {
-        Self { x: self.x - v.x, y: self.y - v.y, z: self.z - v.z }
-    }
-    pub(crate) fn scale(self, s: f64) -> Self {
-        Self { x: self.x * s, y: self.y * s, z: self.z * s }
-    }
-    pub(crate) fn dot(self, v: Point3) -> f64 { self.x * v.x + self.y * v.y + self.z * v.z }
-    pub(crate) fn cross(self, v: Point3) -> Self {
-        Self {
-            x: self.y * v.z - self.z * v.y,
-            y: self.z * v.x - self.x * v.z,
-            z: self.x * v.y - self.y * v.x,
-        }
-    }
-    pub(crate) fn length_squared(self) -> f64 { self.dot(self) }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VertexId(pub u32);

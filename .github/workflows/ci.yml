@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  crate-boundaries:
+    name: Isolated ${{ matrix.package }} tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - rustsolid-foundation
+          - rustsolid-predicates
+          - rustsolid-uv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test one crate without the top-level modeling kernel
+        run: cargo test -p ${{ matrix.package }} --all-targets
+
   test:
     name: Compile and test (stable Rust)
     runs-on: ubuntu-latest
@@ -14,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test library, integration tests and CLI
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets
       - name: G8a tilted one-wall source geometry and physical G1 contracts
         run: cargo test --test g8_tilted_one_wall_source
       - name: G8b independent tilted one-wall source volume brackets
