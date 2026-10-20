@@ -1,5 +1,7 @@
 # RustSolid workspace boundaries — RFC 0001
 
+> **Four cross-crate contracts:** [RFC 0003](architecture/kernel-contracts-v1.md) specifies immutable source snapshots, mesh-free canonical BrepModel, persistent topology lineage and proof-bound CertifiedCandidate. This is design only; not new Rust packages.
+
 > **Design gate:** The complete target architecture is specified in [RFC 0002](architecture/kernel-crate-blueprint-v1.md) and the [crate/source ownership ledger](architecture/kernel-crate-plan-v1.json). This RFC only describes partially extracted crates and is not the final dependency design.
 
 Status: **in progress**. This branch starts the restructuring on top of

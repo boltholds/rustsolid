@@ -207,6 +207,10 @@ Exactly one **primary target** is assigned to every existing Rust source module;
 
 No empty packages for future NURBS, constraints, spatial indexing or STEP IO without executable requirements; extend existing geometry/intersect contracts first.
 
+## Binding four cross-crate contracts (RFC 0003)
+
+The full SourceSpec, BrepModel, TopologyLineage and CertifiedCandidate design is in [RFC 0003](kernel-contracts-v1.md); the [JSON contract inventory](kernel-contracts-v1.json) and [synthetic fail-closed scenarios](kernel-contract-scenarios-v1.json) are checked by `tests/validate_kernel_contracts.py`. **The tests inspect contract descriptions, not actual CAD implementation**. New physical extraction remains blocked until source versioning, mesh-free topology, independent G8 validation, persistent feature naming and commit semantics have reviewable implementation tests.
+
 ## CI and migration rules
 
 1. Architecture gate: `python3 tests/validate_crate_blueprint.py` checks declared target packages, acyclic design, mandatory file splits, extracted manifest presence and coverage of *all current* `src/**/*.rs` paths. It does not imply unimplemented packages compile.

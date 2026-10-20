@@ -32,7 +32,7 @@ cargo test -p rustsolid-intersect --all-targets
 cargo test --workspace --all-targets
 ```
 
-See [RFC 0002 — complete target crate architecture](docs/architecture/kernel-crate-blueprint-v1.md), its [machine-readable ownership plan](docs/architecture/kernel-crate-plan-v1.json), and [RFC 0001 — current workspace boundaries](docs/workspace-boundaries.md).
+See [RFC 0003 — core SourceSpec/BrepModel/TopologyLineage/CertifiedCandidate contracts](docs/architecture/kernel-contracts-v1.md), [the machine-readable contract states](docs/architecture/kernel-contracts-v1.json), and [RFC 0002 — complete target crate architecture](docs/architecture/kernel-crate-blueprint-v1.md), its [machine-readable ownership plan](docs/architecture/kernel-crate-plan-v1.json), and [RFC 0001 — current workspace boundaries](docs/workspace-boundaries.md).
 The `geo` adapter provides **polygonal** operations, not certified analytic
 B-rep reconstruction; it must not replace canonical circular, elliptical or
 other source curves without explicit geometric reconciliation.
