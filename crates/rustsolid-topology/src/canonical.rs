@@ -312,7 +312,7 @@ impl BrepModel {
             }
             let scale=a.point.sub(b.point);
             let extent=scale.x.hypot(scale.y).hypot(scale.z)
-                .max(a.point.x.abs().min(1e12)*0.0); // origin-independent local extent
+                ; // origin-independent local extent
             let budget=self.tolerance.length_at(extent.max(1.0))*32.0;
             for (point,t) in [(a.point,t0),(b.point,t1)] {
                 let model_point=curve.evaluate(t)?;
