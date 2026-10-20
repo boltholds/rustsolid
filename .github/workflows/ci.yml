@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  crate-boundaries:
+    name: Isolated ${{ matrix.package }} tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - rustsolid-foundation
+          - rustsolid-predicates
+          - rustsolid-geometry
+          - rustsolid-intersect
+          - rustsolid-topology
+          - rustsolid-uv
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test one crate without the top-level modeling kernel
+        run: cargo test -p ${{ matrix.package }} --all-targets
+
   test:
     name: Compile and test (stable Rust)
     runs-on: ubuntu-latest
@@ -13,8 +33,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Validate four core contracts and synthetic fail-closed gates
+        run: python3 tests/validate_kernel_contracts.py
+      - name: Validate full target crate blueprint and source ownership
+        run: python3 tests/validate_crate_blueprint.py
+      - name: Enforce Cargo workspace dependency boundaries
+        run: python3 tests/check_workspace_boundaries.py
       - name: Test library, integration tests and CLI
-        run: cargo test --all-targets
+        run: cargo test --workspace --all-targets
       - name: G8a tilted one-wall source geometry and physical G1 contracts
         run: cargo test --test g8_tilted_one_wall_source
       - name: G8b independent tilted one-wall source volume brackets
@@ -26,7 +52,7 @@ jobs:
       - name: Mandatory operator contract gate (analytic, metamorphic, boundaries)
         run: cargo test --test operator_contracts
       - name: Independent surface intersection mathematical contracts
-        run: cargo test --test surface_intersection_contracts
+        run: cargo test -p rustsolid-intersect --test surface_intersection_contracts
       - name: Independent B-rep face trimming contracts
         run: cargo test --test trimmed_intersections
       - name: Validate versioned official Parasolid capability evidence

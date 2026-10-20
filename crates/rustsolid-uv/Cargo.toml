@@ -1,0 +1,10 @@
+[package]
+name = "rustsolid-uv"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Explicitly polygonal UV utilities and geo adapter; does not alter canonical analytic curves"
+
+[dependencies]
+geo = { workspace = true }
+rustsolid-geometry = { path = "../rustsolid-geometry" }

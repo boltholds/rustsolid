@@ -1,0 +1,15 @@
+[package]
+name = "rustsolid-intersect"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Surface intersection math independent of B-rep topology"
+
+[dependencies]
+rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }
+rustsolid-predicates = { path = "../rustsolid-predicates" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

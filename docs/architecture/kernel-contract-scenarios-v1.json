@@ -1,0 +1,477 @@
+{
+  "schema": "rustsolid.kernel_contract_scenarios.v1",
+  "status": "synthetic_architecture_gate_not_geometric_execution",
+  "base": {
+    "source": {
+      "specs": [
+        {
+          "id": "source-box",
+          "revision": 12,
+          "units": "mm",
+          "finite": true,
+          "positive_dimensions": true,
+          "valid_frame": true
+        },
+        {
+          "id": "source-cylinder",
+          "revision": 5,
+          "units": "mm",
+          "finite": true,
+          "positive_dimensions": true,
+          "valid_frame": true
+        }
+      ],
+      "operands": [
+        {
+          "id": "source-box",
+          "revision": 12
+        },
+        {
+          "id": "source-cylinder",
+          "revision": 5
+        }
+      ],
+      "snapshot_stamp": "test-source-stamp-v1",
+      "candidate_stamp": "test-source-stamp-v1",
+      "certificate_stamp": "test-source-stamp-v1",
+      "current_stamp": "test-source-stamp-v1",
+      "explicit_unit_transform": false
+    },
+    "operation": {
+      "kind": "Difference",
+      "supported": true
+    },
+    "brep": {
+      "kind": "Solids",
+      "closed_manifold": true,
+      "oriented_shells": true,
+      "valid_carrier_catalog": true,
+      "pcurve_3d_agreement": true,
+      "physical_vertex_binding": true,
+      "seam_not_extra_cut": true,
+      "inner_loops_valid": true,
+      "shell_nesting_verified": true,
+      "exact_analytic_carriers": true,
+      "source_face_coverage_complete": true,
+      "material_classification_complete": true,
+      "supported_domain": true,
+      "empty_proof": false
+    },
+    "validation": {
+      "certifier_owned": true,
+      "independent_paths": true,
+      "source_interval": [
+        3,
+        3.02
+      ],
+      "flux_interval": [
+        3.01,
+        3.03
+      ],
+      "measured_result_volume": 3.015,
+      "numerical_guard": 0.005,
+      "assurance": "GuardedF64",
+      "scoped_family": "G7OneWall",
+      "guarded_allowlist": [
+        "G7OneWall",
+        "G8TiltedOneWall"
+      ],
+      "formal_interval_proof": false
+    },
+    "lineage": {
+      "provenance_complete": true,
+      "merge_source_proven": true,
+      "names_recycled": false,
+      "unresolved_names": false,
+      "dependent_reference_ambiguous": false
+    },
+    "commit": {
+      "expected_revision": 7,
+      "current_revision": 7,
+      "candidate_incarnation": "doc-local-001",
+      "current_incarnation": "doc-local-001",
+      "candidate_deserialized": false,
+      "revalidation_succeeded": true,
+      "history_reserved": true,
+      "already_committed": false
+    }
+  },
+  "cases": [
+    {
+      "id": "g7_guarded_ready",
+      "expected": "Ready",
+      "patch": {}
+    },
+    {
+      "id": "g8_guarded_ready",
+      "expected": "Ready",
+      "patch": {
+        "validation.scoped_family": "G8TiltedOneWall"
+      }
+    },
+    {
+      "id": "formally_certified_ready",
+      "expected": "Ready",
+      "patch": {
+        "validation.assurance": "CertifiedInterval",
+        "validation.formal_interval_proof": true,
+        "validation.guarded_allowlist": [],
+        "validation.numerical_guard": 0
+      }
+    },
+    {
+      "id": "ambiguous_unreferenced_new_feature",
+      "expected": "Ready",
+      "patch": {
+        "lineage.unresolved_names": true,
+        "lineage.dependent_reference_ambiguous": false
+      }
+    },
+    {
+      "id": "same_operand_identity_difference_empty",
+      "expected": "Ready",
+      "patch": {
+        "source.operands.1.id": "source-box",
+        "source.operands.1.revision": 12,
+        "brep.kind": "Empty",
+        "brep.empty_proof": true,
+        "validation.source_interval": [
+          0,
+          0
+        ],
+        "validation.flux_interval": [
+          0,
+          0
+        ],
+        "validation.measured_result_volume": 0
+      }
+    },
+    {
+      "id": "empty_with_disjointness_witness",
+      "expected": "Ready",
+      "patch": {
+        "brep.kind": "Empty",
+        "brep.empty_proof": true,
+        "validation.source_interval": [
+          0,
+          0
+        ],
+        "validation.flux_interval": [
+          0,
+          0
+        ],
+        "validation.measured_result_volume": 0
+      }
+    },
+    {
+      "id": "unknown_boolean_variant",
+      "expected": "Unsupported",
+      "patch": {
+        "operation.supported": false
+      }
+    },
+    {
+      "id": "different_source_unit_no_transform",
+      "expected": "Held",
+      "patch": {
+        "source.specs.1.units": "in"
+      }
+    },
+    {
+      "id": "explicit_unit_transform_allowed",
+      "expected": "Ready",
+      "patch": {
+        "source.specs.1.units": "in",
+        "source.explicit_unit_transform": true
+      }
+    },
+    {
+      "id": "invalid_source_coordinates",
+      "expected": "Held",
+      "patch": {
+        "source.specs.1.finite": false
+      }
+    },
+    {
+      "id": "invalid_source_frame",
+      "expected": "Held",
+      "patch": {
+        "source.specs.1.valid_frame": false
+      }
+    },
+    {
+      "id": "source_version_changed",
+      "expected": "Held",
+      "patch": {
+        "source.operands.1.revision": 6
+      }
+    },
+    {
+      "id": "duplicate_source_id",
+      "expected": "Held",
+      "patch": {
+        "source.specs.1.id": "source-box"
+      }
+    },
+    {
+      "id": "candidate_from_different_sources",
+      "expected": "Held",
+      "patch": {
+        "source.candidate_stamp": "other-stamp"
+      }
+    },
+    {
+      "id": "validation_for_different_sources",
+      "expected": "Held",
+      "patch": {
+        "source.certificate_stamp": "other-stamp"
+      }
+    },
+    {
+      "id": "source_changed_before_commit",
+      "expected": "Held",
+      "patch": {
+        "source.current_stamp": "other-stamp"
+      }
+    },
+    {
+      "id": "open_nonmanifold",
+      "expected": "Held",
+      "patch": {
+        "brep.closed_manifold": false
+      }
+    },
+    {
+      "id": "inverted_material_orientation",
+      "expected": "Held",
+      "patch": {
+        "brep.oriented_shells": false
+      }
+    },
+    {
+      "id": "unknown_curve_catalog_id",
+      "expected": "Held",
+      "patch": {
+        "brep.valid_carrier_catalog": false
+      }
+    },
+    {
+      "id": "missing_source_pcurve_binding",
+      "expected": "Held",
+      "patch": {
+        "brep.pcurve_3d_agreement": false
+      }
+    },
+    {
+      "id": "proximity_only_vertex_merge",
+      "expected": "Held",
+      "patch": {
+        "brep.physical_vertex_binding": false
+      }
+    },
+    {
+      "id": "periodic_seam_as_new_material_cut",
+      "expected": "Held",
+      "patch": {
+        "brep.seam_not_extra_cut": false
+      }
+    },
+    {
+      "id": "invalid_inner_trim",
+      "expected": "Held",
+      "patch": {
+        "brep.inner_loops_valid": false
+      }
+    },
+    {
+      "id": "unproved_multi_shell_nesting",
+      "expected": "Held",
+      "patch": {
+        "brep.shell_nesting_verified": false
+      }
+    },
+    {
+      "id": "polygonized_canonical_carrier",
+      "expected": "Held",
+      "patch": {
+        "brep.exact_analytic_carriers": false
+      }
+    },
+    {
+      "id": "missing_source_face_coverage",
+      "expected": "Held",
+      "patch": {
+        "brep.source_face_coverage_complete": false
+      }
+    },
+    {
+      "id": "correct_volume_wrong_material",
+      "expected": "Held",
+      "patch": {
+        "brep.material_classification_complete": false
+      }
+    },
+    {
+      "id": "missing_source_volume",
+      "expected": "Held",
+      "patch": {
+        "validation.source_interval": null
+      }
+    },
+    {
+      "id": "missing_actual_boundary_flux",
+      "expected": "Held",
+      "patch": {
+        "validation.flux_interval": null
+      }
+    },
+    {
+      "id": "disjoint_volume_intervals",
+      "expected": "Held",
+      "patch": {
+        "validation.flux_interval": [
+          4,
+          5
+        ]
+      }
+    },
+    {
+      "id": "declared_volume_not_supported",
+      "expected": "Held",
+      "patch": {
+        "validation.measured_result_volume": 5
+      }
+    },
+    {
+      "id": "negative_numerical_guard",
+      "expected": "Held",
+      "patch": {
+        "validation.numerical_guard": -1
+      }
+    },
+    {
+      "id": "validation_not_independent",
+      "expected": "Held",
+      "patch": {
+        "validation.independent_paths": false
+      }
+    },
+    {
+      "id": "fabricated_validation_report",
+      "expected": "Held",
+      "patch": {
+        "validation.certifier_owned": false
+      }
+    },
+    {
+      "id": "guarded_float_outside_scoped_family",
+      "expected": "Held",
+      "patch": {
+        "validation.scoped_family": "GeneralNurbs"
+      }
+    },
+    {
+      "id": "interval_claim_missing_rounding_proof",
+      "expected": "Held",
+      "patch": {
+        "validation.assurance": "CertifiedInterval",
+        "validation.formal_interval_proof": false
+      }
+    },
+    {
+      "id": "lineage_missing_source_carriers",
+      "expected": "Held",
+      "patch": {
+        "lineage.provenance_complete": false
+      }
+    },
+    {
+      "id": "lineage_merges_based_only_on_proximity",
+      "expected": "Held",
+      "patch": {
+        "lineage.merge_source_proven": false
+      }
+    },
+    {
+      "id": "lineage_name_recycled",
+      "expected": "Held",
+      "patch": {
+        "lineage.names_recycled": true
+      }
+    },
+    {
+      "id": "ambiguous_used_reference",
+      "expected": "Held",
+      "patch": {
+        "lineage.unresolved_names": true,
+        "lineage.dependent_reference_ambiguous": true
+      }
+    },
+    {
+      "id": "foreign_document_candidate",
+      "expected": "Held",
+      "patch": {
+        "commit.candidate_incarnation": "doc-foreign"
+      }
+    },
+    {
+      "id": "stale_expected_revision",
+      "expected": "Held",
+      "patch": {
+        "commit.expected_revision": 6
+      }
+    },
+    {
+      "id": "serialized_candidate_is_not_commit_authority",
+      "expected": "Held",
+      "patch": {
+        "commit.candidate_deserialized": true
+      }
+    },
+    {
+      "id": "failed_pre_commit_revalidation",
+      "expected": "Held",
+      "patch": {
+        "commit.revalidation_succeeded": false
+      }
+    },
+    {
+      "id": "undo_checkpoint_unavailable",
+      "expected": "Held",
+      "patch": {
+        "commit.history_reserved": false
+      }
+    },
+    {
+      "id": "already_committed",
+      "expected": "Held",
+      "patch": {
+        "commit.already_committed": true
+      }
+    },
+    {
+      "id": "empty_without_source_witness",
+      "expected": "Held",
+      "patch": {
+        "brep.kind": "Empty",
+        "brep.empty_proof": false,
+        "validation.source_interval": [
+          0,
+          0
+        ],
+        "validation.flux_interval": [
+          0,
+          0
+        ],
+        "validation.measured_result_volume": 0
+      }
+    },
+    {
+      "id": "unsupported_shape_domain",
+      "expected": "Unsupported",
+      "patch": {
+        "brep.supported_domain": false
+      }
+    }
+  ]
+}

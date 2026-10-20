@@ -1,0 +1,340 @@
+{
+  "schema": "rustsolid.kernel_contracts.v1",
+  "status": "design_only_no_new_crates",
+  "rfc": "docs/architecture/kernel-contracts-v1.md",
+  "blueprint": "docs/architecture/kernel-crate-plan-v1.json",
+  "baseline_commit": "45d9fee780b336505980ee4f93967cb8b015ccdb",
+  "contracts": {
+    "SourceSpec": {
+      "owner": "rustsolid-source",
+      "role": "source_of_truth_input",
+      "required_fields": [
+        "id",
+        "revision",
+        "units",
+        "primitive"
+      ],
+      "domain_variants": [
+        "AxisAlignedBlock",
+        "FiniteCylinder",
+        "Extrusion"
+      ],
+      "reserved_unsupported_variants": [
+        "ImportedBrepRef"
+      ],
+      "forbidden_values": [
+        "BrepModel",
+        "Mesh",
+        "DocumentRevision",
+        "CertifiedCandidate",
+        "G7OneWallPlan",
+        "G8TiltedOneWallShellPlan"
+      ],
+      "invariants": [
+        "immutable_on_success",
+        "unique_source_id",
+        "revision_monotonic",
+        "no_nan_infinity",
+        "right_handed_frame",
+        "positive_dimensions",
+        "explicit_units",
+        "source_snapshot_stamped",
+        "document_stamp_checked",
+        "same_source_operand_allowed_for_verified_identity_case"
+      ],
+      "dependencies": [
+        "rustsolid-foundation",
+        "rustsolid-geometry"
+      ],
+      "operations": [
+        "validate",
+        "snapshot",
+        "resolve_exact_version"
+      ]
+    },
+    "BrepModel": {
+      "owner": "rustsolid-topology",
+      "role": "canonical_analytic_brep",
+      "required_fields": [
+        "incarnation",
+        "units",
+        "tolerance",
+        "vertices",
+        "edges",
+        "coedges",
+        "loops",
+        "faces",
+        "shells",
+        "carriers"
+      ],
+      "forbidden_values": [
+        "Mesh",
+        "MassProperties",
+        "BrepOrigin",
+        "BooleanIntent",
+        "TopologyLineage",
+        "DocumentRevision",
+        "ProducerSpecificFaceIndexContract"
+      ],
+      "invariants": [
+        "no_mutation_after_checked",
+        "all_carriers_reference_valid",
+        "two_opposite_uses_per_manifold_edge",
+        "next_prev_twin_consistent",
+        "3d_curve_matches_surface_pcurve",
+        "physical_vertex_identity_source_proven",
+        "periodic_seam_not_physical_cut",
+        "closed_edge_may_share_endpoint",
+        "faces_have_material_sense",
+        "multi_shell_supported_with_nesting_evidence",
+        "no_general_non_manifold_commit",
+        "explicit_edge_to_pcurve_parameter_map"
+      ],
+      "distinction": [
+        "BrepDraft",
+        "BrepModel"
+      ],
+      "operations": [
+        "validate_local_incidence",
+        "evaluate_3d_2d_bindings",
+        "closed_shell_check"
+      ]
+    },
+    "TopologyLineage": {
+      "owner": "rustsolid-document",
+      "role": "persistent_entity_provenance_per_revision",
+      "required_fields": [
+        "from_revision",
+        "to_revision",
+        "relations"
+      ],
+      "relation_variants": [
+        "Preserved",
+        "SplitFrom",
+        "MergedFrom",
+        "GeneratedFrom",
+        "Deleted",
+        "Unresolved"
+      ],
+      "forbids": [
+        "silent_name_rebinding",
+        "proximity_only_merge",
+        "recycled_tombstoned_names",
+        "persisted_runtime_handle_as_feature_name"
+      ],
+      "invariants": [
+        "result_references_revision_scoped",
+        "provenance_source_references_checked",
+        "relations_not_assumed_bijective",
+        "ambiguous_dependent_reference_blocks_commit",
+        "ambiguous_unreferenced_entity_may_commit_unresolved",
+        "undo_redo_create_new_revisions"
+      ],
+      "evidence_owner": "rustsolid-assembly",
+      "evidence_type": "LineageEvidence",
+      "operations": [
+        "resolve_unique",
+        "report_unresolved",
+        "apply_after_commit"
+      ]
+    },
+    "CertifiedCandidate": {
+      "owner": "rustsolid-boolean",
+      "role": "staged_verified_result_not_committed",
+      "required_fields": [
+        "geometry",
+        "source_stamp",
+        "source_versions",
+        "intended_operation",
+        "validated_evidence",
+        "lineage_evidence",
+        "preparation_anchor"
+      ],
+      "forbidden_values": [
+        "public_fields",
+        "Deserialize",
+        "can_apply_boolean",
+        "cached_display_mesh_as_truth",
+        "stored_mass_as_proof"
+      ],
+      "geometry_variants": [
+        "Empty",
+        "Solids"
+      ],
+      "outcome_variants": [
+        "Ready",
+        "Held",
+        "Unsupported"
+      ],
+      "invariants": [
+        "private_construction",
+        "single_use_commit",
+        "document_incarnation_bound",
+        "source_versions_bound",
+        "staged_brep_checked",
+        "complete_material_classification",
+        "complete_source_face_provenance",
+        "independent_source_volume",
+        "independent_actual_boundary_flux",
+        "bounded_numerical_assurance",
+        "no_direct_document_mutation",
+        "revalidated_on_commit"
+      ],
+      "validation_owner": "rustsolid-validation",
+      "dependency_exclusions": [
+        "rustsolid-meshing",
+        "rustsolid-document"
+      ],
+      "operations": [
+        "prepare",
+        "inspect",
+        "consume_once"
+      ]
+    }
+  },
+  "supporting_contracts": {
+    "LineageEvidence": {
+      "owner": "rustsolid-assembly",
+      "consumer": "rustsolid-document",
+      "must_not_reference": [
+        "FeatureId",
+        "DocumentRevision",
+        "runtime_display_mesh"
+      ]
+    },
+    "AcceptedValidation": {
+      "owner": "rustsolid-validation",
+      "must_not_reference": [
+        "StagedBooleanPlan",
+        "CertifiedCandidate",
+        "DocumentState",
+        "DisplayMesh"
+      ],
+      "tiers": [
+        "GuardedF64",
+        "CertifiedInterval"
+      ]
+    },
+    "SnapshotAnchor": {
+      "owner": "rustsolid-source",
+      "producer": "rustsolid-document",
+      "fields": [
+        "expected_revision",
+        "document_incarnation",
+        "immutable_source_stamp"
+      ],
+      "not_a_security_signature": true
+    },
+    "SourceVolumeEnclosure": {
+      "owner": "rustsolid-validation",
+      "reads": [
+        "immutable_source_specs",
+        "boolean_intent"
+      ],
+      "must_not_read": [
+        "BrepModel",
+        "CandidatePlan",
+        "ResultMass",
+        "G8cBoundaryFluxIntermediate"
+      ]
+    },
+    "ActualBoundaryFlux": {
+      "owner": "rustsolid-validation",
+      "reads": [
+        "candidate_analytic_BrepModel"
+      ],
+      "must_not_read": [
+        "G8bSourceIntermediate",
+        "StagedCandidateMassAsProof",
+        "CandidatePlan"
+      ]
+    }
+  },
+  "flow": [
+    {
+      "from": "SourceSnapshot",
+      "to": "ValidatedSources",
+      "step": "construct",
+      "source": "SourceSpec"
+    },
+    {
+      "from": "ValidatedSources",
+      "to": "BrepDraft",
+      "step": "imprint_uv_classification_assembly"
+    },
+    {
+      "from": "BrepDraft",
+      "to": "BrepModel",
+      "step": "topology_checks"
+    },
+    {
+      "from": "BrepModel",
+      "to": "AcceptedValidation",
+      "step": "independent_source_and_flux_comparison"
+    },
+    {
+      "from": "AcceptedValidation",
+      "to": "CertifiedCandidate",
+      "step": "sealed_boolean_prepare"
+    },
+    {
+      "from": "CertifiedCandidate",
+      "to": "DocumentRevision",
+      "step": "exclusive_atomic_commit"
+    }
+  ],
+  "invariants": {
+    "dependency_forbidden": [
+      [
+        "rustsolid-source",
+        "rustsolid-construct"
+      ],
+      [
+        "rustsolid-source",
+        "rustsolid-topology"
+      ],
+      [
+        "rustsolid-topology",
+        "rustsolid-source"
+      ],
+      [
+        "rustsolid-validation",
+        "rustsolid-construct"
+      ],
+      [
+        "rustsolid-validation",
+        "rustsolid-assembly"
+      ],
+      [
+        "rustsolid-validation",
+        "rustsolid-boolean"
+      ],
+      [
+        "rustsolid-boolean",
+        "rustsolid-document"
+      ],
+      [
+        "rustsolid-boolean",
+        "rustsolid-meshing"
+      ],
+      [
+        "rustsolid-document",
+        "rustsolid-qualification"
+      ]
+    ],
+    "mandatory_stage_tests": [
+      "source_immutable_revision",
+      "canonical_multi_shell_and_uv",
+      "single_physical_vertex_per_proven_event",
+      "source_only_volume",
+      "actual_brep_flux",
+      "guarded_f64_vs_certified_interval",
+      "reject_stale_source",
+      "reject_foreign_document",
+      "reject_stale_revision",
+      "ambiguous_used_lineage_fail_closed",
+      "pre_commit_strong_atomicity",
+      "reopen_recetifies_from_sources"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+[package]
+name = "rustsolid-predicates"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Adaptive predicates and certified-support geometry for RustSolid"
+
+[dependencies]
+robust = "1.2.0"
+rustsolid-foundation = { path = "../rustsolid-foundation" }

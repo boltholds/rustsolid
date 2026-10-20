@@ -4,6 +4,39 @@ RustSolid is an **independent Rust solid geometry kernel** being developed for [
 
 > **Status: v0.40 experimental kernel:** v0.39's restricted volume-changing cylinder/halfspace Boolean remains exposed through `geometry.v1`. The independent geometric kernel now also clips analytic intersections through real circular inner UV loops, constructs complete planar UV cells for one transverse straight cut, and reconciles dual source-face coedge carriers without promoting virtual seams to physical edges. **General Boolean between arbitrary B-rep bodies remains unsupported.**
 
+## Cargo workspace (in active migration)
+
+RustSolid is transitioning to independently compiled packages. **Breaking API
+changes are permitted**: adapt Gefest CAD and other consumers to the new kernel
+contracts rather than retaining permanent compatibility shims.
+
+| Crate | Ownership |
+| --- | --- |
+| `rustsolid-foundation` | Point types, numerical tolerances, errors |
+| `rustsolid-predicates` | Adaptive orientation and plane predicates |
+| `rustsolid-geometry` | Analytic curves/surfaces and parameter domains |
+| `rustsolid-uv` | Explicitly polygonal UV processing via `geo` |
+| `rustsolid-intersect` | Untrimmed surface intersections and certified witnesses |
+| `rustsolid-topology` | B-rep incidence records, IDs, and atomic face/coedge assembly |
+| `rustsolid` | Transitional Boolean/document/meshing implementation and CLI |
+
+Each low-level crate must compile and test **without the monolithic `rustsolid`
+package**. The layer graph is checked in CI; the full G4–G8 regression suite
+runs separately against the integrated kernel.
+
+```sh
+python3 tests/check_workspace_boundaries.py
+cargo test -p rustsolid-geometry --all-targets
+cargo test -p rustsolid-topology --all-targets
+cargo test -p rustsolid-intersect --all-targets
+cargo test --workspace --all-targets
+```
+
+See [RFC 0003 — core SourceSpec/BrepModel/TopologyLineage/CertifiedCandidate contracts](docs/architecture/kernel-contracts-v1.md), [the machine-readable contract states](docs/architecture/kernel-contracts-v1.json), and [RFC 0002 — complete target crate architecture](docs/architecture/kernel-crate-blueprint-v1.md), its [machine-readable ownership plan](docs/architecture/kernel-crate-plan-v1.json), and [RFC 0001 — current workspace boundaries](docs/workspace-boundaries.md).
+The `geo` adapter provides **polygonal** operations, not certified analytic
+B-rep reconstruction; it must not replace canonical circular, elliptical or
+other source curves without explicit geometric reconciliation.
+
 ## Current capabilities
 
 - **v0.40: bounded full planar UV cells and source-owned coedge reconciliation.**
