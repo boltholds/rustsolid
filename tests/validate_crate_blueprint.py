@@ -16,7 +16,7 @@ FORBIDDEN = {
     "rustsolid-geometry": {"rustsolid-topology", "rustsolid-boolean"},
     "rustsolid-topology": {"rustsolid-boolean", "rustsolid-modeling", "rustsolid-document", "rustsolid-meshing"},
     "rustsolid-validation": {
-        "rustsolid-assembly", "rustsolid-boolean", "rustsolid-classification",
+        "rustsolid-construct", "rustsolid-assembly", "rustsolid-boolean", "rustsolid-classification",
         "rustsolid-imprint", "rustsolid-modeling", "rustsolid-document",
         "rustsolid-meshing", "rustsolid-archive",
     },
@@ -34,6 +34,8 @@ def check(plan: dict) -> None:
     assert len(owners) >= 80, "baseline unexpectedly shrank"
     assert "rustsolid" not in packages, "transitional monolith must not be final target"
     assert packages["rustsolid-validation"]["status"] == "planned", "status discrepancy"
+    assert packages["rustsolid-source"]["dependencies"] == ["rustsolid-foundation", "rustsolid-geometry"], "immutable source must be a leaf below topology"
+    assert "rustsolid-source" in packages["rustsolid-validation"]["dependencies"], "oracle source dependency missing"
     assert packages["gefest-geometry"]["crate_path"] == "apps/gefest-geometry"
     assert set(FORBIDDEN).issubset(packages), "missing core boundary"
     for name, entry in packages.items():

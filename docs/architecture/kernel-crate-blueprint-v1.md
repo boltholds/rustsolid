@@ -2,7 +2,7 @@
 
 **Status:** TARGET DESIGN ONLY; implementation NOT complete. **Baseline:** `53d8a8e3385e4b67076536465706e2bb34c3cc0f` (G8c / PR #41).
 
-The current code includes 6 partially extracted crates and a transitional root `rustsolid` package. This RFC defines 19 eventual workspace packages (18 library crates and the `gefest-geometry` app) and maps every baseline 89 `src/**/*.rs` module. See `kernel-crate-plan-v1.json` for machine-readable ownership, dependency limits and mandatory splits.
+The current code includes 6 partially extracted crates and a transitional root `rustsolid` package. This RFC defines 20 eventual workspace packages (19 library crates and the `gefest-geometry` app) and maps every baseline 89 `src/**/*.rs` module. See `kernel-crate-plan-v1.json` for machine-readable ownership, dependency limits and mandatory splits.
 
 ## Why design precedes extraction
 
@@ -22,19 +22,20 @@ The dependency lists are **allowed boundaries**, not requirements to eagerly add
 | `rustsolid-uv` | partial | Source-neutral analytic UV arrangement and polygon-only geo adapter | `rustsolid-geometry`, `rustsolid-predicates` |
 | `rustsolid-intersect` | partial | Untrimmed curve/surface and surface/surface intersections | `rustsolid-foundation`, `rustsolid-geometry`, `rustsolid-predicates` |
 | `rustsolid-topology` | partial | Canonical B-rep graph, geometry attachments, scoped IDs and invariants | `rustsolid-foundation`, `rustsolid-geometry`, `rustsolid-predicates` |
-| `rustsolid-construct` | planned | Immutable source-body descriptions and primitive constructors | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-predicates` |
-| `rustsolid-imprint` | planned | Trimmed source-face intersections, G1 graph and provenance | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-uv`, `rustsolid-predicates` |
-| `rustsolid-classification` | planned | G2/G3 cell and whole-solid material classification | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-uv`, `rustsolid-predicates` |
-| `rustsolid-validation` | planned | Independent source-volume brackets, result flux, B-rep invariants | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-uv`, `rustsolid-predicates` |
-| `rustsolid-assembly` | planned | G4 source-bound topology changes, patch stitching and staged candidate B-rep | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-uv`, `rustsolid-classification`, `rustsolid-validation` |
-| `rustsolid-boolean` | planned | Certified staged Boolean execution, no document commit | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-classification`, `rustsolid-assembly`, `rustsolid-validation` |
-| `rustsolid-modeling` | planned | Euler operations, structural/carrier edits and feature intents | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-validation`, `rustsolid-boolean` |
+| `rustsolid-source` | planned | Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep | `rustsolid-foundation`, `rustsolid-geometry` |
+| `rustsolid-construct` | planned | Source primitive B-rep builders (box/cylinder/extrude, bores); source parameters live in rustsolid-source | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-predicates`, `rustsolid-source` |
+| `rustsolid-imprint` | planned | Trimmed source-face intersections, G1 graph and provenance | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |
+| `rustsolid-classification` | planned | G2/G3 cell and whole-solid material classification | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |
+| `rustsolid-validation` | planned | Independent source-volume brackets, result flux and invariants; no dependency on constructors | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |
+| `rustsolid-assembly` | planned | G4 source-bound topology changes, patch stitching and staged candidate B-rep | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-uv`, `rustsolid-classification`, `rustsolid-validation`, `rustsolid-source` |
+| `rustsolid-boolean` | planned | Certified staged Boolean execution, no document commit | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-classification`, `rustsolid-assembly`, `rustsolid-validation`, `rustsolid-source` |
+| `rustsolid-modeling` | planned | Euler operations, structural/carrier edits and feature intents | `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-imprint`, `rustsolid-validation`, `rustsolid-boolean`, `rustsolid-source` |
 | `rustsolid-meshing` | planned | Derived face-owned display mesh and facet certificates | `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-uv`, `rustsolid-validation` |
-| `rustsolid-document` | planned | Atomic commit, persistent naming and Undo/Redo | `rustsolid-topology`, `rustsolid-construct`, `rustsolid-validation`, `rustsolid-boolean`, `rustsolid-modeling` |
-| `rustsolid-archive` | planned | Versioned feature archive and reopen by recomputation | `rustsolid-document`, `rustsolid-construct`, `rustsolid-geometry` |
+| `rustsolid-document` | planned | Atomic commit, persistent naming and Undo/Redo | `rustsolid-topology`, `rustsolid-construct`, `rustsolid-validation`, `rustsolid-boolean`, `rustsolid-modeling`, `rustsolid-source` |
+| `rustsolid-archive` | planned | Versioned feature archive and reopen by recomputation | `rustsolid-document`, `rustsolid-geometry`, `rustsolid-source` |
 | `rustsolid-query` | planned | Bounded read-only geometry query language | `rustsolid-topology`, `rustsolid-geometry` |
-| `rustsolid-qualification` | planned | Independent G4–G8 fixtures, metamorphic tests and benchmarks | `rustsolid-archive`, `rustsolid-query`, `rustsolid-document`, `rustsolid-modeling`, `rustsolid-boolean`, `rustsolid-assembly`, `rustsolid-classification`, `rustsolid-imprint`, `rustsolid-meshing`, `rustsolid-validation`, `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-uv`, `rustsolid-predicates` |
-| `gefest-geometry` | planned | Gefest JSON/stdio CLI and adapters | `rustsolid-archive`, `rustsolid-query`, `rustsolid-document`, `rustsolid-modeling`, `rustsolid-boolean`, `rustsolid-meshing`, `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-classification` |
+| `rustsolid-qualification` | planned | Independent G4–G8 fixtures, metamorphic tests and benchmarks | `rustsolid-archive`, `rustsolid-query`, `rustsolid-document`, `rustsolid-modeling`, `rustsolid-boolean`, `rustsolid-assembly`, `rustsolid-classification`, `rustsolid-imprint`, `rustsolid-meshing`, `rustsolid-validation`, `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-uv`, `rustsolid-predicates`, `rustsolid-source` |
+| `gefest-geometry` | planned | Gefest JSON/stdio CLI and adapters | `rustsolid-archive`, `rustsolid-query`, `rustsolid-document`, `rustsolid-modeling`, `rustsolid-boolean`, `rustsolid-meshing`, `rustsolid-construct`, `rustsolid-topology`, `rustsolid-geometry`, `rustsolid-intersect`, `rustsolid-classification`, `rustsolid-source` |
 
 Dependency direction follows: numerical and analytic leaf crates → canonical model/source construction → imprint and UV → whole-solid classification → candidate assembly and independent validation → staged Boolean → modeling and transactions → archive/CLI/qualification. `validation` is a peer of `assembly`, never its client. The transitional root is not a permanent package in this graph.
 
@@ -46,7 +47,9 @@ Dependency direction follows: numerical and analytic leaf crates → canonical m
 
 **`rustsolid-topology`:** Canonical `BrepModel` (geometry catalogs, coedge-specific PCurve, face/loop/coedge/edge/shell incidence, source IDs and orientation) plus process-scoped generational handles. Its topological identity is distinct from document feature identity. No `Mesh` stored as canonical body geometry; display triangulation is derived and may be cached externally. Canonical geometry projections from the old `GeometryStore` adapter migrate here; constructors migrate to `rustsolid-construct`.
 
-**`rustsolid-construct`:** Immutable typed primitive source parameters, source-bounds invariants, canonical box/cylinder/extrusion builders and a shared immutable `BooleanIntent`/operand description. It must not call `rustsolid-validation` because independent source-volume checks are separate.
+**`rustsolid-source`:** Immutable `SourceSpec`, source parameters, `SourceId`, and typed `BooleanIntent`/operation descriptions. This leaf package depends on geometry and foundation only: it cannot construct B-rep, query a document, calculate the mass of a candidate, or run Boolean.
+
+**`rustsolid-construct`:** Given immutable sources, construct canonical box/cylinder/extrusion/bore operands using `rustsolid-topology`. It owns no primary monolith file yet for the shared source types: they are carved out of existing mixed files. It must not depend on `rustsolid-validation`.
 
 **`rustsolid-uv`:** Source-neutral analytic chart arrangement, including periodic seam handling, circular holes and exact Curve2 ownership. The *existing* `geo` adapter is for polygonal operations only: no automatic replacement of a circle/ellipse by faceted topology. Face-pair graphs and physical source ownership belong in `rustsolid-imprint`, which adapts its geometry into UV input contracts.
 
@@ -56,7 +59,7 @@ Dependency direction follows: numerical and analytic leaf crates → canonical m
 
 **`rustsolid-assembly`:** G4 topology-change intent, physical edge splits, face patch selection, stitching and preflight candidate shell construction. It never publishes document IDs or claims a successful Boolean solely because the candidate B-rep validates.
 
-**`rustsolid-validation`:** Independently checks source-only volume brackets against flux over the *actual* oriented B-rep boundary and reports topology and source-provenance violations. G8b source integration must not read the G8c candidate, and G8c flux must not reuse source-volume calculations or an assembler's declared mass. Strictly forbidden dependencies: `assembly`, `boolean`, `classification`, `imprint`, `meshing`, `modeling`, `document`, `archive`.
+**`rustsolid-validation`:** Depends on immutable `rustsolid-source` data, **never on the `rustsolid-construct` builder package**. Independently checks source-only volume brackets against flux over the *actual* oriented B-rep boundary and reports topology and source-provenance violations. G8b source integration must not read the G8c candidate, and G8c flux must not reuse source-volume calculations or an assembler's declared mass. Strictly forbidden dependencies: `construct`, `assembly`, `boolean`, `classification`, `imprint`, `meshing`, `modeling`, `document`, `archive`.
 
 **`rustsolid-boolean`:** Orchestrates staged G1–G4 and independent certification, returning an immutable certified candidate or typed failure. It does not own Undo/Redo, project schemas, rendering or a public commit API. Restricted through/blind, multi-cut, oblique, one-wall and two-wall executors are internal algorithms, not separate libraries.
 
@@ -71,14 +74,15 @@ Dependency direction follows: numerical and analytic leaf crates → canonical m
 ## Proposed cross-crate protocol (not implemented Rust signatures)
 
 ```text
-Construct:       SourceSpec + BooleanIntent -> ValidatedSources
+Source:          SourceSpec + BooleanIntent -> ImmutableSourceOperands
+Construct:       ImmutableSourceOperands -> ValidatedSourceBrep
 Intersections:   (Surface3, Surface3) -> UntrimmedBranches | Held
 Imprint G1:      (BrepModel, BrepModel, Branches) -> ProvenantFacePairGraph
 UV G2:          AnalyticChartTraces -> AnalyticUvCells | Held
 Classify G3:    (AnalyticUvCells, ImmutableSources) -> CertifiedMaterialCells | Held
 Assembly G4:    (ProvenantGraph, ClassifiedCells) -> ProvisionalBrep + Lineage
 Validate G4c:   (ImmutableSourceParams, ActualProvisionalBrep) -> IndependentCertificate
-Boolean:        (BooleanIntent, ValidatedSources) -> CertifiedCandidate | Held | Unsupported
+Boolean:        (BooleanIntent, ValidatedSourceBrep) -> CertifiedCandidate | Held | Unsupported
 Document G5:    (ExpectedRevision, CertifiedCandidate) -> AtomicCommit | Conflict
 Meshing:        (CanonicalBrepModel, DisplayTolerance) -> FaceOwnedMesh
 Archive:        (VersionedFeatureSources) -> ReplayedAndRecertifiedDocument | Rejected
@@ -88,7 +92,7 @@ Each `CertifiedCandidate` must carry the accepted original source lineage, compl
 
 ## Baseline source ownership ledger
 
-Exactly one **primary target** is assigned to every existing Rust source module; multiple code destinations must be declared separately below. `retire` files are transitional shims to delete after migration.
+Exactly one **primary target** is assigned to every existing Rust source module; multiple code destinations must be declared separately below. `rustsolid-source` intentionally has **zero primary legacy modules** because its DTOs are extracted from multiple modules (`boolean.rs`, `through_hole.rs`, `blind_hole.rs`, etc.), not migrated wholesale. `retire` files are transitional shims to delete after migration.
 
 | Target package | Files | Modules (`src/` relative) |
 | --- | ---: | --- |
@@ -111,37 +115,42 @@ Exactly one **primary target** is assigned to every existing Rust source module;
 
 ## Mandatory splits of mixed-layer files
 
-**Do not `git mv` these files wholesale.** Define the lower-level API first, then move implementations and migrate callers. In particular, none of the independent source-volume oracles may import an `assembly::*Plan` type after extraction.
+**Do not move these files wholesale.** Define the lower-level types first. In particular source-only volume oracles must depend on `rustsolid-source` and actual B-rep carrier geometry, not constructors or candidate assembly plan objects.
 
 | Baseline file | Required decomposition |
 | --- | --- |
-| `src/unified_brep.rs` | canonical model into topology; concrete shape converter into construct; remove embedded display |
-| `src/geometry.rs` | remaining Solid-to-GeometryStore and carrier bindings into topology; pure curves already in geometry |
-| `src/predicates.rs` | Solid-aware face support plane into topology; pure predicates already extracted |
-| `src/identity.rs` | runtime generational handles into topology; persistent feature lineage into document |
+| `src/accuracy.rs` | move probes to non-production qualification, not CLI release dependency |
+| `src/blind_hole.rs` | BlindHoleParameters -> rustsolid-source; source B-rep builder -> construct; transaction -> document/modeling; display -> meshing. |
+| `src/boolean_region.rs` | material membership in classification; BooleanIntent lives below bool executor |
+| `src/boolean.rs` | BooleanOperation and immutable operands -> rustsolid-source; staged CSG executor -> rustsolid-boolean. |
 | `src/brep_arena.rs` | registry into topology; command executor/history into document; modeling commands into modeling |
-| `src/journal.rs` | topology edit inverse log into modeling; remove mesh edit coupling; committed history into document |
-| `src/through_hole.rs` | source builder into construct; transaction into document/modeling; display into meshing |
-| `src/blind_hole.rs` | source builder into construct; transaction into document/modeling; display into meshing |
-| `src/mixed_regions.rs` | bounded Boolean construction into boolean; mesh calls into meshing; transactions into document |
-| `src/oblique_halfspace.rs` | CSG staged result into boolean; remove dependency on oblique_clip_mesh |
 | `src/closed_cylinder_imprint.rs` | read-only source curves into imprint; mutation into modeling |
-| `src/g5_two_wall_document.rs` | document state vs persisted archive schema/replay split |
+| `src/compound_blind.rs` | Immutable blind region source specifications -> rustsolid-source; bounded B-rep Boolean -> rustsolid-boolean; transaction wrapper -> document. |
+| `src/connected_triple_brep.rs` | Source parameter struct -> rustsolid-source; bounded multi-cut candidate builder -> rustsolid-boolean; edit history -> document. |
+| `src/curved_brep.rs` | Cylinder source description -> rustsolid-source; canonical capped-cylinder constructor -> rustsolid-construct; display-only mesh -> rustsolid-meshing. |
 | `src/face_region_mesher.rs` | accept BrepModel alone, not BrepStructuralEditor |
-| `src/planar_uv_arrangement.rs` | analytic UV operations source-neutral in uv; source/topology adapter into imprint |
-| `src/multi_trace_uv_arrangement.rs` | analytic chart/cell construction in uv; face-pair binding in imprint |
+| `src/g5_two_wall_document.rs` | document state vs persisted archive schema/replay split |
+| `src/geometry.rs` | remaining Solid-to-GeometryStore and carrier bindings into topology; pure curves already in geometry |
+| `src/identity.rs` | runtime generational handles into topology; persistent feature lineage into document |
 | `src/independent_curved_volume_oracle.rs` | replace G4 candidate input with immutable original source parameters + actual output B-rep |
 | `src/independent_one_wall_volume.rs` | replace G7a plan input with immutable source parameters + actual B-rep flux |
-| `src/independent_two_wall_volume.rs` | replace G6 plan input with source primitives + actual B-rep |
-| `src/independent_tilted_volume.rs` | G8b uses source geometry alone, not higher-stage plan type |
 | `src/independent_tilted_boundary_flux.rs` | G8c uses result B-rep only, never Boolean construction or G8b integration code |
-| `src/boolean_region.rs` | material membership in classification; BooleanIntent lives below bool executor |
-| `src/whole_solid_region_classification.rs` | G3 classification cannot import BooleanKernel |
-| `src/radial_shell_audit.rs` | read-only manifold preflight in validation, generic topology inputs |
-| `src/accuracy.rs` | move probes to non-production qualification, not CLI release dependency |
-| `src/regression.rs` | move goldens, generators and shrinkers to qualification |
-| `src/lib.rs` | delete legacy root exports at final cut; no permanent compatibility facade |
+| `src/independent_tilted_volume.rs` | G8b uses source geometry alone, not higher-stage plan type |
+| `src/independent_two_wall_volume.rs` | replace G6 plan input with source primitives + actual B-rep |
 | `src/intersections.rs` | delete already obsolete root re-export after callers migrate |
+| `src/journal.rs` | topology edit inverse log into modeling; remove mesh edit coupling; committed history into document |
+| `src/lib.rs` | delete legacy root exports at final cut; no permanent compatibility facade |
+| `src/mixed_regions.rs` | Through/blind source parameters -> source; Boolean shell builder -> boolean; preview display -> meshing; transactions -> document. |
+| `src/multi_trace_uv_arrangement.rs` | analytic chart/cell construction in uv; face-pair binding in imprint |
+| `src/oblique_halfspace.rs` | Halfspace intent and side type -> source; CSG executor -> boolean; remove display dependency. |
+| `src/operator_contract.rs` | Operation intent types -> source (when shared); executable Euler/feature commands -> modeling, coverage registry -> qualification. |
+| `src/planar_uv_arrangement.rs` | analytic UV operations source-neutral in uv; source/topology adapter into imprint |
+| `src/predicates.rs` | Solid-aware face support plane into topology; pure predicates already extracted |
+| `src/radial_shell_audit.rs` | read-only manifold preflight in validation, generic topology inputs |
+| `src/regression.rs` | move goldens, generators and shrinkers to qualification |
+| `src/through_hole.rs` | HoleParameters -> rustsolid-source; immutable B-rep builder -> construct; transaction -> document/modeling; display -> meshing. |
+| `src/unified_brep.rs` | canonical model into topology; concrete shape converter into construct; remove embedded display |
+| `src/whole_solid_region_classification.rs` | G3 classification cannot import BooleanKernel |
 
 ## External library review (scope, not new dependencies yet)
 
@@ -167,7 +176,7 @@ No empty packages for future NURBS, constraints, spatial indexing or STEP IO wit
 
 ## Sequencing
 
-**Design gate (this RFC)** → canonical topology representation + primitive source contract → G1/imprint and source-neutral UV → whole-solid classification (G2/G3) → G4/assembly and independent source vs boundary validation → staged Boolean → modeling + mesh in parallel → document atomic history → archive/query/qualification/CLI adaptation → remove transitional root.
+**Design gate (this RFC)** → immutable `source` contract + canonical topology representation + primitive construction → G1/imprint and source-neutral UV → whole-solid classification (G2/G3) → G4/assembly and independent source vs boundary validation → staged Boolean → modeling + mesh in parallel → document atomic history → archive/query/qualification/CLI adaptation → remove transitional root.
 
 **Deferred, not allocated:** `rustsolid-spatial` after measured needs, `rustsolid-step` after import scope, `rustsolid-constraints` for sketch solving, `rustsolid-truck-adapter` for experimental comparison.
 

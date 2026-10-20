@@ -63,26 +63,36 @@
       ],
       "responsibility": "Canonical B-rep graph, geometry attachments, scoped IDs and invariants"
     },
+    "rustsolid-source": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-source",
+      "dependencies": [
+        "rustsolid-foundation",
+        "rustsolid-geometry"
+      ],
+      "responsibility": "Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep"
+    },
     "rustsolid-construct": {
       "status": "planned",
       "crate_path": "crates/rustsolid-construct",
       "dependencies": [
         "rustsolid-topology",
         "rustsolid-geometry",
-        "rustsolid-predicates"
+        "rustsolid-predicates",
+        "rustsolid-source"
       ],
-      "responsibility": "Immutable source-body descriptions and primitive constructors"
+      "responsibility": "Source primitive B-rep builders (box/cylinder/extrude, bores); source parameters live in rustsolid-source"
     },
     "rustsolid-imprint": {
       "status": "planned",
       "crate_path": "crates/rustsolid-imprint",
       "dependencies": [
-        "rustsolid-construct",
         "rustsolid-topology",
         "rustsolid-geometry",
         "rustsolid-intersect",
         "rustsolid-uv",
-        "rustsolid-predicates"
+        "rustsolid-predicates",
+        "rustsolid-source"
       ],
       "responsibility": "Trimmed source-face intersections, G1 graph and provenance"
     },
@@ -90,12 +100,12 @@
       "status": "planned",
       "crate_path": "crates/rustsolid-classification",
       "dependencies": [
-        "rustsolid-construct",
         "rustsolid-topology",
         "rustsolid-geometry",
         "rustsolid-imprint",
         "rustsolid-uv",
-        "rustsolid-predicates"
+        "rustsolid-predicates",
+        "rustsolid-source"
       ],
       "responsibility": "G2/G3 cell and whole-solid material classification"
     },
@@ -103,13 +113,13 @@
       "status": "planned",
       "crate_path": "crates/rustsolid-validation",
       "dependencies": [
-        "rustsolid-construct",
         "rustsolid-topology",
         "rustsolid-geometry",
         "rustsolid-uv",
-        "rustsolid-predicates"
+        "rustsolid-predicates",
+        "rustsolid-source"
       ],
-      "responsibility": "Independent source-volume brackets, result flux, B-rep invariants"
+      "responsibility": "Independent source-volume brackets, result flux and invariants; no dependency on constructors"
     },
     "rustsolid-assembly": {
       "status": "planned",
@@ -121,7 +131,8 @@
         "rustsolid-imprint",
         "rustsolid-uv",
         "rustsolid-classification",
-        "rustsolid-validation"
+        "rustsolid-validation",
+        "rustsolid-source"
       ],
       "responsibility": "G4 source-bound topology changes, patch stitching and staged candidate B-rep"
     },
@@ -135,7 +146,8 @@
         "rustsolid-imprint",
         "rustsolid-classification",
         "rustsolid-assembly",
-        "rustsolid-validation"
+        "rustsolid-validation",
+        "rustsolid-source"
       ],
       "responsibility": "Certified staged Boolean execution, no document commit"
     },
@@ -148,7 +160,8 @@
         "rustsolid-geometry",
         "rustsolid-imprint",
         "rustsolid-validation",
-        "rustsolid-boolean"
+        "rustsolid-boolean",
+        "rustsolid-source"
       ],
       "responsibility": "Euler operations, structural/carrier edits and feature intents"
     },
@@ -171,7 +184,8 @@
         "rustsolid-construct",
         "rustsolid-validation",
         "rustsolid-boolean",
-        "rustsolid-modeling"
+        "rustsolid-modeling",
+        "rustsolid-source"
       ],
       "responsibility": "Atomic commit, persistent naming and Undo/Redo"
     },
@@ -180,8 +194,8 @@
       "crate_path": "crates/rustsolid-archive",
       "dependencies": [
         "rustsolid-document",
-        "rustsolid-construct",
-        "rustsolid-geometry"
+        "rustsolid-geometry",
+        "rustsolid-source"
       ],
       "responsibility": "Versioned feature archive and reopen by recomputation"
     },
@@ -213,7 +227,8 @@
         "rustsolid-geometry",
         "rustsolid-intersect",
         "rustsolid-uv",
-        "rustsolid-predicates"
+        "rustsolid-predicates",
+        "rustsolid-source"
       ],
       "responsibility": "Independent G4–G8 fixtures, metamorphic tests and benchmarks"
     },
@@ -231,7 +246,8 @@
         "rustsolid-topology",
         "rustsolid-geometry",
         "rustsolid-intersect",
-        "rustsolid-classification"
+        "rustsolid-classification",
+        "rustsolid-source"
       ],
       "responsibility": "Gefest JSON/stdio CLI and adapters"
     }
@@ -334,10 +350,10 @@
     "src/identity.rs": "runtime generational handles into topology; persistent feature lineage into document",
     "src/brep_arena.rs": "registry into topology; command executor/history into document; modeling commands into modeling",
     "src/journal.rs": "topology edit inverse log into modeling; remove mesh edit coupling; committed history into document",
-    "src/through_hole.rs": "source builder into construct; transaction into document/modeling; display into meshing",
-    "src/blind_hole.rs": "source builder into construct; transaction into document/modeling; display into meshing",
-    "src/mixed_regions.rs": "bounded Boolean construction into boolean; mesh calls into meshing; transactions into document",
-    "src/oblique_halfspace.rs": "CSG staged result into boolean; remove dependency on oblique_clip_mesh",
+    "src/through_hole.rs": "HoleParameters -> rustsolid-source; immutable B-rep builder -> construct; transaction -> document/modeling; display -> meshing.",
+    "src/blind_hole.rs": "BlindHoleParameters -> rustsolid-source; source B-rep builder -> construct; transaction -> document/modeling; display -> meshing.",
+    "src/mixed_regions.rs": "Through/blind source parameters -> source; Boolean shell builder -> boolean; preview display -> meshing; transactions -> document.",
+    "src/oblique_halfspace.rs": "Halfspace intent and side type -> source; CSG executor -> boolean; remove display dependency.",
     "src/closed_cylinder_imprint.rs": "read-only source curves into imprint; mutation into modeling",
     "src/g5_two_wall_document.rs": "document state vs persisted archive schema/replay split",
     "src/face_region_mesher.rs": "accept BrepModel alone, not BrepStructuralEditor",
@@ -354,7 +370,12 @@
     "src/accuracy.rs": "move probes to non-production qualification, not CLI release dependency",
     "src/regression.rs": "move goldens, generators and shrinkers to qualification",
     "src/lib.rs": "delete legacy root exports at final cut; no permanent compatibility facade",
-    "src/intersections.rs": "delete already obsolete root re-export after callers migrate"
+    "src/intersections.rs": "delete already obsolete root re-export after callers migrate",
+    "src/boolean.rs": "BooleanOperation and immutable operands -> rustsolid-source; staged CSG executor -> rustsolid-boolean.",
+    "src/curved_brep.rs": "Cylinder source description -> rustsolid-source; canonical capped-cylinder constructor -> rustsolid-construct; display-only mesh -> rustsolid-meshing.",
+    "src/compound_blind.rs": "Immutable blind region source specifications -> rustsolid-source; bounded B-rep Boolean -> rustsolid-boolean; transaction wrapper -> document.",
+    "src/connected_triple_brep.rs": "Source parameter struct -> rustsolid-source; bounded multi-cut candidate builder -> rustsolid-boolean; edit history -> document.",
+    "src/operator_contract.rs": "Operation intent types -> source (when shared); executable Euler/feature commands -> modeling, coverage registry -> qualification."
   },
   "reserved_not_now": [
     "rustsolid-spatial / rstar after measured broad-phase bottleneck",
