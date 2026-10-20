@@ -44,7 +44,8 @@ work around this constraint.
   and bounded geometry IDs. The topology-backed `GeometryStore` stays
   in a higher layer as an adapter until its ownership is redesigned.
 - `rustsolid-topology`: vertex/edge/face/coedge/loop/shell incidence records,
-  typed topology IDs and issue types. Solid-owned topology assembly, Euler
+  typed topology IDs and issue types. Face-to-coedge assembly now runs on a
+  scratch copy and commits face loops only when it succeeds. Solid-owned Euler
   operators, arena mutations and validators remain for a subsequent cut.
 - `rustsolid-intersect`: untrimmed analytic supporting-surface intersections.
   Does not depend on Solid, coedges or Boolean; trimmed intersections remain

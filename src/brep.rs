@@ -13,56 +13,7 @@ fn issue(code: &'static str, entity: TopologyEntity, detail: impl Into<String>) 
     TopologyIssue { code, entity, detail: detail.into() }
 }
 
-/// Build deterministic edge/coedge incidence from each face's oriented legacy
-/// vertex boundary. Only one closed outer loop per face is supported for now.
-pub(crate) fn from_faces(faces: &mut [Face]) -> Result<(Vec<Edge>, Vec<Coedge>, Vec<Loop>, Vec<Shell>), GeometryError> {
-    let mut uses: BTreeMap<(u32, u32), Vec<CoedgeId>> = BTreeMap::new();
-    let mut coedges = Vec::new();
-    let mut loops = Vec::new();
-    for face in faces.iter_mut() {
-        if face.boundary.len() < 3 {
-            return Err(GeometryError::InvalidTopology(format!("face {:?} has too few vertices", face.id)));
-        }
-        let loop_id = LoopId(loops.len() as u32);
-        let first = CoedgeId(coedges.len() as u32);
-        loops.push(Loop { id: loop_id, face: face.id, role: LoopRole::Outer, first_coedge: first });
-        face.loops = vec![loop_id];
-        let n = face.boundary.len();
-        for i in 0..n {
-            let start = face.boundary[i];
-            let end = face.boundary[(i + 1) % n];
-            if start == end { return Err(GeometryError::InvalidTopology(format!("zero-length topological edge in face {:?}", face.id))); }
-            let key = (start.0.min(end.0), start.0.max(end.0));
-            let id = CoedgeId(coedges.len() as u32);
-            coedges.push(Coedge {
-                id, edge: EdgeId(u32::MAX), face: face.id, loop_id,
-                reversed: start.0 > end.0,
-                next: CoedgeId(first.0 + ((i + 1) % n) as u32),
-                prev: CoedgeId(first.0 + ((i + n - 1) % n) as u32),
-                twin: CoedgeId(u32::MAX),
-            });
-            uses.entry(key).or_default().push(id);
-        }
-    }
-    let mut edges = Vec::new();
-    for ((start, end), incidences) in uses {
-        if incidences.len() != 2 {
-            return Err(GeometryError::InvalidTopology(format!("edge ({start},{end}) has {} uses instead of two", incidences.len())));
-        }
-        let (a, b) = (incidences[0].0 as usize, incidences[1].0 as usize);
-        if coedges[a].reversed == coedges[b].reversed || coedges[a].face == coedges[b].face {
-            return Err(GeometryError::InvalidTopology(format!("edge ({start},{end}) is not shared by opposite face boundaries")));
-        }
-        let eid = EdgeId(edges.len() as u32);
-        edges.push(Edge { id: eid, start: VertexId(start), end: VertexId(end), coedges: [incidences[0], incidences[1]] });
-        coedges[a].edge = eid;
-        coedges[b].edge = eid;
-        coedges[a].twin = incidences[1];
-        coedges[b].twin = incidences[0];
-    }
-    let shell = Shell { id: ShellId(0), faces: faces.iter().map(|f| f.id).collect(), closed: true };
-    Ok((edges, coedges, loops, vec![shell]))
-}
+pub(crate) use rustsolid_topology::from_faces;
 
 fn orient2(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> f64 {
     crate::predicates::determinant2d([a.0,a.1],[b.0,b.1],[c.0,c.1])
