@@ -43,6 +43,9 @@ work around this constraint.
 - `rustsolid-geometry`: analytic curves and surfaces, parameter domains, frames
   and bounded geometry IDs. The topology-backed `GeometryStore` stays
   in a higher layer as an adapter until its ownership is redesigned.
+- `rustsolid-topology`: vertex/edge/face/coedge/loop/shell incidence records,
+  typed topology IDs and issue types. Solid-owned topology assembly, Euler
+  operators, arena mutations and validators remain for a subsequent cut.
 - `rustsolid-intersect`: untrimmed analytic supporting-surface intersections.
   Does not depend on Solid, coedges or Boolean; trimmed intersections remain
   in the topology-aware layer. The pinned 14-case analytic, metamorphic and
@@ -67,7 +70,7 @@ This avoids a hidden axis swap when integrating `geo`.
 | `geometry.rs`, analytic `Curve2/3`, surfaces | `geometry` — analytic part moved; `GeometryStore` adapter remains |
 | `intersections.rs`, `trimmed_intersections.rs` | `intersect` — pure supporting-surface part moved; trim adapter pending |
 | `planar_uv_arrangement.rs`, `multi_trace_uv_arrangement.rs` | `uv` |
-| `brep.rs`, `unified_brep.rs`, `coedge_reconciliation.rs`, `brep_arena.rs` | `topology` |
+| `brep.rs`, `unified_brep.rs`, `coedge_reconciliation.rs`, `brep_arena.rs` | `topology` — entity records moved; validation/assembly remain to migrate |
 | `global_vertex_reconciliation.rs`, `global_edge_stitch.rs` | `topology` / `boolean` boundary |
 | `boolean.rs`, `boolean_region.rs`, cut plans | `boolean` |
 | `independent_*volume*.rs`, `radial_shell_audit.rs` | `validation` |
@@ -101,6 +104,7 @@ cargo test -p rustsolid-foundation --all-targets
 cargo test -p rustsolid-predicates --all-targets
 cargo test -p rustsolid-geometry --all-targets
 cargo test -p rustsolid-intersect --all-targets
+cargo test -p rustsolid-topology --all-targets
 cargo test -p rustsolid-intersect --test surface_intersection_contracts
 cargo test -p rustsolid-uv --all-targets
 cargo test --workspace --all-targets

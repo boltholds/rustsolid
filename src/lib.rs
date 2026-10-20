@@ -84,7 +84,11 @@ mod carrier_editor;
 mod multi_through_hole;
 mod structural_editor;
 mod face_region_mesher;
-pub use brep::{Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId, TopologyEntity, TopologyIssue};
+pub use rustsolid_topology::{
+    VertexId, EdgeId, FaceId, Vertex, Edge, Face, FaceRole,
+    Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId,
+    TopologyEntity, TopologyIssue,
+};
 pub use rustsolid_foundation::{GeometryError, GeometryTolerance, Point2, Point3};
 pub use edit::{EdgeSplit, FaceSplit, EditDelta, EditReport, EditTransaction};
 pub use identity::{TopologyName, TopologyHandle, HandleError, NameChange, TopologyIdentity};
@@ -301,41 +305,6 @@ pub use geometry::{LengthUnit, AngleUnit, ModelUnits, ParameterRange, ParameterD
     HarmonicCurve2, CylinderSection2, Curve2,
     PlaneSurface, CylinderSurface, SphereSurface, Surface3, SurfaceDerivatives, OrientedCircle2,
     Curve3Id, Curve2Id, SurfaceId, EdgeGeometry, FaceGeometry, CoedgeGeometry, GeometryStore};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct VertexId(pub u32);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EdgeId(pub u32);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FaceId(pub u32);
-
-#[derive(Debug, Clone)]
-pub struct Vertex {
-    pub id: VertexId,
-    pub position: Point3,
-}
-
-#[derive(Debug, Clone)]
-pub struct Edge {
-    pub id: EdgeId,
-    pub start: VertexId,
-    pub end: VertexId,
-    /// The two opposing directed usages of this edge on the closed shell.
-    pub coedges: [CoedgeId; 2],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FaceRole { BottomCap, TopCap, Side(u32) }
-
-#[derive(Debug, Clone)]
-pub struct Face {
-    pub id: FaceId,
-    pub role: FaceRole,
-    /// Boundary vertices ordered counterclockwise as viewed from the outside.
-    pub boundary: Vec<VertexId>,
-    /// Canonical face loops. `boundary` remains a checked compatibility view.
-    pub loops: Vec<LoopId>,
-}
 
 #[derive(Debug, Clone)]
 pub struct Mesh {

@@ -6,6 +6,7 @@ members = [
   "crates/rustsolid-predicates",
   "crates/rustsolid-geometry",
   "crates/rustsolid-intersect",
+  "crates/rustsolid-topology",
   "crates/rustsolid-uv",
 ]
 default-members = ["."]
@@ -36,6 +37,7 @@ rustsolid-foundation = { path = "crates/rustsolid-foundation" }
 rustsolid-predicates = { path = "crates/rustsolid-predicates" }
 rustsolid-geometry = { path = "crates/rustsolid-geometry" }
 rustsolid-intersect = { path = "crates/rustsolid-intersect" }
+rustsolid-topology = { path = "crates/rustsolid-topology" }
 
 [[bin]]
 name = "gefest-geometry"

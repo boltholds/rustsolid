@@ -3,79 +3,11 @@
 //! the two oppositely directed uses on this closed orientable shell.
 use crate::{Edge, EdgeId, Face, FaceId, GeometryError, Point3, Solid, VertexId};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CoedgeId(pub u32);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LoopId(pub u32);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ShellId(pub u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoopRole { Outer, Inner }
-
-#[derive(Debug, Clone)]
-pub struct Coedge {
-    pub id: CoedgeId,
-    pub edge: EdgeId,
-    pub face: FaceId,
-    pub loop_id: LoopId,
-    /// False: edge.start -> edge.end; true: edge.end -> edge.start.
-    pub reversed: bool,
-    pub next: CoedgeId,
-    pub prev: CoedgeId,
-    pub twin: CoedgeId,
-}
-
-impl Coedge {
-    pub fn start_vertex(&self, edge: &Edge) -> VertexId {
-        if self.reversed { edge.end } else { edge.start }
-    }
-    pub fn end_vertex(&self, edge: &Edge) -> VertexId {
-        if self.reversed { edge.start } else { edge.end }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Loop {
-    pub id: LoopId,
-    pub face: FaceId,
-    pub role: LoopRole,
-    pub first_coedge: CoedgeId,
-}
-
-#[derive(Debug, Clone)]
-pub struct Shell {
-    pub id: ShellId,
-    pub faces: Vec<FaceId>,
-    pub closed: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TopologyEntity {
-    Body,
-    Vertex(VertexId),
-    Edge(EdgeId),
-    Coedge(CoedgeId),
-    Loop(LoopId),
-    Face(FaceId),
-    Shell(ShellId),
-}
-
-/// First failing invariant, with a stable machine-readable code and a witness.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TopologyIssue {
-    pub code: &'static str,
-    pub entity: TopologyEntity,
-    pub detail: String,
-}
-
-impl fmt::Display for TopologyIssue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at {:?}: {}", self.code, self.entity, self.detail)
-    }
-}
+pub use rustsolid_topology::{
+    Coedge, CoedgeId, Loop, LoopId, LoopRole, Shell, ShellId,
+    TopologyEntity, TopologyIssue,
+};
 
 fn issue(code: &'static str, entity: TopologyEntity, detail: impl Into<String>) -> TopologyIssue {
     TopologyIssue { code, entity, detail: detail.into() }
