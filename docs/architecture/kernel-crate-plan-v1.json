@@ -1,0 +1,365 @@
+{
+  "schema": "rustsolid.crate_blueprint.v1",
+  "status": "target_not_implemented",
+  "scope": "G4-G8, Gefest protocol, qualification",
+  "baseline_commit": "53d8a8e3385e4b67076536465706e2bb34c3cc0f",
+  "baseline_tree_sha": "83e6804dcec98cb5cbb1f2ed4ce578ddc1f07040",
+  "source_file_count": 89,
+  "policy": {
+    "break_public_api": true,
+    "retain_geometric_regressions": true,
+    "no_permanent_legacy_crate": true,
+    "certification_independent_of_boolean": true
+  },
+  "packages": {
+    "rustsolid-foundation": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-foundation",
+      "dependencies": [],
+      "responsibility": "Coordinates, tolerance configuration and base errors"
+    },
+    "rustsolid-predicates": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-predicates",
+      "dependencies": [
+        "rustsolid-foundation"
+      ],
+      "responsibility": "Robust orientation and filtered numeric decisions"
+    },
+    "rustsolid-geometry": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-geometry",
+      "dependencies": [
+        "rustsolid-foundation"
+      ],
+      "responsibility": "Analytic curves/surfaces and UV chart domains"
+    },
+    "rustsolid-uv": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-uv",
+      "dependencies": [
+        "rustsolid-geometry",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Source-neutral analytic UV arrangement and polygon-only geo adapter"
+    },
+    "rustsolid-intersect": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-intersect",
+      "dependencies": [
+        "rustsolid-foundation",
+        "rustsolid-geometry",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Untrimmed curve/surface and surface/surface intersections"
+    },
+    "rustsolid-topology": {
+      "status": "partial",
+      "crate_path": "crates/rustsolid-topology",
+      "dependencies": [
+        "rustsolid-foundation",
+        "rustsolid-geometry",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Canonical B-rep graph, geometry attachments, scoped IDs and invariants"
+    },
+    "rustsolid-construct": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-construct",
+      "dependencies": [
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Immutable source-body descriptions and primitive constructors"
+    },
+    "rustsolid-imprint": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-imprint",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-intersect",
+        "rustsolid-uv",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Trimmed source-face intersections, G1 graph and provenance"
+    },
+    "rustsolid-classification": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-classification",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-imprint",
+        "rustsolid-uv",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "G2/G3 cell and whole-solid material classification"
+    },
+    "rustsolid-validation": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-validation",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-uv",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Independent source-volume brackets, result flux, B-rep invariants"
+    },
+    "rustsolid-assembly": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-assembly",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-imprint",
+        "rustsolid-uv",
+        "rustsolid-classification",
+        "rustsolid-validation"
+      ],
+      "responsibility": "G4 source-bound topology changes, patch stitching and staged candidate B-rep"
+    },
+    "rustsolid-boolean": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-boolean",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-imprint",
+        "rustsolid-classification",
+        "rustsolid-assembly",
+        "rustsolid-validation"
+      ],
+      "responsibility": "Certified staged Boolean execution, no document commit"
+    },
+    "rustsolid-modeling": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-modeling",
+      "dependencies": [
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-imprint",
+        "rustsolid-validation",
+        "rustsolid-boolean"
+      ],
+      "responsibility": "Euler operations, structural/carrier edits and feature intents"
+    },
+    "rustsolid-meshing": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-meshing",
+      "dependencies": [
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-uv",
+        "rustsolid-validation"
+      ],
+      "responsibility": "Derived face-owned display mesh and facet certificates"
+    },
+    "rustsolid-document": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-document",
+      "dependencies": [
+        "rustsolid-topology",
+        "rustsolid-construct",
+        "rustsolid-validation",
+        "rustsolid-boolean",
+        "rustsolid-modeling"
+      ],
+      "responsibility": "Atomic commit, persistent naming and Undo/Redo"
+    },
+    "rustsolid-archive": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-archive",
+      "dependencies": [
+        "rustsolid-document",
+        "rustsolid-construct",
+        "rustsolid-geometry"
+      ],
+      "responsibility": "Versioned feature archive and reopen by recomputation"
+    },
+    "rustsolid-query": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-query",
+      "dependencies": [
+        "rustsolid-topology",
+        "rustsolid-geometry"
+      ],
+      "responsibility": "Bounded read-only geometry query language"
+    },
+    "rustsolid-qualification": {
+      "status": "planned",
+      "crate_path": "crates/rustsolid-qualification",
+      "dependencies": [
+        "rustsolid-archive",
+        "rustsolid-query",
+        "rustsolid-document",
+        "rustsolid-modeling",
+        "rustsolid-boolean",
+        "rustsolid-assembly",
+        "rustsolid-classification",
+        "rustsolid-imprint",
+        "rustsolid-meshing",
+        "rustsolid-validation",
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-intersect",
+        "rustsolid-uv",
+        "rustsolid-predicates"
+      ],
+      "responsibility": "Independent G4–G8 fixtures, metamorphic tests and benchmarks"
+    },
+    "gefest-geometry": {
+      "status": "planned",
+      "crate_path": "apps/gefest-geometry",
+      "dependencies": [
+        "rustsolid-archive",
+        "rustsolid-query",
+        "rustsolid-document",
+        "rustsolid-modeling",
+        "rustsolid-boolean",
+        "rustsolid-meshing",
+        "rustsolid-construct",
+        "rustsolid-topology",
+        "rustsolid-geometry",
+        "rustsolid-intersect",
+        "rustsolid-classification"
+      ],
+      "responsibility": "Gefest JSON/stdio CLI and adapters"
+    }
+  },
+  "source_file_primary_owner": {
+    "src/accuracy.rs": "rustsolid-qualification",
+    "src/analytic_bore_candidate.rs": "rustsolid-assembly",
+    "src/analytic_face_patch_partition.rs": "rustsolid-assembly",
+    "src/analytic_one_wall_notch.rs": "rustsolid-assembly",
+    "src/analytic_source_edge_split.rs": "rustsolid-assembly",
+    "src/analytic_tilted_one_wall_brep.rs": "rustsolid-assembly",
+    "src/analytic_two_wall_partition.rs": "rustsolid-assembly",
+    "src/atomic_boolean_document.rs": "rustsolid-document",
+    "src/bin/composed_crossing_cli/mod.rs": "gefest-geometry",
+    "src/bin/connected_triple_cli/mod.rs": "gefest-geometry",
+    "src/bin/g5_project_cli.rs": "gefest-geometry",
+    "src/bin/g6_project_cli.rs": "gefest-geometry",
+    "src/bin/g7_project_cli.rs": "gefest-geometry",
+    "src/bin/gefest-geometry.rs": "gefest-geometry",
+    "src/bin/mixed_crossing_cli/mod.rs": "gefest-geometry",
+    "src/bin/mixed_footprint_cli/mod.rs": "gefest-geometry",
+    "src/bin/mixed_regions_cli/mod.rs": "gefest-geometry",
+    "src/bin/multi_cut_regions_cli/mod.rs": "gefest-geometry",
+    "src/bin/oblique_cylinder_cli.rs": "gefest-geometry",
+    "src/blind_hole.rs": "rustsolid-construct",
+    "src/boolean_region.rs": "rustsolid-classification",
+    "src/boolean.rs": "rustsolid-boolean",
+    "src/brep_arena.rs": "rustsolid-document",
+    "src/brep.rs": "rustsolid-topology",
+    "src/canonical_box_candidate.rs": "rustsolid-assembly",
+    "src/carrier_editor.rs": "rustsolid-modeling",
+    "src/closed_cylinder_imprint.rs": "rustsolid-modeling",
+    "src/coedge_reconciliation.rs": "rustsolid-imprint",
+    "src/composed_crossing_brep.rs": "rustsolid-boolean",
+    "src/composed_crossing_mesh.rs": "rustsolid-meshing",
+    "src/composite_blind.rs": "rustsolid-boolean",
+    "src/compound_blind_mesh.rs": "rustsolid-meshing",
+    "src/compound_blind.rs": "rustsolid-boolean",
+    "src/connected_cut_transitions.rs": "rustsolid-imprint",
+    "src/connected_triple_brep.rs": "rustsolid-boolean",
+    "src/connected_triple_mesh.rs": "rustsolid-meshing",
+    "src/curved_brep.rs": "rustsolid-construct",
+    "src/edit.rs": "rustsolid-modeling",
+    "src/euler.rs": "rustsolid-modeling",
+    "src/face_patch_assembly.rs": "rustsolid-assembly",
+    "src/face_region_mesher.rs": "rustsolid-meshing",
+    "src/g5_project_archive.rs": "rustsolid-archive",
+    "src/g5_two_wall_document.rs": "rustsolid-document",
+    "src/g7_one_wall_document.rs": "rustsolid-document",
+    "src/g7_project_archive.rs": "rustsolid-archive",
+    "src/geometry.rs": "rustsolid-topology",
+    "src/global_analytic_cut_registry.rs": "rustsolid-imprint",
+    "src/global_edge_stitch.rs": "rustsolid-assembly",
+    "src/global_vertex_reconciliation.rs": "rustsolid-imprint",
+    "src/history.rs": "rustsolid-document",
+    "src/identity.rs": "rustsolid-topology",
+    "src/imprint_mesh.rs": "rustsolid-meshing",
+    "src/independent_curved_volume_oracle.rs": "rustsolid-validation",
+    "src/independent_one_wall_volume.rs": "rustsolid-validation",
+    "src/independent_tilted_boundary_flux.rs": "rustsolid-validation",
+    "src/independent_tilted_volume.rs": "rustsolid-validation",
+    "src/independent_two_wall_volume.rs": "rustsolid-validation",
+    "src/intersecting_blind_mesh.rs": "rustsolid-meshing",
+    "src/intersecting_blind.rs": "rustsolid-boolean",
+    "src/intersection_graph.rs": "rustsolid-imprint",
+    "src/intersections.rs": "retire",
+    "src/journal.rs": "rustsolid-modeling",
+    "src/lib.rs": "retire",
+    "src/mixed_crossing_brep.rs": "rustsolid-boolean",
+    "src/mixed_crossing_mesh.rs": "rustsolid-meshing",
+    "src/mixed_crossing_surfaces.rs": "rustsolid-assembly",
+    "src/mixed_footprint.rs": "rustsolid-classification",
+    "src/mixed_regions_mesh.rs": "rustsolid-meshing",
+    "src/mixed_regions.rs": "rustsolid-boolean",
+    "src/multi_cut_regions.rs": "rustsolid-uv",
+    "src/multi_face_intersection_graph.rs": "rustsolid-imprint",
+    "src/multi_face_region_preview.rs": "rustsolid-classification",
+    "src/multi_through_hole.rs": "rustsolid-construct",
+    "src/multi_trace_uv_arrangement.rs": "rustsolid-uv",
+    "src/oblique_clip_mesh.rs": "rustsolid-meshing",
+    "src/oblique_halfspace.rs": "rustsolid-boolean",
+    "src/operator_contract.rs": "rustsolid-modeling",
+    "src/planar_uv_arrangement.rs": "rustsolid-uv",
+    "src/predicates.rs": "rustsolid-topology",
+    "src/query.rs": "rustsolid-query",
+    "src/radial_shell_audit.rs": "rustsolid-validation",
+    "src/regression.rs": "rustsolid-qualification",
+    "src/structural_editor.rs": "rustsolid-modeling",
+    "src/through_hole.rs": "rustsolid-construct",
+    "src/tilted_one_wall_source.rs": "rustsolid-imprint",
+    "src/topology_delta_plan.rs": "rustsolid-assembly",
+    "src/trimmed_intersections.rs": "rustsolid-imprint",
+    "src/unified_brep.rs": "rustsolid-topology",
+    "src/whole_solid_region_classification.rs": "rustsolid-classification"
+  },
+  "mandatory_split_notes": {
+    "src/unified_brep.rs": "canonical model into topology; concrete shape converter into construct; remove embedded display",
+    "src/geometry.rs": "remaining Solid-to-GeometryStore and carrier bindings into topology; pure curves already in geometry",
+    "src/predicates.rs": "Solid-aware face support plane into topology; pure predicates already extracted",
+    "src/identity.rs": "runtime generational handles into topology; persistent feature lineage into document",
+    "src/brep_arena.rs": "registry into topology; command executor/history into document; modeling commands into modeling",
+    "src/journal.rs": "topology edit inverse log into modeling; remove mesh edit coupling; committed history into document",
+    "src/through_hole.rs": "source builder into construct; transaction into document/modeling; display into meshing",
+    "src/blind_hole.rs": "source builder into construct; transaction into document/modeling; display into meshing",
+    "src/mixed_regions.rs": "bounded Boolean construction into boolean; mesh calls into meshing; transactions into document",
+    "src/oblique_halfspace.rs": "CSG staged result into boolean; remove dependency on oblique_clip_mesh",
+    "src/closed_cylinder_imprint.rs": "read-only source curves into imprint; mutation into modeling",
+    "src/g5_two_wall_document.rs": "document state vs persisted archive schema/replay split",
+    "src/face_region_mesher.rs": "accept BrepModel alone, not BrepStructuralEditor",
+    "src/planar_uv_arrangement.rs": "analytic UV operations source-neutral in uv; source/topology adapter into imprint",
+    "src/multi_trace_uv_arrangement.rs": "analytic chart/cell construction in uv; face-pair binding in imprint",
+    "src/independent_curved_volume_oracle.rs": "replace G4 candidate input with immutable original source parameters + actual output B-rep",
+    "src/independent_one_wall_volume.rs": "replace G7a plan input with immutable source parameters + actual B-rep flux",
+    "src/independent_two_wall_volume.rs": "replace G6 plan input with source primitives + actual B-rep",
+    "src/independent_tilted_volume.rs": "G8b uses source geometry alone, not higher-stage plan type",
+    "src/independent_tilted_boundary_flux.rs": "G8c uses result B-rep only, never Boolean construction or G8b integration code",
+    "src/boolean_region.rs": "material membership in classification; BooleanIntent lives below bool executor",
+    "src/whole_solid_region_classification.rs": "G3 classification cannot import BooleanKernel",
+    "src/radial_shell_audit.rs": "read-only manifold preflight in validation, generic topology inputs",
+    "src/accuracy.rs": "move probes to non-production qualification, not CLI release dependency",
+    "src/regression.rs": "move goldens, generators and shrinkers to qualification",
+    "src/lib.rs": "delete legacy root exports at final cut; no permanent compatibility facade",
+    "src/intersections.rs": "delete already obsolete root re-export after callers migrate"
+  },
+  "reserved_not_now": [
+    "rustsolid-spatial / rstar after measured broad-phase bottleneck",
+    "rustsolid-step when STEP IO is in scope",
+    "rustsolid-constraints for sketch solver",
+    "rustsolid-truck-adapter for experimental alternative backend"
+  ]
+}
