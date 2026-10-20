@@ -1,10 +1,13 @@
 //! Pinned analytic witnesses and metamorphic checks for the intersection engine.
 //! No OCCT/Parasolid outputs are used as acceptance criteria.
-use rustsolid::{
-    CylinderSurface, Frame3, GeometryTolerance, IntersectionAmbiguity,
-    IntersectionContact, IntersectionCurve, PlaneSurface, Point3,
+use rustsolid_foundation::{GeometryTolerance, Point3};
+use rustsolid_geometry::{
+    CylinderSurface, Frame3, PlaneSurface, SphereSurface, Surface3,
+};
+use rustsolid_intersect::{
+    IntersectionAmbiguity, IntersectionContact, IntersectionCurve,
     IntersectionPair as Operator, ALL_INTERSECTION_PAIRS,
-    Surface3, SurfaceIntersection, SurfaceIntersectionEngine,
+    SurfaceIntersection, SurfaceIntersectionEngine,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap,BTreeSet};
@@ -212,7 +215,7 @@ fn unsupported_pairs_are_explicit_and_no_zero_curve_is_certified(){
     let (a,b)=surfaces(&corpus.fixtures[2]);
     let r=SurfaceIntersectionEngine::new(tol()).unwrap().intersect(a,b).unwrap();
     assert!(r.certify(a,b,tol()).is_err());
-    let sphere=Surface3::Sphere(rustsolid::SphereSurface{
+    let sphere=Surface3::Sphere(SphereSurface{
         frame:Frame3::from_axes(xyz(0.,0.,0.),xyz(1.,0.,0.),xyz(0.,1.,0.),tol()).unwrap(),radius:1.,
     });
     assert!(SurfaceIntersectionEngine::new(tol()).unwrap().intersect(sphere,a).is_err());

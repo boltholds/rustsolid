@@ -45,7 +45,8 @@ work around this constraint.
   in a higher layer as an adapter until its ownership is redesigned.
 - `rustsolid-intersect`: untrimmed analytic supporting-surface intersections.
   Does not depend on Solid, coedges or Boolean; trimmed intersections remain
-  in the topology-aware layer.
+  in the topology-aware layer. The pinned 14-case analytic, metamorphic and
+  boundary-intersection test corpus now lives inside this owning crate.
 - `rustsolid-uv`: polyline-only polygonal Boolean through `geo`, using
   `rustsolid-geometry::Point2Param` instead of a duplicate UV point type; validates
   input and output polygons. It neither stores analytic curves nor determines
@@ -96,6 +97,7 @@ cargo test -p rustsolid-foundation --all-targets
 cargo test -p rustsolid-predicates --all-targets
 cargo test -p rustsolid-geometry --all-targets
 cargo test -p rustsolid-intersect --all-targets
+cargo test -p rustsolid-intersect --test surface_intersection_contracts
 cargo test -p rustsolid-uv --all-targets
 cargo test --workspace --all-targets
 ```

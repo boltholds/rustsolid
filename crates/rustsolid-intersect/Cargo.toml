@@ -10,3 +10,6 @@ rustsolid-foundation = { path = "../rustsolid-foundation" }
 rustsolid-geometry = { path = "../rustsolid-geometry" }
 rustsolid-predicates = { path = "../rustsolid-predicates" }
 serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
