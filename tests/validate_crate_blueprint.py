@@ -68,6 +68,13 @@ def check(plan: dict) -> None:
         assert not violation, f"{package} has forbidden dependency path to {sorted(violation)}"
     assert set(owners.values()).issubset(set(packages) | {"retire"}), "unknown source owner"
     assert all(p.startswith("src/") and p.endswith(".rs") for p in owners), "non-source ledger entry"
+    type_owners = plan["type_owners"]
+    assert len(type_owners) >= 25, "insufficient explicit cross-crate type ownership"
+    assert set(type_owners.values()).issubset(packages), "unregistered type owner"
+    assert type_owners["Curve2Id / Curve3Id / SurfaceId (catalog handles)"] == "rustsolid-topology"
+    assert type_owners["SourceId / SourceSpec / PrimitiveParameters"] == "rustsolid-source"
+    assert type_owners["IndependentSourceVolumeBracket / ActualBoundaryFlux"] == "rustsolid-validation"
+    assert type_owners["FaceOwnedMesh / MeshCertificate"] == "rustsolid-meshing"
     current_paths = {
         p.relative_to(ROOT).as_posix()
         for p in (ROOT / "src").rglob("*.rs")
@@ -83,7 +90,7 @@ def check(plan: dict) -> None:
     print(
         f"PASS: {len(packages)} target packages ({sum(p['status']=='partial' for p in packages.values())} partially extracted), "
         f"{len(owners)} baseline sources, {len(current_paths)} current Rust source files, "
-        f"{len(splits)} mandatory source splits; DAG acyclic"
+        f"{len(splits)} mandatory source splits, {len(type_owners)} type-owner groups; DAG acyclic"
     )
     print("Design check only. Planned crates have NOT been compiled or implemented.")
 

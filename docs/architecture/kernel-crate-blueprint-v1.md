@@ -71,6 +71,48 @@ Dependency direction follows: numerical and analytic leaf crates → canonical m
 
 **`rustsolid-query`, `rustsolid-qualification`, `gefest-geometry`:** Read-only bounded model querying, offline/regression/stress/benchmark harness, and the production Gefest JSON client protocol respectively. Runtime production crates may not depend on `qualification`; diagnostic CLI commands become a separate opt-in executable.
 
+## Shared type ownership (breaking-contract migration)
+
+Naming a crate is insufficient if types still originate in a different layer. This table determines the target owner of the key public types. These are **design assignments**, not claims that code was already moved.
+
+| Type or invariant | Target owner |
+| --- | --- |
+| `Point3 / Point2 (generic Cartesian)` | `rustsolid-foundation` |
+| `GeometryTolerance` | `rustsolid-foundation` |
+| `Orientation / PredicateClassification` | `rustsolid-predicates` |
+| `Plane3 / PlaneIntersection` | `rustsolid-predicates` |
+| `ModelUnits / ParameterRange / Point2Param` | `rustsolid-geometry` |
+| `Curve2 / Curve3 / Surface3` | `rustsolid-geometry` |
+| `BoundingBox (Aabb3) / GeometricMoments` | `rustsolid-geometry` |
+| `Curve2Id / Curve3Id / SurfaceId (catalog handles)` | `rustsolid-topology` |
+| `VertexId / EdgeId / CoedgeId / FaceId / LoopId / ShellId` | `rustsolid-topology` |
+| `FaceSense / BrepModel / GeometryStore` | `rustsolid-topology` |
+| `TopologyIssue / RuntimeGenerationalHandle` | `rustsolid-topology` |
+| `SourceId / SourceSpec / PrimitiveParameters` | `rustsolid-source` |
+| `BooleanOperation / BooleanIntent` | `rustsolid-source` |
+| `SourceFaceSemanticRole (e.g. TopCap)` | `rustsolid-source` |
+| `IntersectionCurve / IntersectionCertificate` | `rustsolid-intersect` |
+| `TrimmedIntersection / GraphArc / ReconciledGlobalEvent` | `rustsolid-imprint` |
+| `PhysicalCutProvenance / DualSourcePcurve` | `rustsolid-imprint` |
+| `AnalyticUvCell / UvBoundaryCycle` | `rustsolid-uv` |
+| `CertifiedCellLocation / WholeSolidCellWitness` | `rustsolid-classification` |
+| `StagedTopologyDelta / FacePatch / GlobalStitchPlan` | `rustsolid-assembly` |
+| `IndependentSourceVolumeBracket / ActualBoundaryFlux` | `rustsolid-validation` |
+| `ShellValidationCertificate / InvariantViolation` | `rustsolid-validation` |
+| `CertifiedCandidate / BooleanHeld` | `rustsolid-boolean` |
+| `EditIntent / EulerCommand` | `rustsolid-modeling` |
+| `FaceOwnedMesh / MeshCertificate` | `rustsolid-meshing` |
+| `FeatureId / PersistentTopologyLineage` | `rustsolid-document` |
+| `DocumentRevision / UndoRedoTransition` | `rustsolid-document` |
+| `ProjectArchive / ReopenSchema` | `rustsolid-archive` |
+| `QueryLimits / QueryError` | `rustsolid-query` |
+| `RegressionFixture / StressScenario` | `rustsolid-qualification` |
+| `GeometryRequest / GeometryResponse (CLI)` | `gefest-geometry` |
+
+Mandatory intentional API breakage: `Curve2Id/Curve3Id/SurfaceId` are currently defined alongside pure geometry, but they identify entries in a *B-rep-owned catalog* and must move to topology. Likewise `FaceRole::TopCap/BottomCap/Side` is a source-semantic label, not a universal face-topology property; preserve `FaceSense` in topology and record semantics through source provenance. `Mesh` and its face-owned triangle IDs are derived in meshing, never embedded in canonical B-rep. A persisted `FeatureId` is not a process-local `TopoId` or generational handle.
+
+Sources and certificate states must cross crate boundaries as immutable, versioned input/result values. Error ownership stays local to each stage; do not perpetuate the current all-purpose `GeometryError::InvalidEdit` for classification ambiguity or Boolean rejection.
+
 ## Proposed cross-crate protocol (not implemented Rust signatures)
 
 ```text
