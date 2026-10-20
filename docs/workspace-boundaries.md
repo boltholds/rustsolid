@@ -92,7 +92,11 @@ Solid-to-geometry projection. The latter belongs to a higher layer.
 
 ## Verification gates
 
+Run the CI-enforced layer dependency policy before tests. A new crate must be
+registered explicitly in `tests/check_workspace_boundaries.py`.
+
 ```bash
+python3 tests/check_workspace_boundaries.py
 cargo test -p rustsolid-foundation --all-targets
 cargo test -p rustsolid-predicates --all-targets
 cargo test -p rustsolid-geometry --all-targets
