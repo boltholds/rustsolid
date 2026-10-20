@@ -16,6 +16,7 @@ jobs:
           - rustsolid-foundation
           - rustsolid-predicates
           - rustsolid-geometry
+          - rustsolid-intersect
           - rustsolid-uv
     steps:
       - uses: actions/checkout@v4

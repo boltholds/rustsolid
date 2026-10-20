@@ -5,6 +5,7 @@ members = [
   "crates/rustsolid-foundation",
   "crates/rustsolid-predicates",
   "crates/rustsolid-geometry",
+  "crates/rustsolid-intersect",
   "crates/rustsolid-uv",
 ]
 default-members = ["."]
@@ -34,6 +35,7 @@ earcutr.workspace = true
 rustsolid-foundation = { path = "crates/rustsolid-foundation" }
 rustsolid-predicates = { path = "crates/rustsolid-predicates" }
 rustsolid-geometry = { path = "crates/rustsolid-geometry" }
+rustsolid-intersect = { path = "crates/rustsolid-intersect" }
 
 [[bin]]
 name = "gefest-geometry"
