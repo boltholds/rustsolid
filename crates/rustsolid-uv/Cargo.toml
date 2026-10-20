@@ -7,3 +7,4 @@ description = "Explicitly polygonal UV utilities and geo adapter; does not alter
 
 [dependencies]
 geo = { workspace = true }
+rustsolid-geometry = { path = "../rustsolid-geometry" }

@@ -40,7 +40,11 @@ work around this constraint.
 - `rustsolid-foundation`: existing point types, error and tolerance policy.
 - `rustsolid-predicates`: adaptive orientation, local-scale classification,
   analytic supporting-plane calculations. It has no Solid/B-rep dependency.
-- `rustsolid-uv`: polyline-only polygonal Boolean through `geo`; validates
+- `rustsolid-geometry`: analytic curves and surfaces, parameter domains, frames
+  and bounded geometry IDs. The legacy topology-backed `GeometryStore` stays
+  in a higher layer as an adapter until its ownership is redesigned.
+- `rustsolid-uv`: polyline-only polygonal Boolean through `geo`, using
+  `rustsolid-geometry::Point2Param` instead of a duplicate UV point type; validates
   input and output polygons. It neither stores analytic curves nor determines
   final 3D topology. Its output MUST NOT be committed as certified B-rep
   without source-provenance and geometric-error reconciliation.
@@ -56,7 +60,7 @@ This avoids a hidden axis swap when integrating `geo`.
 
 | Existing module(s) | Target crate |
 | --- | --- |
-| `geometry.rs`, analytic `Curve2/3`, surfaces | `geometry` |
+| `geometry.rs`, analytic `Curve2/3`, surfaces | `geometry` — analytic part moved; `GeometryStore` adapter remains |
 | `intersections.rs`, `trimmed_intersections.rs` | `intersect` |
 | `planar_uv_arrangement.rs`, `multi_trace_uv_arrangement.rs` | `uv` |
 | `brep.rs`, `unified_brep.rs`, `coedge_reconciliation.rs`, `brep_arena.rs` | `topology` |
@@ -87,6 +91,7 @@ Solid-to-geometry projection. The latter belongs to a higher layer.
 ```bash
 cargo test -p rustsolid-foundation --all-targets
 cargo test -p rustsolid-predicates --all-targets
+cargo test -p rustsolid-geometry --all-targets
 cargo test -p rustsolid-uv --all-targets
 cargo test --workspace --all-targets
 ```

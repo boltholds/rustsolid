@@ -4,6 +4,7 @@ members = [
   ".",
   "crates/rustsolid-foundation",
   "crates/rustsolid-predicates",
+  "crates/rustsolid-geometry",
   "crates/rustsolid-uv",
 ]
 default-members = ["."]
@@ -32,6 +33,7 @@ serde_json.workspace = true
 earcutr.workspace = true
 rustsolid-foundation = { path = "crates/rustsolid-foundation" }
 rustsolid-predicates = { path = "crates/rustsolid-predicates" }
+rustsolid-geometry = { path = "crates/rustsolid-geometry" }
 
 [[bin]]
 name = "gefest-geometry"
