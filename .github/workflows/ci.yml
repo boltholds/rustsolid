@@ -16,6 +16,7 @@ jobs:
           - rustsolid-foundation
           - rustsolid-predicates
           - rustsolid-geometry
+          - rustsolid-source
           - rustsolid-intersect
           - rustsolid-topology
           - rustsolid-uv

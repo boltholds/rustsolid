@@ -5,6 +5,7 @@ members = [
   "crates/rustsolid-foundation",
   "crates/rustsolid-predicates",
   "crates/rustsolid-geometry",
+  "crates/rustsolid-source",
   "crates/rustsolid-intersect",
   "crates/rustsolid-topology",
   "crates/rustsolid-uv",

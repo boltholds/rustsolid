@@ -64,13 +64,13 @@
       "responsibility": "Canonical B-rep graph, geometry attachments, scoped IDs and invariants"
     },
     "rustsolid-source": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-source",
       "dependencies": [
         "rustsolid-foundation",
         "rustsolid-geometry"
       ],
-      "responsibility": "Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep"
+      "responsibility": "Implemented immutable versioned AxisAlignedBlock and FiniteCylinder sources, source snapshots, canonical exact-byte stamps and unit-aware BooleanIntent; extrusion remains unsupported"
     },
     "rustsolid-construct": {
       "status": "planned",

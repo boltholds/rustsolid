@@ -1,6 +1,6 @@
 # RFC 0003 — RustSolid G4–G8 cross-crate contracts v1
 
-**Status:** PROPOSED design for review; **NOT IMPLEMENTED** as new Rust crates.  
+**Status:** PARTIAL IMPLEMENTATION. SourceSpec/SourceSnapshot implemented as a new crate in the stacked implementation PR; the remaining contracts are not yet production-integrated.  
 **Parent architecture:** [RFC 0002](kernel-crate-blueprint-v1.md) and [source ownership ledger](kernel-crate-plan-v1.json).  
 **Base implementation investigated:** G5, G7 and G8c on PR #41, head before this RFC \`45d9fee\`.  
 **Machine-readable agreement:** [kernel-contracts-v1.json](kernel-contracts-v1.json).  
@@ -240,3 +240,7 @@ The minimum future implementation suite must include: G7 single-wall, G8 oblique
 Agreed for v1 design: immutable source versions; one canonical analytic B-rep; no mesh/mass in canonical graph; separate source-only and actual-result oracles; document-only persistent lineage; source-bound, private, one-shot certified candidate; fail-closed atomic commit; nullable state replacement with discriminated enum outcomes.
 
 Deferred for implementation: exact binary canonical hashing layout/golden vectors, NURBS-level interval certification, general non-manifold topology, robust generalized shell nesting for imported solids, precise serialization across new archive versions, policy to accept weaker \`GuardedF64\` evidence outside pinned G7/G8 families, and legal/reference-backend compatibility. These deferrals **must not be silently resolved** by default \`f64\` epsilon or a re-export of old APIs.
+
+## Implementation note — initial source slice
+
+The new `rustsolid-source` package implements validated immutable AxisAlignedBlock and FiniteCylinder sources, explicit monotonic versions, functional snapshots and canonical *full byte* SourceStamp values. The stamp is collision-free by complete encoding, not a cryptographic digest; a future compact digest requires separate golden-vector verification. This first slice does not yet implement Extrusion, source-based builders, GeometryKind extensibility or document commit. Existing G7/G8 operations still run through the transitional model pending adoption.
