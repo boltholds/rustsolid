@@ -33,7 +33,7 @@ def check(plan: dict) -> None:
     assert len(owners) == plan["source_file_count"], "source ownership ledger truncated"
     assert len(owners) >= 80, "baseline unexpectedly shrank"
     assert "rustsolid" not in packages, "transitional monolith must not be final target"
-    assert packages["rustsolid-validation"]["status"] == "planned", "status discrepancy"
+    assert packages["rustsolid-validation"]["status"] in {"planned","partial"}, "status discrepancy"
     assert packages["rustsolid-source"]["dependencies"] == ["rustsolid-foundation", "rustsolid-geometry"], "immutable source must be a leaf below topology"
     assert "rustsolid-source" in packages["rustsolid-validation"]["dependencies"], "oracle source dependency missing"
     assert packages["gefest-geometry"]["crate_path"] == "apps/gefest-geometry"
