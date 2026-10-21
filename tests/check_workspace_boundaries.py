@@ -32,6 +32,7 @@ ALLOWED: dict[str, set[str]] = {
         "rustsolid-foundation", "rustsolid-predicates",
         "rustsolid-geometry", "rustsolid-intersect", "rustsolid-uv",
         "rustsolid-topology", "rustsolid-validation", "rustsolid-source",
+        "rustsolid-boolean", "rustsolid-document",
     },
 }
 
