@@ -1,0 +1,12 @@
+[package]
+name = "rustsolid-construct"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Analytic source primitive and bounded direct B-rep builders"
+
+[dependencies]
+rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }
+rustsolid-source = { path = "../rustsolid-source" }
+rustsolid-topology = { path = "../rustsolid-topology" }

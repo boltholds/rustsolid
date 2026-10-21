@@ -18,6 +18,7 @@ ALLOWED: dict[str, set[str]] = {
     "rustsolid-predicates": {"rustsolid-foundation"},
     "rustsolid-geometry": {"rustsolid-foundation"},
     "rustsolid-source": {"rustsolid-foundation", "rustsolid-geometry"},
+    "rustsolid-construct": {"rustsolid-foundation", "rustsolid-geometry", "rustsolid-source", "rustsolid-topology"},
     "rustsolid-validation": {"rustsolid-foundation", "rustsolid-geometry", "rustsolid-source", "rustsolid-topology"},
     "rustsolid-uv": {"rustsolid-geometry"},
     "rustsolid-topology": {"rustsolid-foundation", "rustsolid-geometry"},
@@ -30,6 +31,7 @@ ALLOWED: dict[str, set[str]] = {
         "rustsolid-foundation", "rustsolid-predicates",
         "rustsolid-geometry", "rustsolid-intersect", "rustsolid-uv",
         "rustsolid-topology", "rustsolid-validation", "rustsolid-source",
+        "rustsolid-construct",
     },
 }
 
