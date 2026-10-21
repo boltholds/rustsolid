@@ -1,0 +1,15 @@
+[package]
+name = "rustsolid-document"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Atomic in-memory G8 document and scoped handles"
+
+[dependencies]
+rustsolid-boolean = { path = "../rustsolid-boolean" }
+rustsolid-source = { path = "../rustsolid-source" }
+rustsolid-topology = { path = "../rustsolid-topology" }
+
+[dev-dependencies]
+rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }

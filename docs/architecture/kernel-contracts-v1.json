@@ -1,6 +1,6 @@
 {
   "schema": "rustsolid.kernel_contracts.v1",
-  "status": "design_only_no_new_crates",
+  "status": "partial_implementation",
   "rfc": "docs/architecture/kernel-contracts-v1.md",
   "blueprint": "docs/architecture/kernel-crate-plan-v1.json",
   "baseline_commit": "45d9fee780b336505980ee4f93967cb8b015ccdb",
@@ -336,5 +336,46 @@
       "pre_commit_strong_atomicity",
       "reopen_recetifies_from_sources"
     ]
+  },
+  "implementation": {
+    "SourceSpec": {
+      "status": "implemented_separately_not_integrated",
+      "rust_file": "crates/rustsolid-source/src/lib.rs",
+      "supports": [
+        "AxisAlignedBlock",
+        "FiniteCylinder",
+        "SourceSnapshot",
+        "SourceStamp",
+        "BooleanIntent"
+      ],
+      "does_not_support": [
+        "Extrusion",
+        "ImportedBrepRef",
+        "DocumentCommit"
+      ]
+    },
+    "BrepModel": {
+      "status": "implemented_separately_not_integrated",
+      "rust_file": "crates/rustsolid-topology/src/canonical.rs",
+      "supports": [
+        "BrepDraft",
+        "analytic_geometry_catalog",
+        "coedge_twin_and_loop_validation",
+        "affine_edge_to_uv_binding",
+        "mesh_and_mass_free_model",
+        "closed_circle_and_periodic_seam"
+      ],
+      "does_not_support": [
+        "full_boolean_material_proof",
+        "source_flux_certification",
+        "persistent_topology_lineage"
+      ]
+    },
+    "TopologyLineage": {
+      "status": "design_only"
+    },
+    "CertifiedCandidate": {
+      "status": "design_only"
+    }
   }
 }

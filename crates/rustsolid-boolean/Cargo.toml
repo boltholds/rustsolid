@@ -1,0 +1,13 @@
+[package]
+name = "rustsolid-boolean"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Proof-bound narrow Boolean candidates; document commits remain separate"
+
+[dependencies]
+rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }
+rustsolid-source = { path = "../rustsolid-source" }
+rustsolid-topology = { path = "../rustsolid-topology" }
+rustsolid-validation = { path = "../rustsolid-validation" }

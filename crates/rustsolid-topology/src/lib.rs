@@ -228,3 +228,11 @@ mod incidence_tests {
         assert_eq!(after,before);
     }
 }
+
+// Clean analytic B-rep v2. The old incidence types above remain only for the
+// transitional G4-G8 monolithic caller while its clients are migrated.
+pub mod canonical;
+pub use canonical::{BrepDraft, BrepModel, BrepIssue, GeometryCatalog,
+    BrepVertex, BrepEdge, BrepCoedge, BrepLoop, BrepFace, BrepShell,
+    EdgeKind, FaceSense, ShellSense, AffineParameterMap, LocalBrepIncarnation,
+    Curve2Id, Curve3Id, SurfaceId};

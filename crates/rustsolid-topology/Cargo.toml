@@ -7,3 +7,4 @@ description = "Oriented B-rep incidence and topology identity types"
 
 [dependencies]
 rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }

@@ -1,6 +1,6 @@
 # RustSolid workspace boundaries — RFC 0001
 
-> **Four cross-crate contracts:** [RFC 0003](architecture/kernel-contracts-v1.md) specifies immutable source snapshots, mesh-free canonical BrepModel, persistent topology lineage and proof-bound CertifiedCandidate. This is design only; not new Rust packages.
+> **Four cross-crate contracts:** [RFC 0003](architecture/kernel-contracts-v1.md) specifies immutable source snapshots, mesh-free canonical BrepModel, persistent topology lineage and proof-bound CertifiedCandidate. SourceSpec and canonical BrepModel are implemented in stacked PR #43; document lineage and certified candidates remain designs, and G7/G8 are not migrated yet.
 
 > **Design gate:** The complete target architecture is specified in [RFC 0002](architecture/kernel-crate-blueprint-v1.md) and the [crate/source ownership ledger](architecture/kernel-crate-plan-v1.json). This RFC only describes partially extracted crates and is not the final dependency design.
 
@@ -128,3 +128,9 @@ CI independently tests the low-level crates. The root regression corpus
 remains active until the corresponding tests are rewritten against their
 new owning crate. A working G8c result is required before removing the
 old implementation.
+
+## Stack PR #43: implemented source and canonical B-rep slices
+
+- `rustsolid-source` is independently compiled and owns immutable validated blocks/cylinders, exact versioned source snapshots and source-bound BooleanIntent.
+- `rustsolid-topology::canonical` owns a mesh-/mass-free BrepModel accepted only from a validated BrepDraft, with source-independent analytic carrier catalogs and explicit coedge parameter maps.
+- The current monolithic model remains only until consumer migration; `tests/canonical_model_port.rs` is a TEST-ONLY bridge that proves G7/G8 shape representability. There is no permanent legacy facade.

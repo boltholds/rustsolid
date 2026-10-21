@@ -4,7 +4,7 @@
   "scope": "G4-G8, Gefest protocol, qualification",
   "baseline_commit": "53d8a8e3385e4b67076536465706e2bb34c3cc0f",
   "baseline_tree_sha": "83e6804dcec98cb5cbb1f2ed4ce578ddc1f07040",
-  "source_file_count": 89,
+  "source_file_count": 90,
   "policy": {
     "break_public_api": true,
     "retain_geometric_regressions": true,
@@ -64,13 +64,13 @@
       "responsibility": "Canonical B-rep graph, geometry attachments, scoped IDs and invariants"
     },
     "rustsolid-source": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-source",
       "dependencies": [
         "rustsolid-foundation",
         "rustsolid-geometry"
       ],
-      "responsibility": "Immutable source geometry parameters, SourceId and typed BooleanIntent; never constructs B-rep"
+      "responsibility": "Implemented immutable versioned AxisAlignedBlock and FiniteCylinder sources, source snapshots, canonical exact-byte stamps and unit-aware BooleanIntent; extrusion remains unsupported"
     },
     "rustsolid-construct": {
       "status": "planned",
@@ -110,7 +110,7 @@
       "responsibility": "G2/G3 cell and whole-solid material classification"
     },
     "rustsolid-validation": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-validation",
       "dependencies": [
         "rustsolid-topology",
@@ -119,7 +119,7 @@
         "rustsolid-predicates",
         "rustsolid-source"
       ],
-      "responsibility": "Independent source-volume brackets, result flux and invariants; no dependency on constructors"
+      "responsibility": "Independent G8b source-only verified interval implemented; actual-result flux and general certification pending"
     },
     "rustsolid-assembly": {
       "status": "planned",
@@ -137,7 +137,7 @@
       "responsibility": "G4 source-bound topology changes, patch stitching and staged candidate B-rep"
     },
     "rustsolid-boolean": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-boolean",
       "dependencies": [
         "rustsolid-construct",
@@ -149,7 +149,7 @@
         "rustsolid-validation",
         "rustsolid-source"
       ],
-      "responsibility": "Certified staged Boolean execution, no document commit"
+      "responsibility": "Narrow proof-bound G8 tilted one-wall sealed candidate; general Boolean/document integration pending"
     },
     "rustsolid-modeling": {
       "status": "planned",
@@ -177,7 +177,7 @@
       "responsibility": "Derived face-owned display mesh and facet certificates"
     },
     "rustsolid-document": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-document",
       "dependencies": [
         "rustsolid-topology",
@@ -187,7 +187,7 @@
         "rustsolid-modeling",
         "rustsolid-source"
       ],
-      "responsibility": "Atomic commit, persistent naming and Undo/Redo"
+      "responsibility": "Atomic in-memory restricted G8 document commit/undo/redo/face handles; persistent archive and generic naming pending"
     },
     "rustsolid-archive": {
       "status": "planned",
@@ -341,7 +341,8 @@
     "src/topology_delta_plan.rs": "rustsolid-assembly",
     "src/trimmed_intersections.rs": "rustsolid-imprint",
     "src/unified_brep.rs": "rustsolid-topology",
-    "src/whole_solid_region_classification.rs": "rustsolid-classification"
+    "src/whole_solid_region_classification.rs": "rustsolid-classification",
+    "src/canonical_bridge.rs": "retire"
   },
   "mandatory_split_notes": {
     "src/unified_brep.rs": "canonical model into topology; concrete shape converter into construct; remove embedded display",
@@ -375,7 +376,8 @@
     "src/curved_brep.rs": "Cylinder source description -> rustsolid-source; canonical capped-cylinder constructor -> rustsolid-construct; display-only mesh -> rustsolid-meshing.",
     "src/compound_blind.rs": "Immutable blind region source specifications -> rustsolid-source; bounded B-rep Boolean -> rustsolid-boolean; transaction wrapper -> document.",
     "src/connected_triple_brep.rs": "Source parameter struct -> rustsolid-source; bounded multi-cut candidate builder -> rustsolid-boolean; edit history -> document.",
-    "src/operator_contract.rs": "Operation intent types -> source (when shared); executable Euler/feature commands -> modeling, coverage registry -> qualification."
+    "src/operator_contract.rs": "Operation intent types -> source (when shared); executable Euler/feature commands -> modeling, coverage registry -> qualification.",
+    "src/canonical_bridge.rs": "Temporary checked conversion for G7/G8 transition; delete as soon as G4 assembly emits canonical BrepDraft directly."
   },
   "reserved_not_now": [
     "rustsolid-spatial / rstar after measured broad-phase bottleneck",
