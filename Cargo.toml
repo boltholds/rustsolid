@@ -6,6 +6,7 @@ members = [
   "crates/rustsolid-predicates",
   "crates/rustsolid-geometry",
   "crates/rustsolid-source",
+  "crates/rustsolid-construct",
   "crates/rustsolid-validation",
   "crates/rustsolid-intersect",
   "crates/rustsolid-topology",
@@ -42,6 +43,7 @@ rustsolid-intersect = { path = "crates/rustsolid-intersect" }
 rustsolid-topology = { path = "crates/rustsolid-topology" }
 
 [dev-dependencies]
+rustsolid-construct = { path = "crates/rustsolid-construct" }
 rustsolid-source = { path = "crates/rustsolid-source" }
 rustsolid-validation = { path = "crates/rustsolid-validation" }
 

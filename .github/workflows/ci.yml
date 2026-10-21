@@ -17,6 +17,7 @@ jobs:
           - rustsolid-predicates
           - rustsolid-geometry
           - rustsolid-source
+          - rustsolid-construct
           - rustsolid-validation
           - rustsolid-intersect
           - rustsolid-topology

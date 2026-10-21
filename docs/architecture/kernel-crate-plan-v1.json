@@ -73,7 +73,7 @@
       "responsibility": "Implemented immutable versioned AxisAlignedBlock and FiniteCylinder sources, source snapshots, canonical exact-byte stamps and unit-aware BooleanIntent; extrusion remains unsupported"
     },
     "rustsolid-construct": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-construct",
       "dependencies": [
         "rustsolid-topology",
@@ -81,7 +81,7 @@
         "rustsolid-predicates",
         "rustsolid-source"
       ],
-      "responsibility": "Source primitive B-rep builders (box/cylinder/extrude, bores); source parameters live in rustsolid-source"
+      "responsibility": "Initial direct source-bound G7 one-wall analytic BrepDraft builder (staged, not certified); G8 tilted and other primitive families pending"
     },
     "rustsolid-imprint": {
       "status": "planned",
