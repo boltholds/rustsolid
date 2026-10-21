@@ -42,6 +42,7 @@ rustsolid-intersect = { path = "crates/rustsolid-intersect" }
 rustsolid-topology = { path = "crates/rustsolid-topology" }
 
 [dev-dependencies]
+rustsolid-source = { path = "crates/rustsolid-source" }
 rustsolid-validation = { path = "crates/rustsolid-validation" }
 
 [[bin]]
