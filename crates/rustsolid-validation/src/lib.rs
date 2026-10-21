@@ -3,3 +3,6 @@
 mod g8_source;
 pub use g8_source::{g8_source_volume, G8SourceHold, G8SourceVolumeEvidence,
     G8SourceVolumeOutcome, GuardedSourceVolume, TiltedSectionAreaBracket};
+
+mod g8_flux;
+pub use g8_flux::{g8_boundary_flux, G8BoundaryFlux, G8FluxHold, G8FluxOutcome};
