@@ -137,7 +137,7 @@
       "responsibility": "G4 source-bound topology changes, patch stitching and staged candidate B-rep"
     },
     "rustsolid-boolean": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-boolean",
       "dependencies": [
         "rustsolid-construct",
@@ -149,7 +149,7 @@
         "rustsolid-validation",
         "rustsolid-source"
       ],
-      "responsibility": "Certified staged Boolean execution, no document commit"
+      "responsibility": "Narrow proof-bound G8 tilted one-wall sealed candidate; general Boolean/document integration pending"
     },
     "rustsolid-modeling": {
       "status": "planned",
