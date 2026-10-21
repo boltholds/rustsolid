@@ -342,7 +342,7 @@
     "src/trimmed_intersections.rs": "rustsolid-imprint",
     "src/unified_brep.rs": "rustsolid-topology",
     "src/whole_solid_region_classification.rs": "rustsolid-classification",
-    "src/canonical_bridge.rs": "retire"
+    "src/canonical_emitter.rs": "retire"
   },
   "mandatory_split_notes": {
     "src/unified_brep.rs": "canonical model into topology; concrete shape converter into construct; remove embedded display",
@@ -377,7 +377,7 @@
     "src/compound_blind.rs": "Immutable blind region source specifications -> rustsolid-source; bounded B-rep Boolean -> rustsolid-boolean; transaction wrapper -> document.",
     "src/connected_triple_brep.rs": "Source parameter struct -> rustsolid-source; bounded multi-cut candidate builder -> rustsolid-boolean; edit history -> document.",
     "src/operator_contract.rs": "Operation intent types -> source (when shared); executable Euler/feature commands -> modeling, coverage registry -> qualification.",
-    "src/canonical_bridge.rs": "Temporary checked conversion for G7/G8 transition; delete as soon as G4 assembly emits canonical BrepDraft directly."
+    "src/canonical_emitter.rs": "Temporary dual-write source-event emitter for G7/G8; move true canonical G4 assembly into rustsolid-assembly and delete old-model scaffolding."
   },
   "reserved_not_now": [
     "rustsolid-spatial / rstar after measured broad-phase bottleneck",

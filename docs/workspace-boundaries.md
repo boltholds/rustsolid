@@ -134,3 +134,7 @@ old implementation.
 - `rustsolid-source` is independently compiled and owns immutable validated blocks/cylinders, exact versioned source snapshots and source-bound BooleanIntent.
 - `rustsolid-topology::canonical` owns a mesh-/mass-free BrepModel accepted only from a validated BrepDraft, with source-independent analytic carrier catalogs and explicit coedge parameter maps.
 - The current monolithic model remains only until consumer migration; `tests/canonical_model_port.rs` is a TEST-ONLY bridge that proves G7/G8 shape representability. There is no permanent legacy facade.
+
+## Stacked PR #46: removal of post-hoc canonical conversion
+
+G7/G8 emit canonical v2 vertices, physical edges, coedges, pcurves and shells into `BrepDraft` as source events are produced. The resulting checked model is exposed via `checked_canonical()`; the root-only `canonical_bridge.rs` conversion is deleted. Old `BrepModel` still exists solely because source operators and archived document workflows have not completed their migration. The direct dual-write emitter is itself temporary, and the final owner is `rustsolid-assembly`.

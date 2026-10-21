@@ -594,7 +594,11 @@ pub(crate) struct FaceSpec {
     pub(crate) normal:Point3,
 }
 struct AddedCorner{faces:[FaceId;5],edges:[EdgeId;9]}
-pub(crate) struct PatchBuilder{pub(crate) model:BrepModel,pub(crate) tolerance:GeometryTolerance}
+pub(crate) struct PatchBuilder{
+    pub(crate) model:BrepModel,
+    pub(crate) tolerance:GeometryTolerance,
+    dual:Option<crate::canonical_emitter::CanonicalDraftEmitter>,
+}
 impl PatchBuilder{
     pub(crate) fn new(bbox:BoundingBox,tolerance:GeometryTolerance,units:crate::ModelUnits)->Self{
         Self {model:BrepModel{
@@ -607,7 +611,62 @@ impl PatchBuilder{
             },
             mass:MassProperties {volume:1.,surface_area:1.,centroid:p(0.,0.,0.)},
             bbox,tolerance,units,
-        },tolerance}
+        },tolerance,dual:None}
+    }
+    pub(crate) fn new_dual(
+        bbox:BoundingBox,tolerance:GeometryTolerance,units:crate::ModelUnits
+    )->Result<Self,GeometryError>{
+        let mut builder=Self::new(bbox,tolerance,units);
+        builder.dual=Some(crate::canonical_emitter::CanonicalDraftEmitter::new(tolerance,units)?);
+        Ok(builder)
+    }
+    pub(crate) fn record_vertex(&mut self,id:VertexId,p:Point3)->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.vertex(id,p)?;}Ok(())
+    }
+    pub(crate) fn record_edge(
+        &mut self,id:EdgeId,a:VertexId,b:VertexId,curve:Curve3,domain:ParameterRange
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.edge(id,a,b,curve,domain)?;}Ok(())
+    }
+    pub(crate) fn record_face(
+        &mut self,id:FaceId,sid:SurfaceId,surface:Surface3,sense:FaceSense,loops:Vec<LoopId>
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.face(id,sid.0,surface,sense,loops)?;}Ok(())
+    }
+    pub(crate) fn record_loop(
+        &mut self,id:LoopId,face:FaceId,role:LoopRole,first:CoedgeId
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.loop_(id,face,role,first)?;}Ok(())
+    }
+    pub(crate) fn record_coedge(
+        &mut self,id:CoedgeId,edge:EdgeId,face:FaceId,loop_id:LoopId,
+        reversed:bool,next:CoedgeId,prev:CoedgeId,curve:Curve2,domain:ParameterRange
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {
+            d.coedge(id,edge,face,loop_id,reversed,next,prev,curve,domain)?;
+        }Ok(())
+    }
+    pub(crate) fn record_twins(
+        &mut self,edge:EdgeId,a:CoedgeId,b:CoedgeId
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.twins(edge,a,b)?;}Ok(())
+    }
+    pub(crate) fn record_shell(
+        &mut self,id:ShellId,faces:Vec<FaceId>
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.shell(id,faces)?;}Ok(())
+    }
+    pub(crate) fn record_updated_trim(
+        &mut self,id:CoedgeId,curve:Curve2
+    )->Result<(),GeometryError>{
+        if let Some(d)=&mut self.dual {d.updated_trim(id,curve)?;}Ok(())
+    }
+    pub(crate) fn finish_dual(
+        self
+    )->Result<(BrepModel,rustsolid_topology::BrepModel),GeometryError>{
+        self.model.validate()?;
+        let canonical=self.dual.ok_or_else(||invalid("G7/G8 direct emitter absent"))?.finish()?;
+        Ok((self.model,canonical))
     }
     pub(crate) fn add_edge(
         &mut self,start:VertexId,end:VertexId,
@@ -638,6 +697,7 @@ impl PatchBuilder{
         self.model.edges.push(Edge {
             id,start,end,coedges:[CoedgeId(u32::MAX);2],
         });
+        self.record_edge(id,start,end,carrier,domain)?;
         Ok(id)
     }
     fn add_corner(

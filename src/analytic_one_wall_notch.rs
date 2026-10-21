@@ -49,6 +49,7 @@ impl PatchBuilder {
         for &point in coords {
             let id=VertexId(self.model.vertices.len() as u32);
             self.model.vertices.push(Vertex {id,position:point});
+            self.record_vertex(id,point)?;
         }
         let v=|index:usize|VertexId((vbase+index) as u32);
         let circle_endpoints=if ta<tb { [4usize,5usize] } else { [5usize,4usize] };
@@ -139,10 +140,13 @@ impl PatchBuilder {
                     tolerance:self.tolerance,
                 },
             });
+            self.record_face(fid,sid,surface,
+                if face_index==7{FaceSense::Reversed}else{FaceSense::Forward},vec![lid])?;
             let first_coedge=CoedgeId(self.model.coedges.len() as u32);
             self.model.loops.push(Loop {
                 id:lid,face:fid,role:LoopRole::Outer,first_coedge,
             });
+            self.record_loop(lid,fid,LoopRole::Outer,first_coedge)?;
             let n=local.len();
             for index in 0..n{
                 let start=local[index];
@@ -216,6 +220,9 @@ impl PatchBuilder {
                 self.model.geometry.coedges.push(CoedgeGeometry {
                     pcurve:pcurve_id,domain,face:fid,loop_id:lid,
                 });
+                self.record_coedge(id,eid,fid,lid,reversed,
+                    CoedgeId(first+((index+1)%n) as u32),
+                    CoedgeId(first+((index+n-1)%n) as u32),pcurve,domain)?;
             }
             face_ids.push(fid);
         }
@@ -234,10 +241,12 @@ impl PatchBuilder {
             self.model.coedges[a.0 as usize].twin=b;
             self.model.coedges[b.0 as usize].twin=a;
             self.model.edges[edge.0 as usize].coedges=[a,b];
+            self.record_twins(edge,a,b)?;
         }
         self.model.shells.push(Shell {
             id:shell,faces:face_ids.clone(),closed:true,
         });
+        self.record_shell(shell,face_ids.clone())?;
         Ok(AddedOneWall {
             faces:face_ids.try_into().map_err(|_|invalid("missing corner faces"))?,
             edges:edge_ids,
@@ -291,6 +300,7 @@ pub struct OneWallComponent{
 #[derive(Debug,Clone)]
 pub struct AnalyticOneWallPlan {
     model:BrepModel,
+    canonical:rustsolid_topology::BrepModel,
     pub component:OneWallComponent,
     pub source_faces:Vec<OneWallPatchSource>,
     pub material_witnesses:Vec<OneWallMaterialWitness>,
@@ -327,7 +337,8 @@ impl AnalyticOneWallPlan {
     pub fn brep(&self)->&BrepModel{&self.model}
     /// Strict v2 analytic topology check; no Boolean approval or volume proof.
     pub fn checked_canonical(&self)->Result<rustsolid_topology::BrepModel,GeometryError>{
-        crate::canonical_bridge::from_existing(&self.model)
+        self.canonical.validate().map_err(|e|invalid(format!("{e}")))?;
+        Ok(self.canonical.clone())
     }
     pub fn validate_against(
         &self,first:&BrepBody,second:&BrepBody,tol:GeometryTolerance,
@@ -457,7 +468,7 @@ impl AnalyticOneWallPlan {
             return Ok(AnalyticOneWallResult::Held(
                 AnalyticOneWallHold::UncertainAnalyticMass));
         }
-        let mut builder=PatchBuilder::new(bounds,tol,a.units);
+        let mut builder=PatchBuilder::new_dual(bounds,tol,a.units)?;
         builder.model.origin=BrepOrigin::AnalyticOneWallCylinderDifference;
         let lower=p(xmin,ymin,zmin);
         let lower_right=p(xmax,ymin,zmin);
@@ -592,7 +603,7 @@ impl AnalyticOneWallPlan {
             surface_area:2.*area+side_perimeter*height,
             centroid:p(centroid_x,centre_y,centroid_z),
         };
-        let result=builder.finish()?;
+        let (result,canonical)=builder.finish_dual()?;
         let radial=radial_certificate(&result,eps)
             .map_err(|e|invalid(format!("G7a radial manifold validation: {e:?}")))?;
         if result.shells.len()!=1||result.faces.len()!=8
@@ -605,7 +616,7 @@ impl AnalyticOneWallPlan {
                 AnalyticOneWallHold::InvalidShellTopology));
         }
         Ok(AnalyticOneWallResult::Ready(Self{
-            model:result,component:OneWallComponent{
+            model:result,canonical,component:OneWallComponent{
                 shell:ShellId(0),faces:output.faces,edges:output.edges,
                 new_cut_arcs:arc_refs.try_into().map_err(|_|
                     invalid("G7a does not have four source cut carriers"))?,

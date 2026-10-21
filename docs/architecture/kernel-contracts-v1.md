@@ -252,3 +252,9 @@ The new `rustsolid-source` package implements validated immutable AxisAlignedBlo
 - tests/canonical_model_port.rs: TEST-ONLY migration qualification of a box, a periodic closed cylinder, G7 one-wall and G8c tilted source-owned analytic shells. Physical edge parameter to per-face Curve2 mapping is derived and independently checked at multiple points. This is not a production compatibility adapter.
 - New source and topology crates compile/test independently; full legacy G4–G8 integrated regression remains mandatory. Actual G7/G8 producers still use the old monolithic BrepModel until migrated; no production Boolean/Document graph was replaced.
 - SourceStamp is a full canonical byte encoding (no hashing collisions) for the present source primitives, not an authenticated document signature. A compact digest and persistent archive codec require a separate versioned format/review.
+
+## Implementation milestone: Direct event-side G7/G8 BrepDraft
+
+Stacked PR #46 now uses `CanonicalDraftEmitter` during the source geometry's construction: vertices, analytic Curve3 edges, per-face Surface3 support, UV Curve2 trims and edge-to-pcurve parameter mappings are recorded as G1/G4 events are generated, then the draft is checked. G7/G8 `checked_canonical()` returns this independently assembled immutable v2 body. The post-hoc runtime bridge has been deleted. This is a transitional **dual-write** path while old model data remains necessary to support the legacy G4/G8, mass and document tests. The emitter itself is marked `retire` once a dedicated `rustsolid-assembly` implementation owns construction; it must not become permanent shadow-state architecture.
+
+The numeric source G8b vs actual canonical G8c flux verification and proof-bound restricted G8 candidate + atomic document commit are independently implemented on the previous stack PR #43. Do not equate these restricted proofs with general surface/surface Boolean correctness.
