@@ -41,6 +41,9 @@ rustsolid-geometry = { path = "crates/rustsolid-geometry" }
 rustsolid-intersect = { path = "crates/rustsolid-intersect" }
 rustsolid-topology = { path = "crates/rustsolid-topology" }
 
+[dev-dependencies]
+rustsolid-validation = { path = "crates/rustsolid-validation" }
+
 [[bin]]
 name = "gefest-geometry"
 path = "src/bin/gefest-geometry.rs"

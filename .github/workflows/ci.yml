@@ -47,6 +47,8 @@ jobs:
         run: cargo test --test canonical_model_port
       - name: G8a tilted one-wall source geometry and physical G1 contracts
         run: cargo test --test g8_tilted_one_wall_source
+      - name: Standalone source-only G8b bracket matches G8 baseline
+        run: cargo test --test g8_source_bracket_v2
       - name: G8b independent tilted one-wall source volume brackets
         run: cargo test --test independent_tilted_volume
       - name: G8c tilted analytic result B-rep and real coedge flux
