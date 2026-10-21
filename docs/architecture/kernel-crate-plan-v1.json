@@ -110,7 +110,7 @@
       "responsibility": "G2/G3 cell and whole-solid material classification"
     },
     "rustsolid-validation": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-validation",
       "dependencies": [
         "rustsolid-topology",
@@ -119,7 +119,7 @@
         "rustsolid-predicates",
         "rustsolid-source"
       ],
-      "responsibility": "Independent source-volume brackets, result flux and invariants; no dependency on constructors"
+      "responsibility": "First independent source-only G8b interval calculation from SourceSpec/BooleanIntent; source-independent actual-result G8c boundary flux and generic certification still planned"
     },
     "rustsolid-assembly": {
       "status": "planned",
