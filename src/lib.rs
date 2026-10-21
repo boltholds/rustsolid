@@ -18,6 +18,7 @@ mod geometry;
 mod curved_brep;
 mod unified_brep;
 mod canonical_bridge;
+mod canonical_emitter;
 mod query;
 mod accuracy;
 mod regression;
