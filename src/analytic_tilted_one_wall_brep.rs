@@ -151,6 +151,10 @@ pub enum TiltedOneWallShellResult{
 }
 impl TiltedOneWallShellPlan{
     pub fn brep(&self)->&BrepModel{&self.model}
+    /// Strict v2 analytic topology check; no Boolean approval or volume proof.
+    pub fn checked_canonical(&self)->Result<rustsolid_topology::BrepModel,GeometryError>{
+        crate::canonical_bridge::from_existing(&self.model)
+    }
     pub fn validate_against(
         &self,first:&BrepBody,second:&BrepBody,
         tol:GeometryTolerance,

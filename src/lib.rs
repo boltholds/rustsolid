@@ -17,6 +17,7 @@ mod predicates;
 mod geometry;
 mod curved_brep;
 mod unified_brep;
+mod canonical_bridge;
 mod query;
 mod accuracy;
 mod regression;
