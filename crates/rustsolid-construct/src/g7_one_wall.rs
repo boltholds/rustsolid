@@ -293,8 +293,13 @@ pub fn g7_one_wall_direct(
             sense:ShellSense::Outward,
         }],carriers:catalog,
     };
-    let Ok(model)=draft.check() else {
-        return Ok(G7BuildOutcome::Held(Held::TopologyAssemblyFailed));
+    let model=match draft.check(){
+        Ok(model)=>model,
+        Err(issue)=>{
+            #[cfg(test)]
+            eprintln!("G7 direct canonical draft rejected: {issue:?}");
+            return Ok(G7BuildOutcome::Held(Held::TopologyAssemblyFailed));
+        }
     };
     Ok(G7BuildOutcome::Staged(G7StagedBrep{
         model,source_stamp:snapshot.stamp().clone(),
@@ -329,8 +334,9 @@ mod tests {
     #[test]
     fn one_wall_analytic_direct_builder_has_expected_physical_counts(){
         let (s,intent)=fixture(1.5);
-        let G7BuildOutcome::Staged(stage)=g7_one_wall_direct(&s,&intent).unwrap() else{
-            panic!("source-only G7 direct builder unexpectedly held");
+        let out=g7_one_wall_direct(&s,&intent).unwrap();
+        let G7BuildOutcome::Staged(stage)=out else{
+            panic!("source-only G7 direct builder unexpectedly held: {out:?}");
         };
         let m=stage.model();
         assert_eq!((m.vertices().len(),m.edges().len(),m.coedges().len(),
