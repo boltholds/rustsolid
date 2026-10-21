@@ -1,0 +1,12 @@
+[package]
+name = "rustsolid-validation"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Independent source and boundary evidence for analytic solids"
+
+[dependencies]
+rustsolid-foundation = { path = "../rustsolid-foundation" }
+rustsolid-geometry = { path = "../rustsolid-geometry" }
+rustsolid-source = { path = "../rustsolid-source" }
+rustsolid-topology = { path = "../rustsolid-topology" }

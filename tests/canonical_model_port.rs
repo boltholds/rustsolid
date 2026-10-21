@@ -157,3 +157,80 @@ fn g8_tilted_one_wall_produces_valid_meshless_v2_analytic_brep() {
         checked.faces().len()),(12,18,36,8));
     assert_eq!(checked.carriers().curves3,actual.geometry.curves3);
 }
+
+
+/// Compares G8c raw flux from the ACTUAL canonical coedges against the old
+/// independently computed G8c witness and the new source-only G8b enclosure.
+/// This is a migration qualification, not a production B-rep adapter.
+#[test]
+fn g8_independent_source_and_actual_result_flux_agree_on_x_and_yz_tilts() {
+    use rustsolid_geometry::{Frame3,ModelUnits,ParameterRange};
+    use rustsolid_source::{
+        BooleanKind,SourceGeometry,SourceId,SourceRevision,SourceSnapshot,
+        SourceSpec,UnitPolicy,
+    };
+    use rustsolid_validation::{
+        compare_g8_volume,g8_boundary_flux,G8ComparisonOutcome,G8FluxOutcome,
+    };
+    for (theta,yz) in [(0.04_f64,false),(-0.03,false),(0.04,true)] {
+        let a=old::BrepBody::from(old::Solid::block(p(-1.,1.,-3.),4.,3.,6.).unwrap());
+        let frame=if yz {
+            Frame3::from_axes(p(0.,-2.,0.),p(1.,0.,0.),
+                p(0.,-theta.sin(),-theta.cos()),tol()).unwrap()
+        }else{
+            Frame3::from_axes(p(0.,-2.,0.),
+                p(theta.cos(),-theta.sin(),0.),p(0.,0.,-1.),tol()).unwrap()
+        };
+        let b=old::BrepBody::from(old::CylindricalBrep::new(frame,1.5,10.,tol()).unwrap());
+        let old::TiltedOneWallSourceResult::Ready(source)=
+            old::TiltedOneWallSourcePlan::build(&a,&b,old::BooleanOperation::Difference,tol()).unwrap()
+            else{panic!("old G8a source Held")};
+        let old::IndependentTiltedVolumeResult::Ready(vol)=
+            old::IndependentTiltedVolumeOracle::build(&a,&b,&source,tol()).unwrap()
+            else{panic!("old G8b source Held")};
+        let old::TiltedOneWallShellResult::Ready(shell)=
+            old::TiltedOneWallShellPlan::build(&a,&b,&source,&vol,tol()).unwrap()
+            else{panic!("old G8c shell Held")};
+        let old::IndependentTiltedBoundaryFluxResult::Ready(baseline)=
+            old::IndependentTiltedBoundaryFluxOracle::build(&a,&b,&shell,tol()).unwrap()
+            else{panic!("old G8c flux Held")};
+        let canonical=test_only_from_transitional(shell.brep());
+        let G8FluxOutcome::Ready(actual)=g8_boundary_flux(&canonical)
+            else{panic!("new actual result flux Held for theta={theta}, yz={yz}")};
+        assert!(
+            (actual.retained_volume-baseline.witness.result_volume).abs()<2e-7,
+            "independent actual flux disagreement for theta={theta}, yz={yz}: {:?}",
+            actual,
+        );
+        assert_eq!(actual.harmonic_integrated_uses,
+            baseline.witness.harmonic_integrated_uses);
+        assert_eq!(actual.axial_generator_uses,
+            baseline.witness.vertical_generator_uses);
+        let spec_a=SourceSpec::new(
+            SourceId::new(101).unwrap(),SourceRevision::new(1).unwrap(),
+            ModelUnits::default(),
+            SourceGeometry::AxisAlignedBlock{min:p(-1.,1.,-3.),max:p(3.,4.,3.)},
+            tol(),
+        ).unwrap();
+        let spec_b=SourceSpec::new(
+            SourceId::new(102).unwrap(),SourceRevision::new(1).unwrap(),
+            ModelUnits::default(),
+            SourceGeometry::FiniteCylinder{
+                frame,radius:1.5,axial:ParameterRange::bounded(0.,10.).unwrap(),
+            },tol(),
+        ).unwrap();
+        let snapshot=SourceSnapshot::new([spec_a.clone(),spec_b.clone()]).unwrap();
+        let intent=snapshot.intent(BooleanKind::Difference,
+            spec_a.reference(),spec_b.reference(),tol(),UnitPolicy::RequireIdentical).unwrap();
+        let G8ComparisonOutcome::VolumeCompatible(agreement)=
+            compare_g8_volume(&snapshot,&intent,&canonical).unwrap()
+            else{panic!("new source/actual boundary independent comparison Held")};
+        assert!(agreement.source_interval[0]<=agreement.actual_boundary_volume
+            + agreement.numerical_slack);
+        assert!(agreement.source_interval[1]>=agreement.actual_boundary_volume
+            - agreement.numerical_slack);
+        assert_eq!(agreement.assurance_level,"GuardedF64");
+        assert_eq!(agreement.model_incarnation,canonical.incarnation().get());
+        assert_eq!(&agreement.source_stamp,snapshot.stamp());
+    }
+}

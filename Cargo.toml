@@ -6,6 +6,7 @@ members = [
   "crates/rustsolid-predicates",
   "crates/rustsolid-geometry",
   "crates/rustsolid-source",
+  "crates/rustsolid-validation",
   "crates/rustsolid-intersect",
   "crates/rustsolid-topology",
   "crates/rustsolid-uv",
@@ -39,6 +40,10 @@ rustsolid-predicates = { path = "crates/rustsolid-predicates" }
 rustsolid-geometry = { path = "crates/rustsolid-geometry" }
 rustsolid-intersect = { path = "crates/rustsolid-intersect" }
 rustsolid-topology = { path = "crates/rustsolid-topology" }
+
+[dev-dependencies]
+rustsolid-source = { path = "crates/rustsolid-source" }
+rustsolid-validation = { path = "crates/rustsolid-validation" }
 
 [[bin]]
 name = "gefest-geometry"
