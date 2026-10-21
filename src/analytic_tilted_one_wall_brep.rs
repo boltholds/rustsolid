@@ -133,6 +133,7 @@ pub struct TiltedFaceProvenance {
 #[derive(Debug,Clone)]
 pub struct TiltedOneWallShellPlan{
     model:BrepModel,
+    canonical:rustsolid_topology::BrepModel,
     /// Bottom, top, Zmin, Xmax, Zmax, two split MIN-X faces, cylinder.
     pub faces:[FaceId;8],
     pub edges:[EdgeId;18],
@@ -153,7 +154,8 @@ impl TiltedOneWallShellPlan{
     pub fn brep(&self)->&BrepModel{&self.model}
     /// Strict v2 analytic topology check; no Boolean approval or volume proof.
     pub fn checked_canonical(&self)->Result<rustsolid_topology::BrepModel,GeometryError>{
-        crate::canonical_bridge::from_existing(&self.model)
+        self.canonical.validate().map_err(|e|invalid(format!("{e}")))?;
+        Ok(self.canonical.clone())
     }
     pub fn validate_against(
         &self,first:&BrepBody,second:&BrepBody,
@@ -228,12 +230,13 @@ impl TiltedOneWallShellPlan{
             p(xmax,ymax,zmax),p(xmin,ymax,zmax),
             tup,tdown,
         ];
-        let mut builder=PatchBuilder::new(bbox,tol,a.units);
+        let mut builder=PatchBuilder::new_dual(bbox,tol,a.units)?;
         builder.model.origin=BrepOrigin::AnalyticTiltedOneWallCylinderDifference;
         for (i,&position) in xyz.iter().enumerate(){
             builder.model.vertices.push(Vertex{
                 id:VertexId(i as u32),position,
             });
+            builder.record_vertex(VertexId(i as u32),position)?;
         }
         let mut pairs=[
             (0,1),(1,2),(2,3),(3,4),(4,5),(5,0),
@@ -325,6 +328,7 @@ impl TiltedOneWallShellPlan{
                 id,start:VertexId(start as u32),end:VertexId(end as u32),
                 coedges:[CoedgeId(u32::MAX);2],
             });
+            builder.record_edge(id,VertexId(start as u32),VertexId(end as u32),curve,span)?;
             result_edges[index]=id;
         }
         // Original MIN-X cap-wall edges are physically split at G1
@@ -411,10 +415,13 @@ impl TiltedOneWallShellPlan{
                     outer_loop:lid,tolerance:tol,
                 },
             });
+            builder.record_face(fid,sid,source_surface,
+                if first_operand{FaceSense::Forward}else{FaceSense::Reversed},vec![lid])?;
             let first_co=CoedgeId(builder.model.coedges.len() as u32);
             builder.model.loops.push(Loop{
                 id:lid,face:fid,role:LoopRole::Outer,first_coedge:first_co,
             });
+            builder.record_loop(lid,fid,LoopRole::Outer,first_co)?;
             let count=local.len();
             for i in 0..count{
                 let from_id=local[i];
@@ -463,6 +470,9 @@ impl TiltedOneWallShellPlan{
                 builder.model.geometry.coedges.push(CoedgeGeometry{
                     pcurve:trim_id,domain:trim_range,face:fid,loop_id:lid,
                 });
+                builder.record_coedge(co_id,result_edges[index],fid,lid,reversed,
+                    CoedgeId(first_co.0+((i+1)%count) as u32),
+                    CoedgeId(first_co.0+((i+count-1)%count) as u32),trim,trim_range)?;
             }
             sources.push(TiltedFaceProvenance{
                 result_face:fid,original_face:faces_src[face_index],
@@ -472,6 +482,7 @@ impl TiltedOneWallShellPlan{
             });
         }
         // Every physical edge occurs in exactly two opposed coedges.
+        let mut twin_pairs=Vec::new();
         for edge in &mut builder.model.edges{
             let co=builder.model.coedges.iter().filter(|co|co.edge==edge.id)
                 .map(|co|co.id).collect::<Vec<_>>();
@@ -483,10 +494,13 @@ impl TiltedOneWallShellPlan{
             builder.model.coedges[co[0].0 as usize].twin=co[1];
             builder.model.coedges[co[1].0 as usize].twin=co[0];
             edge.coedges=[co[0],co[1]];
+            twin_pairs.push((edge.id,co[0],co[1]));
         }
+        for (edge,a,b) in twin_pairs {builder.record_twins(edge,a,b)?;}
         builder.model.shells.push(Shell{
             id:ShellId(0),faces:(0..8).map(FaceId).collect(),closed:true,
         });
+        builder.record_shell(ShellId(0),(0..8).map(FaceId).collect())?;
         // Normalize analytic cylinder seam angles to ONE unwrapped chart.
         // A permissible 2π shift changes no 3D geometry or source provenance.
         let cyl_loop=builder.model.loops[7].first_coedge;
@@ -523,6 +537,8 @@ impl TiltedOneWallShellPlan{
                 Curve2::CylinderSection(section)=>section.angle_offset+=shift,
                 _=>return Ok(TiltedOneWallShellResult::Held(Hold::InvalidUvChart)),
             }
+            let updated=*curve;
+            builder.record_updated_trim(cid,updated)?;
             let after=read_uv(&builder.model,cid,false)?;
             if (after.u-previous.u).abs()>eps||
                 (after.v-previous.v).abs()>eps{
@@ -562,7 +578,7 @@ impl TiltedOneWallShellPlan{
             surface_area:block.mass.surface_area,
             centroid:block.mass.centroid,
         };
-        let model=builder.finish()?;
+        let (model,canonical)=builder.finish_dual()?;
         let radial=radial_certificate(&model,eps)
             .map_err(|e|invalid(format!("G8c radial audit: {e:?}")))?;
         if model.shells.len()!=1 ||model.vertices.len()!=12||
@@ -574,7 +590,7 @@ impl TiltedOneWallShellPlan{
             return Ok(TiltedOneWallShellResult::Held(Hold::UnexpectedShellStructure));
         }
         Ok(TiltedOneWallShellResult::Ready(Self{
-            model,faces:(0..8).map(FaceId).collect::<Vec<_>>().try_into()
+            model,canonical,faces:(0..8).map(FaceId).collect::<Vec<_>>().try_into()
                 .map_err(|_|invalid("G8c missing eight faces"))?,
             edges:result_edges,
             source_faces:sources.try_into()
