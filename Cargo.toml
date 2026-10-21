@@ -8,6 +8,7 @@ members = [
   "crates/rustsolid-source",
   "crates/rustsolid-validation",
   "crates/rustsolid-boolean",
+  "crates/rustsolid-document",
   "crates/rustsolid-intersect",
   "crates/rustsolid-topology",
   "crates/rustsolid-uv",

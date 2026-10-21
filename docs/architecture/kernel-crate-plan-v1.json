@@ -177,7 +177,7 @@
       "responsibility": "Derived face-owned display mesh and facet certificates"
     },
     "rustsolid-document": {
-      "status": "planned",
+      "status": "partial",
       "crate_path": "crates/rustsolid-document",
       "dependencies": [
         "rustsolid-topology",
@@ -187,7 +187,7 @@
         "rustsolid-modeling",
         "rustsolid-source"
       ],
-      "responsibility": "Atomic commit, persistent naming and Undo/Redo"
+      "responsibility": "Atomic in-memory restricted G8 document commit/undo/redo/face handles; persistent archive and generic naming pending"
     },
     "rustsolid-archive": {
       "status": "planned",
