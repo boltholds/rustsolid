@@ -13,13 +13,13 @@ kernel is used to convert or repair the other's result.
 
 From the RustSolid repository root:
 
-\`\`\`bash
+```bash
 cargo test --manifest-path experiments/solidcore-parity/Cargo.toml --release
 cargo run --manifest-path experiments/solidcore-parity/Cargo.toml --release
-\`\`\`
+```
 
 The SolidCore git dependency is pinned to
-\`ba7a0d9b8f4032441f656cec24e17677fa2668ec\` (the publicly recorded
+`ba7a0d9b8f4032441f656cec24e17677fa2668ec` (the publicly recorded
 2026-10-25 19:22 UTC progress snapshot). Do not replace it with a floating branch
 during qualification.
 
@@ -28,7 +28,7 @@ during qualification.
 For three deterministic source parameter sets, the executable:
 
 1. Builds an independent box in each Rust kernel and validates RustSolid;
-2. Requires SolidCore's own \`is_manifold_solid\` to succeed;
+2. Requires SolidCore's own `is_manifold_solid` to succeed;
 3. Checks independently obtained face/edge/vertex counts (6/12/8);
 4. Computes each kernel's volume/area and compares both with analytic formulae;
 5. Compares separate bounding-box queries with analytic boundaries;
@@ -42,11 +42,11 @@ been independently compiled or run in the author's environment. CI must verify i
 
 - SolidCore is a **reference/experimental provider** first, never the owner of
   RustSolid's canonical B-rep, source stamps, topology lineage or document history.
-- Do not reinterpret \`solidcore::Brep\` arena IDs as RustSolid canonical IDs.
+- Do not reinterpret `solidcore::Brep` arena IDs as RustSolid canonical IDs.
   If import is built later, use a validated explicit mapping for physical edges,
   face orientation, coedges, pcurves, seam multiplicity and tolerance semantics.
-- Only a fully validated RustSolid \`BrepDraft\` with independent source and
-  boundary checks could be considered for a future \`CertifiedCandidate\`.
+- Only a fully validated RustSolid `BrepDraft` with independent source and
+  boundary checks could be considered for a future `CertifiedCandidate`.
   A passing SolidCore Boolean does not by itself authorize commit.
 - Do not use upstream SMLib or this port as the sole oracle for general
   surface/surface intersection. Its [independent SSI corpus](https://tangency-labs.github.io/solidcore/ssi.html)
@@ -61,7 +61,7 @@ been independently compiled or run in the author's environment. CI must verify i
 
 [SolidCore](https://github.com/tangency-labs/solidcore) is Apache-2.0, based on
 [NVIDIA USD BRep](https://github.com/NVIDIA-Omniverse/usd-brep)
-(\`source/SMLib\`, \`source/SM_API\`; Apache-2.0). See its LICENSE,
+(`source/SMLib`, `source/SM_API`; Apache-2.0). See its LICENSE,
 NOTICE and ATTRIBUTION.md. RustSolid is MPL-2.0. Keep copyright notices and
 license attribution when redistributing the dependency or derived files.
 No NVIDIA implementation code is copied into this experiment.
