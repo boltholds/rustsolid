@@ -1,0 +1,12 @@
+[package]
+name = "rustsolid-solidcore-parity"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Isolated RustSolid vs NVIDIA SMLib/SolidCore primitive conformance experiment"
+
+[dependencies]
+rustsolid = { path = "../.." }
+# Frozen at the upstream progress report generated on 2026-10-25 19:22 UTC.
+# Do not silently advance: difftest verdicts and API contracts can change.
+solidcore = { git = "https://github.com/tangency-labs/solidcore", rev = "ba7a0d9b8f4032441f656cec24e17677fa2668ec" }
