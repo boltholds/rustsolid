@@ -1,0 +1,23 @@
+name: SolidCore primitive parity (experimental)
+
+on:
+  pull_request:
+    paths:
+      - "experiments/solidcore-parity/**"
+      - ".github/workflows/solidcore-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: RustSolid / pinned SolidCore primitive comparisons
+        run: cargo test --manifest-path experiments/solidcore-parity/Cargo.toml --release
+      - name: CLI parity output
+        run: cargo run --manifest-path experiments/solidcore-parity/Cargo.toml --release
